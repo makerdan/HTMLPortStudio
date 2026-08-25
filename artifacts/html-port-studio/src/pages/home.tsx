@@ -653,7 +653,7 @@ export default function Home() {
                   value={htmlInput}
                   onChange={(e) => setHtmlInput(e.target.value)}
                   placeholder="<!DOCTYPE html>&#10;<html>&#10;  ..."
-                  className="min-h-[300px] font-mono text-sm resize-y bg-muted/30 focus-visible:ring-primary/50"
+                  className="min-h-[300px] font-mono text-sm resize-y border border-black bg-muted/30 focus-visible:ring-primary/50"
                 />
                 
                 {analyzeMutation.isError && (
