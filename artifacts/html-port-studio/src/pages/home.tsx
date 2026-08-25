@@ -391,21 +391,21 @@ export default function Home() {
                   </div>
 
                   {analysisData.findings.length === 0 ? (
-                    <Alert className="bg-primary/5 border-primary/20 text-primary">
+                     <Alert className="bg-primary/5 border-primary/20 !text-black">
                       <CheckCircle className="h-4 w-4 !text-primary" />
-                      <AlertTitle>All Clear</AlertTitle>
-                      <AlertDescription>No issues found. Ready to port!</AlertDescription>
+                       <AlertTitle className="!text-black">All Clear</AlertTitle>
+                       <AlertDescription className="!text-black">No issues found. Ready to port!</AlertDescription>
                     </Alert>
                   ) : (
                     <div className="space-y-3">
                       {analysisData.findings.map((finding, idx) => (
-                        <Alert key={idx} variant={SEVERITY_COLORS[finding.severity]}>
+                        <Alert key={idx} variant={SEVERITY_COLORS[finding.severity]} className="!text-black">
                           {SEVERITY_ICONS[finding.severity]}
-                          <AlertTitle className="capitalize font-semibold">{finding.title}</AlertTitle>
-                          <AlertDescription className="mt-2 space-y-2">
+                          <AlertTitle className="capitalize font-semibold !text-black">{finding.title}</AlertTitle>
+                          <AlertDescription className="mt-2 space-y-2 !text-black">
                             <p>{finding.detail}</p>
                             {finding.action && (
-                              <div className="text-xs font-mono bg-background/50 p-2 rounded border border-inherit/10">
+                              <div className="text-xs font-mono bg-background/50 p-2 rounded border border-inherit/10 !text-black">
                                 <span className="font-semibold uppercase mr-2 opacity-70">Action:</span>
                                 {finding.action}
                               </div>
