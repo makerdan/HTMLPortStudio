@@ -511,8 +511,8 @@ export default function Home() {
                   <Button
                     type="button"
                     variant="outline"
-                    size="sm"
-                    className="shrink-0 gap-2"
+                    size="default"
+                    className="h-11 shrink-0 gap-2 px-5 text-sm font-semibold"
                     onClick={() => fileInputRef.current?.click()}
                   >
                     <Upload className="h-3.5 w-3.5" />
@@ -627,7 +627,7 @@ export default function Home() {
                             <p>{finding.detail}</p>
                             {finding.action && (
                               <div className="text-xs font-mono bg-background/50 p-2 rounded border border-inherit/10 !text-black">
-                                <span className="font-semibold uppercase mr-2 opacity-70">Action:</span>
+                                <span className="font-semibold uppercase mr-2">Action:</span>
                                 {finding.action}
                               </div>
                             )}
