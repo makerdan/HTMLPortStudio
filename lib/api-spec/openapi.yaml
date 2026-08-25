@@ -12,7 +12,57 @@ tags:
     description: Health operations
   - name: porting
     description: HTML portability analysis and Poe bridge operations
+  - name: Auth
+    description: Browser authentication endpoints
 paths:
+  /auth/user:
+    get:
+      operationId: getCurrentAuthUser
+      tags: [Auth]
+      summary: Get the currently authenticated user
+      responses:
+        "200":
+          description: Current authentication state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUserEnvelope"
+  /login:
+    get:
+      operationId: beginBrowserLogin
+      tags: [Auth]
+      summary: Start the browser OIDC login flow
+      parameters:
+        - name: returnTo
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to the OIDC provider
+  /callback:
+    get:
+      operationId: handleBrowserLoginCallback
+      tags: [Auth]
+      summary: Complete the browser OIDC login flow
+      responses:
+        "302":
+          description: Redirect after login
+  /logout:
+    get:
+      operationId: logoutBrowserSession
+      tags: [Auth]
+      summary: Clear the browser session
+      parameters:
+        - name: returnTo
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect after logout
   /healthz:
     get:
       operationId: healthCheck
@@ -94,8 +144,147 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /port/replit-projects:
+    post:
+      operationId: createReplitProject
+      tags: [porting]
+      summary: Create a Replit project from the analyzed HTML
+      description: Sends the imported HTML unchanged through the server-only authorized Replit project connection and starts the ordered setup workflow.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplitProjectInput"
+      responses:
+        "202":
+          description: Project creation job started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReplitProjectHandoff"
+        "400":
+          description: Invalid or unsafe HTML handoff request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: HTML source is too large
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Login required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Authorized Replit project connection is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /port/replit-projects/{jobId}:
+    get:
+      operationId: getReplitProjectStatus
+      tags: [porting]
+      summary: Get Replit project creation and setup status
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Current handoff status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReplitProjectHandoff"
+        "404":
+          description: Handoff job was not found or has expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Login required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /port/replit-projects/{jobId}/retry:
+    post:
+      operationId: retryReplitProjectSetup
+      tags: [porting]
+      summary: Retry a failed Replit project setup step
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "202":
+          description: Failed setup step queued for retry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReplitProjectHandoff"
+        "400":
+          description: Job is not in a retryable state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Handoff job was not found or has expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Login required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Authorized Replit project connection is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
+    AuthUser:
+      type: object
+      required: [id, email, firstName, lastName, profileImageUrl]
+      properties:
+        id:
+          type: string
+        email:
+          type: ["string", "null"]
+        firstName:
+          type: ["string", "null"]
+        lastName:
+          type: ["string", "null"]
+        profileImageUrl:
+          type: ["string", "null"]
+    AuthUserEnvelope:
+      type: object
+      required: [user]
+      properties:
+        user:
+          oneOf:
+            - $ref: "#/components/schemas/AuthUser"
+            - type: "null"
     HealthStatus:
       type: object
       properties:
@@ -108,8 +297,11 @@ components:
       properties:
         error:
           type: string
-      required:
-        - error
+        code:
+          type: string
+        action:
+          type: string
+      required: [error]
     HtmlInput:
       type: object
       properties:
@@ -222,4 +414,64 @@ components:
               type: number
           required: [promptTokens, completionTokens]
       required: [content, model]
+    ReplitProjectInput:
+      type: object
+      properties:
+        html:
+          type: string
+          minLength: 1
+          maxLength: 2000000
+      required: [html]
+    ReplitProjectStepName:
+      type: string
+      enum:
+        - Poe Setup
+        - Port Authority
+        - Failure Gate
+        - Harden Bug Fixes
+        - Skill Install Confirmation
+    ReplitProjectStepStatus:
+      type: object
+      properties:
+        name:
+          $ref: "#/components/schemas/ReplitProjectStepName"
+        status:
+          type: string
+          enum: [pending, running, completed, failed]
+        error:
+          type: ["string", "null"]
+      required: [name, status, error]
+    ReplitProjectHandoff:
+      type: object
+      properties:
+        jobId:
+          type: string
+        status:
+          type: string
+          enum: [queued, running, completed, failed]
+        projectId:
+          type: ["string", "null"]
+        projectUrl:
+          type: ["string", "null"]
+        projectName:
+          type: ["string", "null"]
+        currentStep:
+          allOf:
+            - $ref: "#/components/schemas/ReplitProjectStepName"
+          nullable: true
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReplitProjectStepStatus"
+        error:
+          type: ["string", "null"]
+      required:
+        - jobId
+        - status
+        - projectId
+        - projectUrl
+        - projectName
+        - currentStep
+        - steps
+        - error
 

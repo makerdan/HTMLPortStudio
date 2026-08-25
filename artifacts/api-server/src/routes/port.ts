@@ -1,10 +1,26 @@
+import { randomUUID } from "node:crypto";
 import { Router, type IRouter } from "express";
+import {
+  db,
+  handoffJobsTable,
+  handoffStepsTable,
+  type HandoffJobRow,
+  type HandoffStepRow,
+} from "@workspace/db";
+import { and, asc, eq, lt, or } from "drizzle-orm";
+import { requireTrustedCookieOrigin } from "../middlewares/csrfMiddleware";
 import {
   AnalyzeHtmlBody,
   AnalyzeHtmlResponse,
   ChatWithPoeBody,
   ChatWithPoeResponse,
+  CreateReplitProjectBody,
+  CreateReplitProjectResponse,
+  GetReplitProjectStatusParams,
+  GetReplitProjectStatusResponse,
   ListPoeModelsResponse,
+  RetryReplitProjectSetupParams,
+  RetryReplitProjectSetupResponse,
 } from "@workspace/api-zod";
 
 type Finding = {
@@ -144,6 +160,478 @@ async function poeRequest(path: string, init?: RequestInit): Promise<Response> {
     },
   });
 }
+
+const SETUP_STEPS = [
+  { name: "Poe Setup", slug: "poe-setup" },
+  { name: "Port Authority", slug: "port-authority" },
+  { name: "Failure Gate", slug: "failure-gate" },
+  { name: "Harden Bug Fixes", slug: "harden-bug-fixes" },
+  { name: "Skill Install Confirmation", slug: "skill-install-confirmation" },
+] as const;
+
+type SetupStepName = (typeof SETUP_STEPS)[number]["name"];
+type SetupStepStatus = "pending" | "running" | "completed" | "failed";
+
+type ProjectCreationResult = {
+  projectId: string;
+  projectUrl: string | null;
+};
+
+type ProjectCreationConnection = {
+  createProject(input: {
+    name: string;
+    html: string;
+    idempotencyKey: string;
+  }): Promise<ProjectCreationResult>;
+  installSkill(input: {
+    projectId: string;
+    name: SetupStepName;
+    slug: string;
+    idempotencyKey: string;
+  }): Promise<void>;
+};
+
+type HandoffJob = {
+  id: string;
+  sourceHtml: string;
+  projectName: string;
+  status: "queued" | "running" | "completed" | "failed";
+  projectId: string | null;
+  projectUrl: string | null;
+  currentStep: SetupStepName | null;
+  steps: Array<{
+    name: SetupStepName;
+    status: SetupStepStatus;
+    error: string | null;
+  }>;
+  error: string | null;
+  leaseToken: string | null;
+};
+
+function projectConnectionBaseUrl(): string | null {
+  const configured = process.env.REPLIT_PROJECT_CREATION_URL?.trim();
+  if (!configured) return null;
+
+  try {
+    const url = new URL(configured);
+    if (!["http:", "https:"].includes(url.protocol)) return null;
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return null;
+  }
+}
+
+function projectConnectionHeaders(): Record<string, string> {
+  const token = process.env.REPLIT_PROJECT_CREATION_TOKEN;
+  return token
+    ? { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
+    : { "Content-Type": "application/json" };
+}
+
+async function projectConnectionRequest(
+  path: string,
+  init: RequestInit,
+  idempotencyKey?: string,
+): Promise<{ status: number; body: unknown }> {
+  const baseUrl = projectConnectionBaseUrl();
+  if (!baseUrl) {
+    throw new Error("PROJECT_CREATION_CONNECTION_UNAVAILABLE");
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}${path}`, {
+      ...init,
+      headers: {
+        ...projectConnectionHeaders(),
+        ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+        ...init.headers,
+      },
+      signal: AbortSignal.timeout(25_000),
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "TimeoutError") {
+      throw new Error("PROJECT_CREATION_CONNECTION_TIMEOUT");
+    }
+    throw error;
+  }
+  if (!response.ok) {
+    throw new Error("PROJECT_CREATION_CONNECTION_FAILED");
+  }
+
+  if (response.status === 204) return { status: response.status, body: null };
+  try {
+    return { status: response.status, body: await response.json() };
+  } catch {
+    throw new Error("PROJECT_CREATION_CONNECTION_INVALID_RESPONSE");
+  }
+}
+
+function getStringField(value: unknown, keys: string[]): string | null {
+  if (typeof value !== "object" || value === null) return null;
+  for (const key of keys) {
+    const field = (value as Record<string, unknown>)[key];
+    if (typeof field === "string" && field.trim()) return field;
+  }
+  return null;
+}
+
+function skillWasConfirmed(body: unknown): boolean {
+  const status = getStringField(body, ["status", "state"]);
+  return (
+    (typeof body === "object" &&
+      body !== null &&
+      (body as Record<string, unknown>).completed === true) ||
+    status === "completed" ||
+    status === "succeeded"
+  );
+}
+
+function skillFailed(body: unknown): boolean {
+  const status = getStringField(body, ["status", "state"]);
+  return status === "failed" || status === "cancelled";
+}
+
+function sleep(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function awaitSkillConfirmation(
+  initialBody: unknown,
+  idempotencyKey: string,
+): Promise<void> {
+  let body = initialBody;
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    if (skillWasConfirmed(body)) return;
+    if (skillFailed(body)) throw new Error("PROJECT_CREATION_CONNECTION_FAILED");
+
+    const operationId = getStringField(body, ["operationId", "setupOperationId"]);
+    if (!operationId) throw new Error("SKILL_INSTALLATION_NOT_CONFIRMED");
+
+    await sleep(500);
+    const operation = await projectConnectionRequest(
+      `/operations/${encodeURIComponent(operationId)}`,
+      { method: "GET" },
+      idempotencyKey,
+    );
+    body = operation.body;
+  }
+
+  throw new Error("SKILL_INSTALLATION_NOT_CONFIRMED");
+}
+
+function createProjectConnection(): ProjectCreationConnection {
+  return {
+    async createProject({ name, html, idempotencyKey }) {
+      const response = await projectConnectionRequest("/projects", {
+        method: "POST",
+        body: JSON.stringify({
+          name,
+          files: [{ path: "index.html", content: html }],
+          run: {
+            entrypoint: "index.html",
+            command: "python3 -m http.server ${PORT:-3000} --directory .",
+          },
+          features: {
+            codeEditor: false,
+            versionControl: false,
+          },
+        }),
+      }, idempotencyKey);
+      const body = response.body;
+      const projectId = getStringField(body, ["projectId", "id"]);
+      if (!projectId) throw new Error("PROJECT_CREATION_CONNECTION_INVALID_RESPONSE");
+      return {
+        projectId,
+        projectUrl: getStringField(body, ["projectUrl", "url"]),
+      };
+    },
+    async installSkill({ projectId, name, slug, idempotencyKey }) {
+      const response = await projectConnectionRequest(
+        `/projects/${encodeURIComponent(projectId)}/setup`,
+        {
+          method: "POST",
+          body: JSON.stringify({ name, slug }),
+        },
+        idempotencyKey,
+      );
+      await awaitSkillConfirmation(response.body, idempotencyKey);
+    },
+  };
+}
+
+function safeProjectName(html: string): string {
+  const title = extractTitle(html)
+    .replace(/[\u0000-\u001f<>:"/\\|?*]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 70);
+  return `Poe Port - ${title || "HTML App"}`;
+}
+
+function containsPrivilegedCredential(html: string): boolean {
+  const configuredSecrets = [
+    process.env.POE_API_KEY,
+    process.env.REPLIT_PROJECT_CREATION_TOKEN,
+  ].filter((secret): secret is string => Boolean(secret && secret.length > 4));
+  if (configuredSecrets.some((secret) => html.includes(secret))) return true;
+
+  return [
+    /(?:api[_-]?key|authorization|access[_-]?token|secret|token)\s*[:=]\s*["'][^"']{8,}["']/i,
+    /\b(?:sk|pk|poe|pplx)-[a-z0-9_-]{8,}\b/i,
+    /\bAIza[a-z0-9_-]{12,}\b/i,
+    /\bBearer\s+[a-z0-9._-]{8,}\b/i,
+  ].some((pattern) => pattern.test(html));
+}
+
+function toHandoffJob(job: HandoffJobRow, steps: HandoffStepRow[]): HandoffJob {
+  return {
+    id: job.id,
+    sourceHtml: job.sourceHtml,
+    projectName: job.projectName,
+    status: job.status as HandoffJob["status"],
+    projectId: job.projectId,
+    projectUrl: job.projectUrl,
+    currentStep: job.currentStep as SetupStepName | null,
+    steps: steps.map((step) => ({
+      name: step.name as SetupStepName,
+      status: step.status as SetupStepStatus,
+      error: step.error,
+    })),
+    error: job.error,
+    leaseToken: job.leaseToken,
+  };
+}
+
+async function loadJob(jobId: string, ownerId?: string): Promise<HandoffJob | null> {
+  const where = ownerId
+    ? and(eq(handoffJobsTable.id, jobId), eq(handoffJobsTable.ownerId, ownerId))
+    : eq(handoffJobsTable.id, jobId);
+  const [job] = await db.select().from(handoffJobsTable).where(where);
+  if (!job) return null;
+  const steps = await db
+    .select()
+    .from(handoffStepsTable)
+    .where(eq(handoffStepsTable.jobId, jobId))
+    .orderBy(asc(handoffStepsTable.position));
+  return toHandoffJob(job, steps);
+}
+
+function publicJob(job: HandoffJob) {
+  return {
+    jobId: job.id,
+    status: job.status,
+    projectId: job.projectId,
+    projectUrl: job.projectUrl,
+    projectName: job.projectName,
+    currentStep: job.currentStep,
+    steps: job.steps,
+    error: job.error,
+  };
+}
+
+function jobError(message: unknown): string {
+  if (message instanceof Error) {
+    if (message.message === "PROJECT_CREATION_CONNECTION_FAILED") {
+      return "The Replit project connection rejected the request. Check its authorization and try again.";
+    }
+    if (message.message === "PROJECT_CREATION_CONNECTION_INVALID_RESPONSE") {
+      return "The Replit project connection returned an invalid response. Try again or reconnect it.";
+    }
+    if (message.message === "PROJECT_CREATION_CONNECTION_TIMEOUT") {
+      return "The Replit project connection timed out. The operation can be retried safely.";
+    }
+    if (message.message === "SKILL_INSTALLATION_NOT_CONFIRMED") {
+      return "The setup skill did not confirm completion, so later steps were not started. Retry this step after checking the Replit connection.";
+    }
+  }
+  return "The Replit project setup could not be completed. Retry the failed step.";
+}
+
+const JOB_LEASE_MS = 2 * 60 * 1000;
+const JOB_HEARTBEAT_MS = 20_000;
+
+class LeaseLostError extends Error {
+  constructor() {
+    super("HANDOFF_JOB_LEASE_LOST");
+  }
+}
+
+async function persistJob(job: HandoffJob): Promise<void> {
+  const where = and(
+    eq(handoffJobsTable.id, job.id),
+    eq(handoffJobsTable.status, "running"),
+    eq(handoffJobsTable.leaseToken, job.leaseToken!),
+  );
+  const [updated] = await db
+    .update(handoffJobsTable)
+    .set({
+      status: job.status,
+      projectId: job.projectId,
+      projectUrl: job.projectUrl,
+      currentStep: job.currentStep,
+      error: job.error,
+      leaseExpiresAt:
+        job.status === "running" ? new Date(Date.now() + JOB_LEASE_MS) : null,
+      updatedAt: new Date(),
+    })
+    .where(where)
+    .returning({ id: handoffJobsTable.id });
+  if (!updated) throw new LeaseLostError();
+  await Promise.all(
+    job.steps.map((step, position) =>
+      db
+        .update(handoffStepsTable)
+        .set({ status: step.status, error: step.error, updatedAt: new Date() })
+        .where(
+          and(
+            eq(handoffStepsTable.jobId, job.id),
+            eq(handoffStepsTable.position, position),
+          ),
+        ),
+    ),
+  );
+}
+
+async function runHandoffJob(jobId: string): Promise<void> {
+  const leaseToken = randomUUID();
+  const [claimed] = await db
+    .update(handoffJobsTable)
+    .set({
+      status: "running",
+      leaseExpiresAt: new Date(Date.now() + JOB_LEASE_MS),
+      leaseToken,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(handoffJobsTable.id, jobId),
+        or(
+          eq(handoffJobsTable.status, "queued"),
+          and(
+            eq(handoffJobsTable.status, "running"),
+            lt(handoffJobsTable.leaseExpiresAt, new Date()),
+          ),
+        ),
+      ),
+    )
+    .returning({ id: handoffJobsTable.id, leaseToken: handoffJobsTable.leaseToken });
+  if (!claimed) return;
+  const job = await loadJob(jobId);
+  if (!job) return;
+  job.status = "running";
+  job.leaseToken = claimed.leaseToken;
+  const connection = createProjectConnection();
+  let leaseLost = false;
+  const heartbeat = setInterval(() => {
+    void db
+      .update(handoffJobsTable)
+      .set({ leaseExpiresAt: new Date(Date.now() + JOB_LEASE_MS), updatedAt: new Date() })
+      .where(
+        and(
+          eq(handoffJobsTable.id, job.id),
+          eq(handoffJobsTable.status, "running"),
+          eq(handoffJobsTable.leaseToken, job.leaseToken!),
+        ),
+      )
+      .returning({ id: handoffJobsTable.id })
+      .then(([updated]) => {
+        if (!updated) leaseLost = true;
+      })
+      .catch(() => {
+        leaseLost = true;
+      });
+  }, JOB_HEARTBEAT_MS);
+  heartbeat.unref();
+  const assertLease = () => {
+    if (leaseLost) throw new LeaseLostError();
+  };
+
+  try {
+    if (!job.projectId) {
+      assertLease();
+      const project = await connection.createProject({
+        name: job.projectName,
+        html: job.sourceHtml,
+        idempotencyKey: `handoff:${job.id}:project`,
+      });
+      assertLease();
+      job.projectId = project.projectId;
+      job.projectUrl = project.projectUrl;
+      await persistJob(job);
+    }
+
+    const firstIncomplete = job.steps.findIndex(
+      (step) => step.status !== "completed",
+    );
+    for (let index = Math.max(firstIncomplete, 0); index < job.steps.length; index += 1) {
+      const step = job.steps[index];
+      step.status = "running";
+      step.error = null;
+      job.currentStep = step.name;
+      job.error = null;
+      await persistJob(job);
+      assertLease();
+
+      try {
+        const definition = SETUP_STEPS[index];
+        if (!job.projectId) {
+          throw new Error("PROJECT_CREATION_CONNECTION_INVALID_RESPONSE");
+        }
+        await connection.installSkill({
+          projectId: job.projectId,
+          name: definition.name,
+          slug: definition.slug,
+          idempotencyKey: `handoff:${job.id}:step:${index}`,
+        });
+        assertLease();
+        step.status = "completed";
+        await persistJob(job);
+      } catch (error) {
+        step.status = "failed";
+        step.error = jobError(error);
+        job.error = step.error;
+        job.status = "failed";
+        await persistJob(job);
+        return;
+      }
+    }
+
+    job.currentStep = null;
+    job.status = "completed";
+    job.error = null;
+    await persistJob(job);
+  } catch (error) {
+    if (error instanceof LeaseLostError) return;
+    job.status = "failed";
+    job.error = jobError(error);
+    await persistJob(job);
+  } finally {
+    clearInterval(heartbeat);
+  }
+}
+
+async function resumeDurableJobs(): Promise<void> {
+  const jobs = await db
+    .select({ id: handoffJobsTable.id })
+    .from(handoffJobsTable)
+    .where(
+      or(
+        eq(handoffJobsTable.status, "queued"),
+        and(
+          eq(handoffJobsTable.status, "running"),
+          lt(handoffJobsTable.leaseExpiresAt, new Date()),
+        ),
+      ),
+    );
+  for (const job of jobs) void runHandoffJob(job.id);
+}
+
+const resumeTimer = setInterval(() => {
+  void resumeDurableJobs().catch(() => undefined);
+}, 15_000);
+resumeTimer.unref();
+setTimeout(() => void resumeDurableJobs().catch(() => undefined), 0).unref();
 
 const router: IRouter = Router();
 
@@ -291,5 +779,197 @@ router.post("/port/poe/chat", async (req, res): Promise<void> => {
     });
   }
 });
+
+router.post("/port/replit-projects", requireTrustedCookieOrigin, async (req, res): Promise<void> => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({
+      error: "Log in before creating a project.",
+      code: "AUTHENTICATION_REQUIRED",
+    });
+    return;
+  }
+  const parsed = CreateReplitProjectBody.safeParse(req.body);
+  if (!parsed.success) {
+    req.log.warn({ errors: parsed.error.message }, "Invalid Replit project handoff request");
+    const tooLarge = parsed.error.issues.some(
+      (issue) => issue.code === "too_big" && issue.path[0] === "html",
+    );
+    res.status(tooLarge ? 413 : 400).json({
+      error: "Provide one non-empty HTML document no larger than 2 MB.",
+      code: tooLarge ? "PROJECT_HANDOFF_SOURCE_TOO_LARGE" : "INVALID_PROJECT_HANDOFF",
+    });
+    return;
+  }
+
+  if (!projectConnectionBaseUrl()) {
+    res.status(503).json({
+      error:
+        "Replit project creation is unavailable. Attach an authorized Replit project-creation connection to the API server, then try again.",
+      code: "PROJECT_CREATION_CONNECTION_UNAVAILABLE",
+      action: "Configure the supported server-side Replit project connection; never paste a credential into the HTML Studio.",
+    });
+    return;
+  }
+
+  if (containsPrivilegedCredential(parsed.data.html)) {
+    res.status(400).json({
+      error:
+        "This HTML appears to contain a service credential. Remove it before creating a project; the source was not sent to Replit.",
+      code: "SOURCE_CONTAINS_CREDENTIAL",
+    });
+    return;
+  }
+
+  const job: HandoffJob = {
+    id: randomUUID(),
+    sourceHtml: parsed.data.html,
+    projectName: safeProjectName(parsed.data.html),
+    status: "queued",
+    projectId: null,
+    projectUrl: null,
+    currentStep: null,
+    steps: SETUP_STEPS.map(({ name }) => ({
+      name,
+      status: "pending",
+      error: null,
+    })),
+    error: null,
+    leaseToken: null,
+  };
+  await db.transaction(async (tx) => {
+    await tx.insert(handoffJobsTable).values({
+      id: job.id,
+      ownerId: req.user.id,
+      sourceHtml: job.sourceHtml,
+      projectName: job.projectName,
+      status: job.status,
+    });
+    await tx.insert(handoffStepsTable).values(
+      SETUP_STEPS.map((step, position) => ({
+        id: randomUUID(),
+        jobId: job.id,
+        position,
+        name: step.name,
+        slug: step.slug,
+        status: "pending",
+      })),
+    );
+  });
+  res.status(202).json(CreateReplitProjectResponse.parse(publicJob(job)));
+  void runHandoffJob(job.id);
+});
+
+router.get("/port/replit-projects/:jobId", async (req, res): Promise<void> => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({
+      error: "Log in to view this project handoff.",
+      code: "AUTHENTICATION_REQUIRED",
+    });
+    return;
+  }
+  const parsed = GetReplitProjectStatusParams.safeParse(req.params);
+  const job = parsed.success
+    ? await loadJob(parsed.data.jobId, req.user.id)
+    : null;
+  if (!job) {
+    res.status(404).json({
+      error: "That Replit project creation job was not found or has expired.",
+      code: "PROJECT_HANDOFF_NOT_FOUND",
+    });
+    return;
+  }
+  res.json(GetReplitProjectStatusResponse.parse(publicJob(job)));
+});
+
+router.post(
+  "/port/replit-projects/:jobId/retry",
+  requireTrustedCookieOrigin,
+  async (req, res): Promise<void> => {
+    if (!req.isAuthenticated()) {
+      res.status(401).json({
+        error: "Log in to retry this project handoff.",
+        code: "AUTHENTICATION_REQUIRED",
+      });
+      return;
+    }
+    const parsed = RetryReplitProjectSetupParams.safeParse(req.params);
+    if (!parsed.success) {
+      res.status(404).json({
+        error: "That Replit project creation job was not found or has expired.",
+        code: "PROJECT_HANDOFF_NOT_FOUND",
+      });
+      return;
+    }
+
+    if (!projectConnectionBaseUrl()) {
+      res.status(503).json({
+        error:
+          "The authorized Replit project-creation connection is unavailable. Reconnect it before retrying this setup step.",
+        code: "PROJECT_CREATION_CONNECTION_UNAVAILABLE",
+      });
+      return;
+    }
+
+    const wonRetry = await db.transaction(async (tx) => {
+      const [claimed] = await tx
+        .update(handoffJobsTable)
+        .set({
+          status: "queued",
+          currentStep: null,
+          error: null,
+          leaseExpiresAt: null,
+          leaseToken: null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(handoffJobsTable.id, parsed.data.jobId),
+            eq(handoffJobsTable.ownerId, req.user.id),
+            eq(handoffJobsTable.status, "failed"),
+          ),
+        )
+        .returning({ id: handoffJobsTable.id });
+      if (!claimed) return false;
+
+      await tx
+        .update(handoffStepsTable)
+        .set({ status: "pending", error: null, updatedAt: new Date() })
+        .where(
+          and(
+            eq(handoffStepsTable.jobId, claimed.id),
+            eq(handoffStepsTable.status, "failed"),
+          ),
+        );
+      return true;
+    });
+
+    if (!wonRetry) {
+      const existing = await loadJob(parsed.data.jobId, req.user.id);
+      res.status(existing ? 400 : 404).json(
+        existing
+          ? {
+              error: "Only a failed project setup can be retried.",
+              code: "PROJECT_HANDOFF_NOT_RETRYABLE",
+            }
+          : {
+              error: "That Replit project creation job was not found or has expired.",
+              code: "PROJECT_HANDOFF_NOT_FOUND",
+            },
+      );
+      return;
+    }
+
+    const job = await loadJob(parsed.data.jobId, req.user.id);
+    if (!job) {
+      res.status(404).json({
+        error: "That Replit project creation job was not found or has expired.",
+        code: "PROJECT_HANDOFF_NOT_FOUND",
+      });
+      return;
+    }
+    res.status(202).json(RetryReplitProjectSetupResponse.parse(publicJob(job)));
+    void runHandoffJob(job.id);
+  },
+);
 
 export default router;

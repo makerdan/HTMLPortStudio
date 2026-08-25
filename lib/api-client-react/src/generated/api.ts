@@ -20,13 +20,18 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AuthUserEnvelope,
+  BeginBrowserLoginParams,
   ErrorResponse,
   HealthStatus,
   HtmlAnalysis,
   HtmlInput,
+  LogoutBrowserSessionParams,
   PoeChatInput,
   PoeChatResponse,
-  PoeModels
+  PoeModels,
+  ReplitProjectHandoff,
+  ReplitProjectInput
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -55,6 +60,328 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export const getGetCurrentAuthUserUrl = () => {
+
+
+
+
+  return `/api/auth/user`
+}
+
+/**
+ * @summary Get the currently authenticated user
+ */
+export const getCurrentAuthUser = async ( options?: Parameters<typeof customFetch>[1]): Promise<AuthUserEnvelope> => {
+
+  return customFetch<AuthUserEnvelope>(getGetCurrentAuthUserUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCurrentAuthUserQueryKey = () => {
+    return [
+    `/api/auth/user`
+    ] as const;
+    }
+
+
+export const getGetCurrentAuthUserQueryOptions = <TData = Awaited<ReturnType<typeof getCurrentAuthUser>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCurrentAuthUser>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCurrentAuthUserQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCurrentAuthUser>>> = ({ signal }) => getCurrentAuthUser({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCurrentAuthUser>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCurrentAuthUserQueryResult = NonNullable<Awaited<ReturnType<typeof getCurrentAuthUser>>>
+export type GetCurrentAuthUserQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get the currently authenticated user
+ */
+
+export function useGetCurrentAuthUser<TData = Awaited<ReturnType<typeof getCurrentAuthUser>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCurrentAuthUser>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCurrentAuthUserQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getBeginBrowserLoginUrl = (params?: BeginBrowserLoginParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/login?${stringifiedParams}` : `/api/login`
+}
+
+/**
+ * @summary Start the browser OIDC login flow
+ */
+export const beginBrowserLogin = async (params?: BeginBrowserLoginParams, options?: Parameters<typeof customFetch>[1]): Promise<unknown> => {
+
+  return customFetch<unknown>(getBeginBrowserLoginUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getBeginBrowserLoginQueryKey = (params?: BeginBrowserLoginParams,) => {
+    return [
+    `/api/login`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getBeginBrowserLoginQueryOptions = <TData = Awaited<ReturnType<typeof beginBrowserLogin>>, TError = ErrorType<void>>(params?: BeginBrowserLoginParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof beginBrowserLogin>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getBeginBrowserLoginQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof beginBrowserLogin>>> = ({ signal }) => beginBrowserLogin(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof beginBrowserLogin>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type BeginBrowserLoginQueryResult = NonNullable<Awaited<ReturnType<typeof beginBrowserLogin>>>
+export type BeginBrowserLoginQueryError = ErrorType<void>
+
+
+/**
+ * @summary Start the browser OIDC login flow
+ */
+
+export function useBeginBrowserLogin<TData = Awaited<ReturnType<typeof beginBrowserLogin>>, TError = ErrorType<void>>(
+ params?: BeginBrowserLoginParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof beginBrowserLogin>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getBeginBrowserLoginQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getHandleBrowserLoginCallbackUrl = () => {
+
+
+
+
+  return `/api/callback`
+}
+
+/**
+ * @summary Complete the browser OIDC login flow
+ */
+export const handleBrowserLoginCallback = async ( options?: Parameters<typeof customFetch>[1]): Promise<unknown> => {
+
+  return customFetch<unknown>(getHandleBrowserLoginCallbackUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getHandleBrowserLoginCallbackQueryKey = () => {
+    return [
+    `/api/callback`
+    ] as const;
+    }
+
+
+export const getHandleBrowserLoginCallbackQueryOptions = <TData = Awaited<ReturnType<typeof handleBrowserLoginCallback>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof handleBrowserLoginCallback>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getHandleBrowserLoginCallbackQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof handleBrowserLoginCallback>>> = ({ signal }) => handleBrowserLoginCallback({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof handleBrowserLoginCallback>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type HandleBrowserLoginCallbackQueryResult = NonNullable<Awaited<ReturnType<typeof handleBrowserLoginCallback>>>
+export type HandleBrowserLoginCallbackQueryError = ErrorType<void>
+
+
+/**
+ * @summary Complete the browser OIDC login flow
+ */
+
+export function useHandleBrowserLoginCallback<TData = Awaited<ReturnType<typeof handleBrowserLoginCallback>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof handleBrowserLoginCallback>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getHandleBrowserLoginCallbackQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getLogoutBrowserSessionUrl = (params?: LogoutBrowserSessionParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/logout?${stringifiedParams}` : `/api/logout`
+}
+
+/**
+ * @summary Clear the browser session
+ */
+export const logoutBrowserSession = async (params?: LogoutBrowserSessionParams, options?: Parameters<typeof customFetch>[1]): Promise<unknown> => {
+
+  return customFetch<unknown>(getLogoutBrowserSessionUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getLogoutBrowserSessionQueryKey = (params?: LogoutBrowserSessionParams,) => {
+    return [
+    `/api/logout`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getLogoutBrowserSessionQueryOptions = <TData = Awaited<ReturnType<typeof logoutBrowserSession>>, TError = ErrorType<void>>(params?: LogoutBrowserSessionParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof logoutBrowserSession>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getLogoutBrowserSessionQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof logoutBrowserSession>>> = ({ signal }) => logoutBrowserSession(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof logoutBrowserSession>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type LogoutBrowserSessionQueryResult = NonNullable<Awaited<ReturnType<typeof logoutBrowserSession>>>
+export type LogoutBrowserSessionQueryError = ErrorType<void>
+
+
+/**
+ * @summary Clear the browser session
+ */
+
+export function useLogoutBrowserSession<TData = Awaited<ReturnType<typeof logoutBrowserSession>>, TError = ErrorType<void>>(
+ params?: LogoutBrowserSessionParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof logoutBrowserSession>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getLogoutBrowserSessionQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getHealthCheckUrl = () => {
 
@@ -353,5 +680,225 @@ export const useChatWithPoe = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getChatWithPoeMutationOptions(options));
+    }
+
+export const getCreateReplitProjectUrl = () => {
+
+
+
+
+  return `/api/port/replit-projects`
+}
+
+/**
+ * Sends the imported HTML unchanged through the server-only authorized Replit project connection and starts the ordered setup workflow.
+ * @summary Create a Replit project from the analyzed HTML
+ */
+export const createReplitProject = async (replitProjectInput: ReplitProjectInput, options?: Parameters<typeof customFetch>[1]): Promise<ReplitProjectHandoff> => {
+
+  return customFetch<ReplitProjectHandoff>(getCreateReplitProjectUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(replitProjectInput)
+  }
+);}
+
+
+
+
+
+export const getCreateReplitProjectMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createReplitProject>>, TError,{data: BodyType<ReplitProjectInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createReplitProject>>, TError,{data: BodyType<ReplitProjectInput>}, TContext> => {
+
+const mutationKey = ['createReplitProject'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createReplitProject>>, {data: BodyType<ReplitProjectInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createReplitProject(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateReplitProjectMutationResult = NonNullable<Awaited<ReturnType<typeof createReplitProject>>>
+    export type CreateReplitProjectMutationBody = BodyType<ReplitProjectInput>
+    export type CreateReplitProjectMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create a Replit project from the analyzed HTML
+ */
+export const useCreateReplitProject = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createReplitProject>>, TError,{data: BodyType<ReplitProjectInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createReplitProject>>,
+        TError,
+        {data: BodyType<ReplitProjectInput>},
+        TContext
+      > => {
+      return useMutation(getCreateReplitProjectMutationOptions(options));
+    }
+
+export const getGetReplitProjectStatusUrl = (jobId: string,) => {
+
+
+
+
+  return `/api/port/replit-projects/${jobId}`
+}
+
+/**
+ * @summary Get Replit project creation and setup status
+ */
+export const getReplitProjectStatus = async (jobId: string, options?: Parameters<typeof customFetch>[1]): Promise<ReplitProjectHandoff> => {
+
+  return customFetch<ReplitProjectHandoff>(getGetReplitProjectStatusUrl(jobId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetReplitProjectStatusQueryKey = (jobId: string,) => {
+    return [
+    `/api/port/replit-projects/${jobId}`
+    ] as const;
+    }
+
+
+export const getGetReplitProjectStatusQueryOptions = <TData = Awaited<ReturnType<typeof getReplitProjectStatus>>, TError = ErrorType<ErrorResponse>>(jobId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReplitProjectStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetReplitProjectStatusQueryKey(jobId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getReplitProjectStatus>>> = ({ signal }) => getReplitProjectStatus(jobId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: jobId !== null && jobId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getReplitProjectStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetReplitProjectStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getReplitProjectStatus>>>
+export type GetReplitProjectStatusQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get Replit project creation and setup status
+ */
+
+export function useGetReplitProjectStatus<TData = Awaited<ReturnType<typeof getReplitProjectStatus>>, TError = ErrorType<ErrorResponse>>(
+ jobId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReplitProjectStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetReplitProjectStatusQueryOptions(jobId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getRetryReplitProjectSetupUrl = (jobId: string,) => {
+
+
+
+
+  return `/api/port/replit-projects/${jobId}/retry`
+}
+
+/**
+ * @summary Retry a failed Replit project setup step
+ */
+export const retryReplitProjectSetup = async (jobId: string, options?: Parameters<typeof customFetch>[1]): Promise<ReplitProjectHandoff> => {
+
+  return customFetch<ReplitProjectHandoff>(getRetryReplitProjectSetupUrl(jobId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRetryReplitProjectSetupMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryReplitProjectSetup>>, TError,{jobId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof retryReplitProjectSetup>>, TError,{jobId: string}, TContext> => {
+
+const mutationKey = ['retryReplitProjectSetup'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof retryReplitProjectSetup>>, {jobId: string}> = (props) => {
+          const {jobId} = props ?? {};
+
+          return  retryReplitProjectSetup(jobId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RetryReplitProjectSetupMutationResult = NonNullable<Awaited<ReturnType<typeof retryReplitProjectSetup>>>
+
+    export type RetryReplitProjectSetupMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Retry a failed Replit project setup step
+ */
+export const useRetryReplitProjectSetup = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryReplitProjectSetup>>, TError,{jobId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof retryReplitProjectSetup>>,
+        TError,
+        {jobId: string},
+        TContext
+      > => {
+      return useMutation(getRetryReplitProjectSetupMutationOptions(options));
     }
 

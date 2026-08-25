@@ -9,6 +9,46 @@ import * as zod from 'zod';
 
 
 /**
+ * @summary Get the currently authenticated user
+ */
+export const GetCurrentAuthUserResponse = zod.object({
+  "user": zod.union([zod.object({
+  "id": zod.string(),
+  "email": zod.string().nullable(),
+  "firstName": zod.string().nullable(),
+  "lastName": zod.string().nullable(),
+  "profileImageUrl": zod.string().nullable()
+}),zod.null()])
+})
+
+
+/**
+ * @summary Start the browser OIDC login flow
+ */
+export const BeginBrowserLoginQueryParams = zod.object({
+  "returnTo": zod.coerce.string().optional()
+})
+
+export const BeginBrowserLoginResponse = zod.void()
+
+
+/**
+ * @summary Complete the browser OIDC login flow
+ */
+export const HandleBrowserLoginCallbackResponse = zod.void()
+
+
+/**
+ * @summary Clear the browser session
+ */
+export const LogoutBrowserSessionQueryParams = zod.object({
+  "returnTo": zod.coerce.string().optional()
+})
+
+export const LogoutBrowserSessionResponse = zod.void()
+
+
+/**
  * Returns server health status
  * @summary Health check
  */
@@ -85,6 +125,86 @@ export const ChatWithPoeResponse = zod.object({
   "promptTokens": zod.number(),
   "completionTokens": zod.number()
 }).optional()
+})
+
+
+/**
+ * Sends the imported HTML unchanged through the server-only authorized Replit project connection and starts the ordered setup workflow.
+ * @summary Create a Replit project from the analyzed HTML
+ */
+export const createReplitProjectBodyHtmlMax = 2000000;
+
+
+
+export const CreateReplitProjectBody = zod.object({
+  "html": zod.string().min(1).max(createReplitProjectBodyHtmlMax)
+})
+
+export const CreateReplitProjectResponse = zod.object({
+  "jobId": zod.string(),
+  "status": zod.enum(['queued', 'running', 'completed', 'failed']),
+  "projectId": zod.string().nullable(),
+  "projectUrl": zod.string().nullable(),
+  "projectName": zod.string().nullable(),
+  "currentStep": zod.enum(['Poe Setup', 'Port Authority', 'Failure Gate', 'Harden Bug Fixes', 'Skill Install Confirmation']).nullable(),
+  "steps": zod.array(zod.object({
+  "name": zod.enum(['Poe Setup', 'Port Authority', 'Failure Gate', 'Harden Bug Fixes', 'Skill Install Confirmation']),
+  "status": zod.enum(['pending', 'running', 'completed', 'failed']),
+  "error": zod.string().nullable()
+})),
+  "error": zod.string().nullable()
+})
+
+
+/**
+ * @summary Get Replit project creation and setup status
+ */
+
+
+
+export const GetReplitProjectStatusParams = zod.object({
+  "jobId": zod.coerce.string().min(1)
+})
+
+export const GetReplitProjectStatusResponse = zod.object({
+  "jobId": zod.string(),
+  "status": zod.enum(['queued', 'running', 'completed', 'failed']),
+  "projectId": zod.string().nullable(),
+  "projectUrl": zod.string().nullable(),
+  "projectName": zod.string().nullable(),
+  "currentStep": zod.enum(['Poe Setup', 'Port Authority', 'Failure Gate', 'Harden Bug Fixes', 'Skill Install Confirmation']).nullable(),
+  "steps": zod.array(zod.object({
+  "name": zod.enum(['Poe Setup', 'Port Authority', 'Failure Gate', 'Harden Bug Fixes', 'Skill Install Confirmation']),
+  "status": zod.enum(['pending', 'running', 'completed', 'failed']),
+  "error": zod.string().nullable()
+})),
+  "error": zod.string().nullable()
+})
+
+
+/**
+ * @summary Retry a failed Replit project setup step
+ */
+
+
+
+export const RetryReplitProjectSetupParams = zod.object({
+  "jobId": zod.coerce.string().min(1)
+})
+
+export const RetryReplitProjectSetupResponse = zod.object({
+  "jobId": zod.string(),
+  "status": zod.enum(['queued', 'running', 'completed', 'failed']),
+  "projectId": zod.string().nullable(),
+  "projectUrl": zod.string().nullable(),
+  "projectName": zod.string().nullable(),
+  "currentStep": zod.enum(['Poe Setup', 'Port Authority', 'Failure Gate', 'Harden Bug Fixes', 'Skill Install Confirmation']).nullable(),
+  "steps": zod.array(zod.object({
+  "name": zod.enum(['Poe Setup', 'Port Authority', 'Failure Gate', 'Harden Bug Fixes', 'Skill Install Confirmation']),
+  "status": zod.enum(['pending', 'running', 'completed', 'failed']),
+  "error": zod.string().nullable()
+})),
+  "error": zod.string().nullable()
 })
 
 

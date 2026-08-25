@@ -1,11 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { 
   useAnalyzeHtml, 
   useListPoeModels, 
   useChatWithPoe,
-  useHealthCheck 
+  useHealthCheck,
+  useCreateReplitProject,
+  useGetReplitProjectStatus,
+  useRetryReplitProjectSetup,
 } from '@workspace/api-client-react';
-import type { HtmlAnalysis, PortFinding, PoeMessage } from '@workspace/api-client-react';
+import type {
+  HtmlAnalysis,
+  PortFinding,
+  PoeMessage,
+  ReplitProjectHandoff,
+} from '@workspace/api-client-react';
+import { useAuth } from '@workspace/replit-auth-web';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { 
   CheckCircle, 
@@ -223,6 +233,217 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
   );
 }
 
+function apiErrorMessage(error: unknown): string {
+  if (typeof error === 'object' && error !== null && 'data' in error) {
+    const data = (error as { data?: unknown }).data;
+    if (typeof data === 'object' && data !== null && 'error' in data) {
+      const message = (data as { error?: unknown }).error;
+      if (typeof message === 'string') return message;
+    }
+  }
+  return 'The Replit project handoff could not be started. Your imported HTML is still here.';
+}
+
+function HandoffStepIcon({
+  status,
+}: {
+  status: ReplitProjectHandoff['steps'][number]['status'];
+}) {
+  if (status === 'completed') {
+    return <CheckCircle className="h-4 w-4 text-green-600" />;
+  }
+  if (status === 'running') {
+    return <Loader2 className="h-4 w-4 animate-spin text-primary" />;
+  }
+  if (status === 'failed') {
+    return <XCircle className="h-4 w-4 text-destructive" />;
+  }
+  return <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/40" />;
+}
+
+function ReplitProjectHandoffPanel({ html }: { html: string }) {
+  const { isAuthenticated, isLoading: authLoading, login } = useAuth();
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const createMutation = useCreateReplitProject();
+  const retryMutation = useRetryReplitProjectSetup();
+  const statusQuery = useGetReplitProjectStatus(jobId ?? '', {
+    query: {
+      queryKey: ['replit-project-status', jobId],
+      enabled: Boolean(jobId),
+      refetchInterval: (query) => {
+        const status = query.state.data?.status;
+        return status === 'completed' || status === 'failed' ? false : 800;
+      },
+    },
+  });
+
+  const handoff = statusQuery.data ?? createMutation.data;
+  const isWorking =
+    createMutation.isPending ||
+    retryMutation.isPending ||
+    handoff?.status === 'queued' ||
+    handoff?.status === 'running';
+  const failedStep = handoff?.steps.find((step) => step.status === 'failed');
+
+  const handleCreate = () => {
+    setLocalError(null);
+    createMutation.mutate(
+      { data: { html } },
+      {
+        onSuccess: (data) => {
+          queryClient.setQueryData(['replit-project-status', data.jobId], data);
+          setJobId(data.jobId);
+        },
+        onError: (error) => {
+          setLocalError(apiErrorMessage(error));
+        },
+      },
+    );
+  };
+
+  const handleRetry = () => {
+    if (!jobId) return;
+    setLocalError(null);
+    retryMutation.mutate(
+      { jobId },
+      {
+        onSuccess: (data) => {
+          queryClient.setQueryData(['replit-project-status', data.jobId], data);
+          setJobId(data.jobId);
+          void statusQuery.refetch();
+        },
+        onError: (error) => {
+          setLocalError(apiErrorMessage(error));
+        },
+      },
+    );
+  };
+
+  return (
+    <Card className="border-primary/20 bg-primary/[0.03] shadow-sm">
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <CardTitle className="text-base">Create a Replit Project</CardTitle>
+            <CardDescription className="mt-1">
+              Send this exact HTML into a runnable Replit project and install the
+              required setup skills in order.
+            </CardDescription>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            className="shrink-0 gap-2"
+            onClick={isAuthenticated ? handleCreate : login}
+            disabled={authLoading || Boolean(jobId) || isWorking}
+          >
+            {authLoading ? (
+              <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking...</>
+            ) : !isAuthenticated ? (
+              <><ArrowRight className="h-3.5 w-3.5" /> Log in to create</>
+            ) : isWorking ? (
+              <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Creating...</>
+            ) : handoff?.status === 'completed' ? (
+              <><CheckCircle className="h-3.5 w-3.5" /> Project Created</>
+            ) : (
+              <><ArrowRight className="h-3.5 w-3.5" /> Create Replit Project</>
+            )}
+          </Button>
+        </div>
+      </CardHeader>
+      {!authLoading && !isAuthenticated && (
+        <CardContent className="pt-0">
+          <Alert>
+            <Info className="h-4 w-4" />
+            <AlertTitle>Login required</AlertTitle>
+            <AlertDescription>
+              Log in to create a project and keep its setup status private to your account.
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      )}
+      {(localError || statusQuery.isError) && (
+        <CardContent className="pt-0">
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Project handoff unavailable</AlertTitle>
+            <AlertDescription>
+              {localError ||
+                'The setup status could not be loaded. The imported HTML is still in this session.'}
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      )}
+      {handoff && (
+        <CardContent className="space-y-3 pt-0">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>
+              {handoff.status === 'completed'
+                ? 'All setup skills completed'
+                : handoff.currentStep
+                  ? `Current step: ${handoff.currentStep}`
+                  : 'Preparing project...'}
+            </span>
+            {handoff.projectId && (
+              <span className="font-mono">Project ID: {handoff.projectId}</span>
+            )}
+          </div>
+          <div className="space-y-2">
+            {handoff.steps.map((step) => (
+              <div
+                key={step.name}
+                className="flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm"
+              >
+                <HandoffStepIcon status={step.status} />
+                <span className={step.status === 'completed' ? 'text-muted-foreground' : 'font-medium'}>
+                  {step.name}
+                </span>
+                {step.status === 'failed' && (
+                  <span className="ml-auto text-xs text-destructive">Failed</span>
+                )}
+              </div>
+            ))}
+          </div>
+          {handoff.status === 'failed' && (
+            <div className="flex items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-3">
+              <p className="text-sm text-destructive">
+                {failedStep?.error || handoff.error || 'Project creation failed before setup could begin.'}
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={handleRetry}
+                disabled={isWorking}
+              >
+                Retry step
+              </Button>
+            </div>
+          )}
+          {handoff.status === 'completed' && (
+            <div className="flex items-center justify-between gap-3 rounded-md border border-green-500/30 bg-green-500/5 p-3 text-sm">
+              <span>
+                <strong>{handoff.projectName}</strong> is ready without an editor or version-control workflow.
+              </span>
+              {handoff.projectUrl ? (
+                <Button asChild size="sm" variant="outline">
+                  <a href={handoff.projectUrl} target="_blank" rel="noreferrer">
+                    Open project
+                  </a>
+                </Button>
+              ) : (
+                <span className="font-mono text-xs text-muted-foreground">{handoff.projectId}</span>
+              )}
+            </div>
+          )}
+        </CardContent>
+      )}
+    </Card>
+  );
+}
+
 // ----------------------------------------------------------------------
 // Main Page
 // ----------------------------------------------------------------------
@@ -416,6 +637,8 @@ export default function Home() {
                     </div>
                   )}
                 </div>
+
+                <ReplitProjectHandoffPanel html={htmlInput} />
 
                 {/* Steps */}
                 {analysisData.steps.length > 0 && (

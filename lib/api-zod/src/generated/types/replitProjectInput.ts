@@ -6,8 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface ErrorResponse {
-  error: string;
-  code?: string;
-  action?: string;
+export interface ReplitProjectInput {
+  /**
+     * @minLength 1
+     * @maxLength 2000000
+     */
+  html: string;
 }

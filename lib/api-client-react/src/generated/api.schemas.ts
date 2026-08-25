@@ -5,12 +5,30 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export interface AuthUser {
+  id: string;
+  /** @nullable */
+  email: string | null;
+  /** @nullable */
+  firstName: string | null;
+  /** @nullable */
+  lastName: string | null;
+  /** @nullable */
+  profileImageUrl: string | null;
+}
+
+export interface AuthUserEnvelope {
+  user: AuthUser | null;
+}
+
 export interface HealthStatus {
   status: string;
 }
 
 export interface ErrorResponse {
   error: string;
+  code?: string;
+  action?: string;
 }
 
 export interface HtmlInput {
@@ -95,4 +113,73 @@ export interface PoeChatResponse {
   model: string;
   usage?: PoeChatResponseUsage;
 }
+
+export interface ReplitProjectInput {
+  /**
+     * @minLength 1
+     * @maxLength 2000000
+     */
+  html: string;
+}
+
+export type ReplitProjectStepName = typeof ReplitProjectStepName[keyof typeof ReplitProjectStepName];
+
+
+export const ReplitProjectStepName = {
+  Poe_Setup: 'Poe Setup',
+  Port_Authority: 'Port Authority',
+  Failure_Gate: 'Failure Gate',
+  Harden_Bug_Fixes: 'Harden Bug Fixes',
+  Skill_Install_Confirmation: 'Skill Install Confirmation',
+} as const;
+
+export type ReplitProjectStepStatusStatus = typeof ReplitProjectStepStatusStatus[keyof typeof ReplitProjectStepStatusStatus];
+
+
+export const ReplitProjectStepStatusStatus = {
+  pending: 'pending',
+  running: 'running',
+  completed: 'completed',
+  failed: 'failed',
+} as const;
+
+export interface ReplitProjectStepStatus {
+  name: ReplitProjectStepName;
+  status: ReplitProjectStepStatusStatus;
+  /** @nullable */
+  error: string | null;
+}
+
+export type ReplitProjectHandoffStatus = typeof ReplitProjectHandoffStatus[keyof typeof ReplitProjectHandoffStatus];
+
+
+export const ReplitProjectHandoffStatus = {
+  queued: 'queued',
+  running: 'running',
+  completed: 'completed',
+  failed: 'failed',
+} as const;
+
+export interface ReplitProjectHandoff {
+  jobId: string;
+  status: ReplitProjectHandoffStatus;
+  /** @nullable */
+  projectId: string | null;
+  /** @nullable */
+  projectUrl: string | null;
+  /** @nullable */
+  projectName: string | null;
+  currentStep: ReplitProjectStepName | null;
+  steps: ReplitProjectStepStatus[];
+  /** @nullable */
+  error: string | null;
+}
+
+export type BeginBrowserLoginParams = {
+returnTo?: string;
+};
+
+export type LogoutBrowserSessionParams = {
+returnTo?: string;
+};
 

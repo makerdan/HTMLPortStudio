@@ -6,8 +6,6 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface ErrorResponse {
-  error: string;
-  code?: string;
-  action?: string;
-}
+export type LogoutBrowserSessionParams = {
+returnTo?: string;
+};

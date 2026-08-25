@@ -9,7 +9,9 @@ Import one standalone HTML file or pasted HTML, run a portability check, preview
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
+- `pnpm --filter @workspace/db run migrate` — apply committed Drizzle migrations; this is required before deploying or starting a new API release
 - Optional env: `POE_API_KEY` — enables live Poe model discovery and the server-side chat bridge
+- Required for project handoff: an authorized server-side Replit project-creation connection exposed through `REPLIT_PROJECT_CREATION_URL`. `REPLIT_PROJECT_CREATION_TOKEN`, when required by that connection, stays in Replit Secrets.
 
 ## Stack
 
@@ -27,9 +29,10 @@ Import one standalone HTML file or pasted HTML, run a portability check, preview
 
 ## Architecture decisions
 
-- Imported HTML stays in the browser session; the app does not persist source documents by default.
+- Imported HTML stays in the browser session until a signed-in user starts a handoff. Handoff source and setup state are then stored in the database, scoped to that user, so an interrupted setup can safely resume after a restart.
 - Poe requests run only on the API server so `POE_API_KEY` never reaches a browser or imported page.
 - Previewed documents run in a sandbox without same-origin access to the Studio itself.
+- Project handoff sends the original HTML byte-for-byte as `index.html` through the server-side Replit connection, then waits for each required setup skill to confirm before starting the next one.
 
 ## Product
 
@@ -37,6 +40,7 @@ Import one standalone HTML file or pasted HTML, run a portability check, preview
 - Receive a compact readiness report for scripts, external assets, browser-side requests, and likely AI calls.
 - Preview the document in a sandbox, then follow a tailored migration checklist.
 - When `POE_API_KEY` is configured, choose a live Poe model and ask for targeted porting help.
+- After analysis, sign in, then use **Create Replit Project** to create a separate runnable HTML project. The setup status is shown step-by-step in this order: Poe Setup, Port Authority, Failure Gate, Harden Bug Fixes, then Skill Install Confirmation. A failed step can be retried without repeating completed steps, including after a server restart.
 
 ## User preferences
 
@@ -44,9 +48,13 @@ Import one standalone HTML file or pasted HTML, run a portability check, preview
 
 ## Gotchas
 
+- Run `pnpm --filter @workspace/db run migrate` against the target database before every API deployment. Migrations are intentionally controlled and are never run automatically at API startup.
 - After changing `lib/api-spec/openapi.yaml`, run `pnpm --filter @workspace/api-spec run codegen` before using generated client or Zod types.
 - Poe model IDs are case-sensitive. Use the exact PascalCase ID returned by Poe, such as `Claude-Sonnet-4.6`.
 - Set `POE_API_KEY` through Replit Secrets and restart the API server after changing it.
+- The project handoff requires sign-in and an authorized server-side Replit project-creation connection. Each handoff job is accessible only to the authenticated owner; unauthenticated or cross-user status/retry requests are rejected.
+- The project handoff is unavailable until the supported authorized Replit project-creation connection is attached to the API server. The Studio keeps the imported HTML in the current browser session and shows an actionable message instead of sending it elsewhere.
+- HTML that appears to contain a credential is blocked before handoff. Move service keys to Replit Secrets and use a server route rather than embedding them in `index.html`.
 
 ## Pointers
 
