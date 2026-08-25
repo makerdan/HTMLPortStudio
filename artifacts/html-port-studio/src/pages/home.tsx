@@ -642,7 +642,7 @@ export default function Home() {
                     type="button"
                     variant="outline"
                     size="default"
-                    className="h-11 shrink-0 gap-2 px-5 text-sm font-semibold"
+                    className="h-11 shrink-0 gap-2 border border-purple-500 px-5 text-sm font-semibold"
                     onClick={() => fileInputRef.current?.click()}
                   >
                     <Upload className="h-3.5 w-3.5" />
