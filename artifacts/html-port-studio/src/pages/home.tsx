@@ -29,7 +29,6 @@ import {
   Sparkles, 
   ArrowRight,
   MonitorPlay,
-  Terminal,
   Send,
   Loader2,
   ListChecks,
@@ -618,8 +617,12 @@ export default function Home() {
           <div className="w-full max-w-3xl animate-in fade-in zoom-in-95 duration-300">
             <Card className="border-border shadow-lg">
               <CardHeader className="text-center pb-4">
-                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-                  <Terminal className="h-6 w-6 text-primary" />
+                <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-primary/10 p-1.5 shadow-sm ring-1 ring-primary/15">
+                  <img
+                    src={`${import.meta.env.BASE_URL}html-port-hero.png`}
+                    alt="HTML Port Studio browser portal illustration"
+                    className="h-full w-full object-contain"
+                  />
                 </div>
                 <CardTitle className="text-2xl font-bold">Import HTML App</CardTitle>
                 <CardDescription className="text-base mt-2">
