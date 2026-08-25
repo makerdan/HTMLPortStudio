@@ -1,0 +1,1 @@
+- [Node test TypeScript extensions](node-test-typescript.md) — Native strip-types tests load `.ts`; use a TSX-capable runner when the test contains JSX.
