@@ -30,6 +30,8 @@ import type {
   PoeChatInput,
   PoeChatResponse,
   PoeModels,
+  ReplitProjectConnectionSetup,
+  ReplitProjectConnectionStatus,
   ReplitProjectHandoff,
   ReplitProjectInput
 } from './api.schemas';
@@ -681,6 +683,162 @@ export const useChatWithPoe = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getChatWithPoeMutationOptions(options));
     }
+
+export const getGetReplitProjectConnectionUrl = () => {
+
+
+
+
+  return `/api/port/replit-project-connection`
+}
+
+/**
+ * Reports whether the API server can use the attached authorized Replit project-creation connection. No credentials are returned.
+ * @summary Check whether Replit project creation is connected
+ */
+export const getReplitProjectConnection = async ( options?: Parameters<typeof customFetch>[1]): Promise<ReplitProjectConnectionStatus> => {
+
+  return customFetch<ReplitProjectConnectionStatus>(getGetReplitProjectConnectionUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetReplitProjectConnectionQueryKey = () => {
+    return [
+    `/api/port/replit-project-connection`
+    ] as const;
+    }
+
+
+export const getGetReplitProjectConnectionQueryOptions = <TData = Awaited<ReturnType<typeof getReplitProjectConnection>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReplitProjectConnection>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetReplitProjectConnectionQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getReplitProjectConnection>>> = ({ signal }) => getReplitProjectConnection({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getReplitProjectConnection>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetReplitProjectConnectionQueryResult = NonNullable<Awaited<ReturnType<typeof getReplitProjectConnection>>>
+export type GetReplitProjectConnectionQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Check whether Replit project creation is connected
+ */
+
+export function useGetReplitProjectConnection<TData = Awaited<ReturnType<typeof getReplitProjectConnection>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReplitProjectConnection>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetReplitProjectConnectionQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetReplitProjectConnectionSetupUrl = () => {
+
+
+
+
+  return `/api/port/replit-project-connection/setup`
+}
+
+/**
+ * Returns Replit’s authenticated connection setup URL. Replit verifies workspace-owner eligibility; no credentials are returned.
+ * @summary Get the Replit project creation setup link
+ */
+export const getReplitProjectConnectionSetup = async ( options?: Parameters<typeof customFetch>[1]): Promise<ReplitProjectConnectionSetup> => {
+
+  return customFetch<ReplitProjectConnectionSetup>(getGetReplitProjectConnectionSetupUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetReplitProjectConnectionSetupQueryKey = () => {
+    return [
+    `/api/port/replit-project-connection/setup`
+    ] as const;
+    }
+
+
+export const getGetReplitProjectConnectionSetupQueryOptions = <TData = Awaited<ReturnType<typeof getReplitProjectConnectionSetup>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReplitProjectConnectionSetup>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetReplitProjectConnectionSetupQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getReplitProjectConnectionSetup>>> = ({ signal }) => getReplitProjectConnectionSetup({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getReplitProjectConnectionSetup>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetReplitProjectConnectionSetupQueryResult = NonNullable<Awaited<ReturnType<typeof getReplitProjectConnectionSetup>>>
+export type GetReplitProjectConnectionSetupQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get the Replit project creation setup link
+ */
+
+export function useGetReplitProjectConnectionSetup<TData = Awaited<ReturnType<typeof getReplitProjectConnectionSetup>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReplitProjectConnectionSetup>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetReplitProjectConnectionSetupQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getCreateReplitProjectUrl = () => {
 

@@ -144,6 +144,44 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /port/replit-project-connection:
+    get:
+      operationId: getReplitProjectConnection
+      tags: [porting]
+      summary: Check whether Replit project creation is connected
+      description: Reports whether the API server can use the attached authorized Replit project-creation connection. No credentials are returned.
+      responses:
+        "200":
+          description: Connection availability for the signed-in user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReplitProjectConnectionStatus"
+        "401":
+          description: Login required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /port/replit-project-connection/setup:
+    get:
+      operationId: getReplitProjectConnectionSetup
+      tags: [porting]
+      summary: Get the Replit project creation setup link
+      description: Returns Replit’s authenticated connection setup URL. Replit verifies workspace-owner eligibility; no credentials are returned.
+      responses:
+        "200":
+          description: Project-creation connection setup state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReplitProjectConnectionSetup"
+        "401":
+          description: Login required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /port/replit-projects:
     post:
       operationId: createReplitProject
@@ -414,6 +452,22 @@ components:
               type: number
           required: [promptTokens, completionTokens]
       required: [content, model]
+    ReplitProjectConnectionStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [connected, setup_required]
+    ReplitProjectConnectionSetup:
+      type: object
+      required: [status, setupUrl]
+      properties:
+        status:
+          type: string
+          enum: [connected, setup_required]
+        setupUrl:
+          type: ["string", "null"]
     ReplitProjectInput:
       type: object
       properties:

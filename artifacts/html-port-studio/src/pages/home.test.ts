@@ -6,6 +6,9 @@ test("keeps the handoff request source-only and exposes retry progress controls"
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
 
   assert.match(source, /useCreateReplitProject/);
+  assert.match(source, /useGetReplitProjectConnection/);
+  assert.match(source, /Set up Replit project creation/);
+  assert.match(source, /I connected it — check again/);
   assert.match(source, /data:\s*\{\s*html\s*\}/);
   assert.match(source, /useGetReplitProjectStatus/);
   assert.match(source, /useRetryReplitProjectSetup/);

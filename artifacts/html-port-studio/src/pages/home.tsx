@@ -6,6 +6,8 @@ import {
   useChatWithPoe,
   useHealthCheck,
   useCreateReplitProject,
+  useGetReplitProjectConnection,
+  useGetReplitProjectConnectionSetup,
   useGetReplitProjectStatus,
   useRetryReplitProjectSetup,
 } from '@workspace/api-client-react';
@@ -265,9 +267,23 @@ function ReplitProjectHandoffPanel({ html }: { html: string }) {
   const { isAuthenticated, isLoading: authLoading, login } = useAuth();
   const [jobId, setJobId] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [showConnectionSetup, setShowConnectionSetup] = useState(false);
   const queryClient = useQueryClient();
   const createMutation = useCreateReplitProject();
   const retryMutation = useRetryReplitProjectSetup();
+  const connectionQuery = useGetReplitProjectConnection({
+    query: {
+      queryKey: ['replit-project-connection'],
+      enabled: isAuthenticated,
+      staleTime: 0,
+    },
+  });
+  const connectionSetupQuery = useGetReplitProjectConnectionSetup({
+    query: {
+      queryKey: ['replit-project-connection-setup'],
+      enabled: isAuthenticated && showConnectionSetup,
+    },
+  });
   const statusQuery = useGetReplitProjectStatus(jobId ?? '', {
     query: {
       queryKey: ['replit-project-status', jobId],
@@ -286,8 +302,23 @@ function ReplitProjectHandoffPanel({ html }: { html: string }) {
     handoff?.status === 'queued' ||
     handoff?.status === 'running';
   const failedStep = handoff?.steps.find((step) => step.status === 'failed');
+  const connectionNeedsSetup =
+    isAuthenticated && connectionQuery.data?.status === 'setup_required';
+
+  useEffect(() => {
+    if (!showConnectionSetup) return;
+    const refreshConnection = () => {
+      void connectionQuery.refetch();
+    };
+    window.addEventListener('focus', refreshConnection);
+    return () => window.removeEventListener('focus', refreshConnection);
+  }, [showConnectionSetup, connectionQuery.refetch]);
 
   const handleCreate = () => {
+    if (connectionNeedsSetup) {
+      setShowConnectionSetup(true);
+      return;
+    }
     setLocalError(null);
     createMutation.mutate(
       { data: { html } },
@@ -301,6 +332,13 @@ function ReplitProjectHandoffPanel({ html }: { html: string }) {
         },
       },
     );
+  };
+
+  const handleCheckConnection = async () => {
+    const result = await connectionQuery.refetch();
+    if (result.data?.status === 'connected') {
+      setShowConnectionSetup(false);
+    }
   };
 
   const handleRetry = () => {
@@ -337,12 +375,16 @@ function ReplitProjectHandoffPanel({ html }: { html: string }) {
             size="sm"
             className="shrink-0 gap-2"
             onClick={isAuthenticated ? handleCreate : login}
-            disabled={authLoading || Boolean(jobId) || isWorking}
+            disabled={authLoading || connectionQuery.isLoading || Boolean(jobId) || isWorking}
           >
             {authLoading ? (
               <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking...</>
             ) : !isAuthenticated ? (
               <><ArrowRight className="h-3.5 w-3.5" /> Log in to create</>
+            ) : connectionQuery.isLoading ? (
+              <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking...</>
+            ) : connectionNeedsSetup ? (
+              <><ArrowRight className="h-3.5 w-3.5" /> Set up project creation</>
             ) : isWorking ? (
               <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Creating...</>
             ) : handoff?.status === 'completed' ? (
@@ -362,6 +404,94 @@ function ReplitProjectHandoffPanel({ html }: { html: string }) {
               Log in to create a project and keep its setup status private to your account.
             </AlertDescription>
           </Alert>
+        </CardContent>
+      )}
+      {isAuthenticated && connectionQuery.isError && (
+        <CardContent className="pt-0">
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Could not check project creation</AlertTitle>
+            <AlertDescription>
+              Refresh the page to retry. Your imported HTML is still only in this browser session.
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      )}
+      {connectionNeedsSetup && !showConnectionSetup && (
+        <CardContent className="pt-0">
+          <Alert>
+            <Info className="h-4 w-4" />
+            <AlertTitle>Replit project creation needs setup</AlertTitle>
+            <AlertDescription className="space-y-3">
+              <p>
+                Connect the authorized Replit project-creation capability before sending this HTML anywhere.
+                Replit verifies workspace-owner eligibility during secure setup.
+              </p>
+              <Button type="button" size="sm" onClick={() => setShowConnectionSetup(true)}>
+                Set up project creation
+              </Button>
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      )}
+      {showConnectionSetup && (
+        <CardContent className="pt-0">
+          <div className="space-y-3 rounded-md border border-primary/20 bg-background p-4">
+            <div>
+              <p className="font-medium">Set up Replit project creation</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Replit checks workspace-owner eligibility before authorizing this server-side connection.
+                No credential is shown to the Studio or added to your imported HTML.
+              </p>
+            </div>
+            {connectionQuery.data?.status === 'connected' ? (
+              <Alert>
+                <CheckCircle className="h-4 w-4" />
+                <AlertTitle>Project creation is connected</AlertTitle>
+                <AlertDescription>
+                  You can now create a Replit project from this panel.
+                </AlertDescription>
+              </Alert>
+            ) : (
+              connectionSetupQuery.isLoading ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Opening secure setup…
+                </div>
+              ) : connectionSetupQuery.data?.setupUrl ? (
+                <div className="flex flex-wrap gap-2">
+                  <Button asChild size="sm">
+                    <a href={connectionSetupQuery.data.setupUrl} target="_blank" rel="noreferrer">
+                      Open Replit connection setup
+                    </a>
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void handleCheckConnection()}
+                    disabled={connectionQuery.isFetching}
+                  >
+                    {connectionQuery.isFetching ? 'Checking…' : 'I connected it — check again'}
+                  </Button>
+                </div>
+              ) : (
+                <Alert variant="destructive">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle>Setup link unavailable</AlertTitle>
+                  <AlertDescription>{apiErrorMessage(connectionSetupQuery.error)}</AlertDescription>
+                </Alert>
+              )
+            )}
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="w-fit"
+              onClick={() => setShowConnectionSetup(false)}
+            >
+              Back to project creation
+            </Button>
+          </div>
         </CardContent>
       )}
       {(localError || statusQuery.isError) && (

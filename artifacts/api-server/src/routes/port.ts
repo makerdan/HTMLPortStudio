@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Router, type IRouter } from "express";
+import { ReplitConnectors, type Connection } from "@replit/connectors-sdk";
 import {
   db,
   handoffJobsTable,
@@ -16,6 +17,8 @@ import {
   ChatWithPoeResponse,
   CreateReplitProjectBody,
   CreateReplitProjectResponse,
+  GetReplitProjectConnectionResponse,
+  GetReplitProjectConnectionSetupResponse,
   GetReplitProjectStatusParams,
   GetReplitProjectStatusResponse,
   ListPoeModelsResponse,
@@ -191,6 +194,8 @@ type ProjectCreationConnection = {
   }): Promise<void>;
 };
 
+const PROJECT_CREATION_CONNECTOR = "replit-project-creation";
+
 type HandoffJob = {
   id: string;
   sourceHtml: string;
@@ -208,24 +213,33 @@ type HandoffJob = {
   leaseToken: string | null;
 };
 
-function projectConnectionBaseUrl(): string | null {
-  const configured = process.env.REPLIT_PROJECT_CREATION_URL?.trim();
-  if (!configured) return null;
+function isUsableProjectConnection(connection: Connection): boolean {
+  return (
+    connection.connector_name === PROJECT_CREATION_CONNECTOR &&
+    !["disconnected", "invalid", "revoked"].includes(connection.status?.toLowerCase() ?? "")
+  );
+}
 
+async function hasProjectCreationConnection(): Promise<boolean> {
   try {
-    const url = new URL(configured);
-    if (!["http:", "https:"].includes(url.protocol)) return null;
-    return url.toString().replace(/\/$/, "");
+    const connections = await new ReplitConnectors().listConnections({
+      connector_names: PROJECT_CREATION_CONNECTOR,
+      refresh_policy: "auto",
+    });
+    return connections.some(isUsableProjectConnection);
   } catch {
-    return null;
+    return false;
   }
 }
 
-function projectConnectionHeaders(): Record<string, string> {
-  const token = process.env.REPLIT_PROJECT_CREATION_TOKEN;
-  return token
-    ? { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
-    : { "Content-Type": "application/json" };
+function projectConnectionSetupUrl(): string {
+  const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME ?? "connectors.replit.com";
+  const baseUrl = hostname.startsWith("http://") || hostname.startsWith("https://")
+    ? hostname
+    : `https://${hostname}`;
+  const setupUrl = new URL("/console/connector-config", baseUrl);
+  setupUrl.searchParams.set("connector", PROJECT_CREATION_CONNECTOR);
+  return setupUrl.toString();
 }
 
 async function projectConnectionRequest(
@@ -233,27 +247,29 @@ async function projectConnectionRequest(
   init: RequestInit,
   idempotencyKey?: string,
 ): Promise<{ status: number; body: unknown }> {
-  const baseUrl = projectConnectionBaseUrl();
-  if (!baseUrl) {
-    throw new Error("PROJECT_CREATION_CONNECTION_UNAVAILABLE");
-  }
-
   let response: Response;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
-    response = await fetch(`${baseUrl}${path}`, {
-      ...init,
-      headers: {
-        ...projectConnectionHeaders(),
-        ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
-        ...init.headers,
-      },
-      signal: AbortSignal.timeout(25_000),
-    });
+    response = await Promise.race([
+      new ReplitConnectors().proxy(PROJECT_CREATION_CONNECTOR, path, {
+        method: init.method,
+        body: init.body,
+        headers: {
+          "Content-Type": "application/json",
+          ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+        },
+      }),
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error("PROJECT_CREATION_CONNECTION_TIMEOUT")),
+          25_000,
+        );
+      }),
+    ]);
   } catch (error) {
-    if (error instanceof Error && error.name === "TimeoutError") {
-      throw new Error("PROJECT_CREATION_CONNECTION_TIMEOUT");
-    }
     throw error;
+  } finally {
+    if (timeout) clearTimeout(timeout);
   }
   if (!response.ok) {
     throw new Error("PROJECT_CREATION_CONNECTION_FAILED");
@@ -370,10 +386,9 @@ function safeProjectName(html: string): string {
 }
 
 function containsPrivilegedCredential(html: string): boolean {
-  const configuredSecrets = [
-    process.env.POE_API_KEY,
-    process.env.REPLIT_PROJECT_CREATION_TOKEN,
-  ].filter((secret): secret is string => Boolean(secret && secret.length > 4));
+  const configuredSecrets = [process.env.POE_API_KEY].filter(
+    (secret): secret is string => Boolean(secret && secret.length > 4),
+  );
   if (configuredSecrets.some((secret) => html.includes(secret))) return true;
 
   return [
@@ -780,6 +795,40 @@ router.post("/port/poe/chat", async (req, res): Promise<void> => {
   }
 });
 
+router.get("/port/replit-project-connection", async (req, res): Promise<void> => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({
+      error: "Log in to check Replit project creation.",
+      code: "AUTHENTICATION_REQUIRED",
+    });
+    return;
+  }
+
+  const connected = await hasProjectCreationConnection();
+  res.json(
+    GetReplitProjectConnectionResponse.parse({
+      status: connected ? "connected" : "setup_required",
+    }),
+  );
+});
+
+router.get("/port/replit-project-connection/setup", async (req, res): Promise<void> => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({
+      error: "Log in before configuring Replit project creation.",
+      code: "AUTHENTICATION_REQUIRED",
+    });
+    return;
+  }
+  const connected = await hasProjectCreationConnection();
+  res.json(
+    GetReplitProjectConnectionSetupResponse.parse({
+      status: connected ? "connected" : "setup_required",
+      setupUrl: connected ? null : projectConnectionSetupUrl(),
+    }),
+  );
+});
+
 router.post("/port/replit-projects", requireTrustedCookieOrigin, async (req, res): Promise<void> => {
   if (!req.isAuthenticated()) {
     res.status(401).json({
@@ -801,12 +850,12 @@ router.post("/port/replit-projects", requireTrustedCookieOrigin, async (req, res
     return;
   }
 
-  if (!projectConnectionBaseUrl()) {
+  if (!(await hasProjectCreationConnection())) {
     res.status(503).json({
       error:
-        "Replit project creation is unavailable. Attach an authorized Replit project-creation connection to the API server, then try again.",
+        "Replit project creation is unavailable. Connect the authorized Replit project-creation capability, then try again.",
       code: "PROJECT_CREATION_CONNECTION_UNAVAILABLE",
-      action: "Configure the supported server-side Replit project connection; never paste a credential into the HTML Studio.",
+      action: "A workspace owner can connect it from the HTML Studio setup screen. Never paste a credential into the Studio.",
     });
     return;
   }
@@ -901,10 +950,10 @@ router.post(
       return;
     }
 
-    if (!projectConnectionBaseUrl()) {
+    if (!(await hasProjectCreationConnection())) {
       res.status(503).json({
         error:
-          "The authorized Replit project-creation connection is unavailable. Reconnect it before retrying this setup step.",
+          "The authorized Replit project-creation connection is unavailable. Reconnect it from the HTML Studio setup screen before retrying.",
         code: "PROJECT_CREATION_CONNECTION_UNAVAILABLE",
       });
       return;

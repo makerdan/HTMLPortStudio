@@ -104,23 +104,44 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
     ],
   );
 
-  const bridgeSecret = "bridge-secret-that-must-not-be-copied";
   const source = `<!doctype html>
 <html><head><title>Byte exact Poe app</title></head>
 <body><script>fetch("/ai")</script></body></html>`;
   const setupNames: string[] = [];
+  const connectorNames: string[] = [];
   let createdProject: Json | null = null;
+  let connectionAttached = false;
   let firstFailure = true;
   const connection = http.createServer(async (request, response) => {
+    const path = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
+    if (request.method === "GET" && path === "/api/v2/connection") {
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(
+        JSON.stringify({
+          items: connectionAttached
+            ? [
+                {
+                  id: "connection-123",
+                  connector_name: "replit-project-creation",
+                  status: "active",
+                },
+              ]
+            : [],
+        }),
+      );
+      return;
+    }
+
+    connectorNames.push(String(request.headers["connector-name"] ?? ""));
     const body = JSON.parse(await readBody(request)) as Json;
-    if (request.method === "POST" && request.url === "/projects") {
+    if (request.method === "POST" && path === "/api/v2/proxy/projects") {
       createdProject = body;
       response.writeHead(200, { "Content-Type": "application/json" });
       response.end(JSON.stringify({ projectId: "project-123", projectUrl: "https://replit.com/@test/project-123" }));
       return;
     }
 
-    if (request.method === "POST" && request.url === "/projects/project-123/setup") {
+    if (request.method === "POST" && path === "/api/v2/proxy/projects/project-123/setup") {
       const setup = body as { name: string };
       setupNames.push(setup.name);
       const shouldFail = setup.name === "Failure Gate" && firstFailure;
@@ -142,8 +163,9 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
     env: {
       ...process.env,
       PORT: String(apiPort),
-      REPLIT_PROJECT_CREATION_URL: `http://127.0.0.1:${connectionPort}`,
-      REPLIT_PROJECT_CREATION_TOKEN: bridgeSecret,
+      REPLIT_CONNECTORS_HOSTNAME: `http://127.0.0.1:${connectionPort}`,
+      REPLIT_CLI: "/bin/false",
+      REPL_IDENTITY: "test-repl-identity",
     },
     stdio: "ignore",
   });
@@ -160,6 +182,31 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
         return false;
       }
     }, "API server did not start");
+
+    const connectionStatus = await jsonRequest(`${baseUrl}/port/replit-project-connection`, {
+      headers: ownerHeaders,
+    });
+    assert.equal(connectionStatus.status, 200);
+    assert.deepEqual(connectionStatus.body, { status: "setup_required" });
+
+    const ownerSetup = await jsonRequest(`${baseUrl}/port/replit-project-connection/setup`, {
+      headers: ownerHeaders,
+    });
+    assert.equal(ownerSetup.status, 200);
+    assert.equal(ownerSetup.body.status, "setup_required");
+    assert.match(String(ownerSetup.body.setupUrl), /\/console\/connector-config\?connector=replit-project-creation$/);
+
+    const otherOwnerSetup = await jsonRequest(`${baseUrl}/port/replit-project-connection/setup`, {
+      headers: otherOwnerHeaders,
+    });
+    assert.equal(otherOwnerSetup.status, 200);
+    assert.equal(otherOwnerSetup.body.status, "setup_required");
+
+    connectionAttached = true;
+    const refreshedConnectionStatus = await jsonRequest(`${baseUrl}/port/replit-project-connection`, {
+      headers: ownerHeaders,
+    });
+    assert.deepEqual(refreshedConnectionStatus.body, { status: "connected" });
 
     const created = await jsonRequest(`${baseUrl}/port/replit-projects`, {
       method: "POST",
@@ -195,7 +242,8 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
     );
     assert.deepEqual(setupNames, ["Poe Setup", "Port Authority", "Failure Gate"]);
     assert.deepEqual(createdProject?.["files"], [{ path: "index.html", content: source }]);
-    assert.equal(JSON.stringify(createdProject).includes(bridgeSecret), false);
+    assert.ok(connectorNames.length > 0);
+    assert.ok(connectorNames.every((name) => name === "replit-project-creation"));
 
     const otherOwnerStatus = await jsonRequest(
       `${baseUrl}/port/replit-projects/${jobId}`,

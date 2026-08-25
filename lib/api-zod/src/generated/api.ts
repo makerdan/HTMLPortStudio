@@ -129,6 +129,25 @@ export const ChatWithPoeResponse = zod.object({
 
 
 /**
+ * Reports whether the API server can use the attached authorized Replit project-creation connection. No credentials are returned.
+ * @summary Check whether Replit project creation is connected
+ */
+export const GetReplitProjectConnectionResponse = zod.object({
+  "status": zod.enum(['connected', 'setup_required'])
+})
+
+
+/**
+ * Returns Replit’s authenticated connection setup URL. Replit verifies workspace-owner eligibility; no credentials are returned.
+ * @summary Get the Replit project creation setup link
+ */
+export const GetReplitProjectConnectionSetupResponse = zod.object({
+  "status": zod.enum(['connected', 'setup_required']),
+  "setupUrl": zod.string().nullable()
+})
+
+
+/**
  * Sends the imported HTML unchanged through the server-only authorized Replit project connection and starts the ordered setup workflow.
  * @summary Create a Replit project from the analyzed HTML
  */

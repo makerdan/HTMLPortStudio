@@ -11,7 +11,7 @@ Import one standalone HTML file or pasted HTML, run a portability check, preview
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run migrate` — apply committed Drizzle migrations; this is required before deploying or starting a new API release
 - Optional env: `POE_API_KEY` — enables live Poe model discovery and the server-side chat bridge
-- Required for project handoff: an authorized server-side Replit project-creation connection exposed through `REPLIT_PROJECT_CREATION_URL`. `REPLIT_PROJECT_CREATION_TOKEN`, when required by that connection, stays in Replit Secrets.
+- Required for project handoff: an attached authorized Replit project-creation connection. From the Studio’s **Set up project creation** screen, Replit’s secure connection console verifies workspace-owner eligibility before authorization; no project-creation URL or token is configured in the browser or source.
 
 ## Stack
 
@@ -32,7 +32,7 @@ Import one standalone HTML file or pasted HTML, run a portability check, preview
 - Imported HTML stays in the browser session until a signed-in user starts a handoff. Handoff source and setup state are then stored in the database, scoped to that user, so an interrupted setup can safely resume after a restart.
 - Poe requests run only on the API server so `POE_API_KEY` never reaches a browser or imported page.
 - Previewed documents run in a sandbox without same-origin access to the Studio itself.
-- Project handoff sends the original HTML byte-for-byte as `index.html` through the server-side Replit connection, then waits for each required setup skill to confirm before starting the next one.
+- Project handoff sends the original HTML byte-for-byte as `index.html` through the attached server-side Replit connection, then waits for each required setup skill to confirm before starting the next one.
 
 ## Product
 
@@ -52,8 +52,8 @@ Import one standalone HTML file or pasted HTML, run a portability check, preview
 - After changing `lib/api-spec/openapi.yaml`, run `pnpm --filter @workspace/api-spec run codegen` before using generated client or Zod types.
 - Poe model IDs are case-sensitive. Use the exact PascalCase ID returned by Poe, such as `Claude-Sonnet-4.6`.
 - Set `POE_API_KEY` through Replit Secrets and restart the API server after changing it.
-- The project handoff requires sign-in and an authorized server-side Replit project-creation connection. Each handoff job is accessible only to the authenticated owner; unauthenticated or cross-user status/retry requests are rejected.
-- The project handoff is unavailable until the supported authorized Replit project-creation connection is attached to the API server. The Studio keeps the imported HTML in the current browser session and shows an actionable message instead of sending it elsewhere.
+- The project handoff requires sign-in and an attached authorized Replit project-creation connection. The API server resolves the connection through Replit’s server SDK; it never passes a credential to the Studio, imported HTML, or generated project. Each handoff job is accessible only to the authenticated owner; unauthenticated or cross-user status/retry requests are rejected.
+- The project handoff is unavailable until the supported authorized Replit project-creation connection is attached. When it is missing, the Studio keeps the imported HTML in the current browser session and shows an owner-only setup screen with a secure Replit connection link and a refresh check.
 - HTML that appears to contain a credential is blocked before handoff. Move service keys to Replit Secrets and use a server route rather than embedding them in `index.html`.
 
 ## Pointers

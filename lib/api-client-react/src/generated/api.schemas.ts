@@ -114,6 +114,32 @@ export interface PoeChatResponse {
   usage?: PoeChatResponseUsage;
 }
 
+export type ReplitProjectConnectionStatusStatus = typeof ReplitProjectConnectionStatusStatus[keyof typeof ReplitProjectConnectionStatusStatus];
+
+
+export const ReplitProjectConnectionStatusStatus = {
+  connected: 'connected',
+  setup_required: 'setup_required',
+} as const;
+
+export interface ReplitProjectConnectionStatus {
+  status: ReplitProjectConnectionStatusStatus;
+}
+
+export type ReplitProjectConnectionSetupStatus = typeof ReplitProjectConnectionSetupStatus[keyof typeof ReplitProjectConnectionSetupStatus];
+
+
+export const ReplitProjectConnectionSetupStatus = {
+  connected: 'connected',
+  setup_required: 'setup_required',
+} as const;
+
+export interface ReplitProjectConnectionSetup {
+  status: ReplitProjectConnectionSetupStatus;
+  /** @nullable */
+  setupUrl: string | null;
+}
+
 export interface ReplitProjectInput {
   /**
      * @minLength 1
