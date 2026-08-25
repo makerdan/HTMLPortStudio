@@ -1,44 +1,52 @@
-# [Project name]
+# HTML Port Studio
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Import one standalone HTML file or pasted HTML, run a portability check, preview it safely, and use a server-only Poe bridge when the source app needs AI.
 
 ## Run & Operate
 
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/html-port-studio run dev` — run the HTML Port Studio web app
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- Optional env: `POE_API_KEY` — enables live Poe model discovery and the server-side chat bridge
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
 - API: Express 5
-- DB: PostgreSQL + Drizzle ORM
 - Validation: Zod (`zod/v4`), `drizzle-zod`
 - API codegen: Orval (from OpenAPI spec)
 - Build: esbuild (CJS bundle)
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/html-port-studio/` — import, analysis, safe-preview, and Poe-assistant UI
+- `artifacts/api-server/src/routes/port.ts` — portability analysis and server-only Poe API bridge
+- `lib/api-spec/openapi.yaml` — API contract for HTML analysis and Poe operations
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Imported HTML stays in the browser session; the app does not persist source documents by default.
+- Poe requests run only on the API server so `POE_API_KEY` never reaches a browser or imported page.
+- Previewed documents run in a sandbox without same-origin access to the Studio itself.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- Select a single `.html`/`.htm` file or paste HTML source.
+- Receive a compact readiness report for scripts, external assets, browser-side requests, and likely AI calls.
+- Preview the document in a sandbox, then follow a tailored migration checklist.
+- When `POE_API_KEY` is configured, choose a live Poe model and ask for targeted porting help.
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Keep the product focused on importing and porting a single HTML document. Do not add a code editor or version-control workflow.
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- After changing `lib/api-spec/openapi.yaml`, run `pnpm --filter @workspace/api-spec run codegen` before using generated client or Zod types.
+- Poe model IDs are case-sensitive. Use the exact PascalCase ID returned by Poe, such as `Claude-Sonnet-4.6`.
+- Set `POE_API_KEY` through Replit Secrets and restart the API server after changing it.
 
 ## Pointers
 

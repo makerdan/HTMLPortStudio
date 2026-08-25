@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "HTML Port Studio"
+description = "A focused Replit workspace for importing one HTML file or pasted HTML, previewing it safely, checking portability, and preparing a server-side Poe API bridge when the source app uses AI."
+version = "1.0.0"
+id = "artifacts/html-port-studio"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23332
+
+[services.development]
+run = "pnpm --filter @workspace/html-port-studio run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/html-port-studio", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/html-port-studio/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23332"
+BASE_PATH = "/"

@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: porting
+    description: HTML portability analysis and Poe bridge operations
 paths:
   /healthz:
     get:
@@ -24,6 +26,74 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /port/analyze:
+    post:
+      operationId: analyzeHtml
+      tags: [porting]
+      summary: Analyze imported HTML for Replit portability
+      description: Inspects a single HTML document for scripts, external assets, browser APIs, and likely Poe or other AI call sites.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HtmlInput"
+      responses:
+        "200":
+          description: Portability report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HtmlAnalysis"
+        "400":
+          description: Invalid HTML input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /port/poe/models:
+    get:
+      operationId: listPoeModels
+      tags: [porting]
+      summary: List Poe models available to the configured server key
+      responses:
+        "200":
+          description: Available Poe models and configuration status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PoeModels"
+  /port/poe/chat:
+    post:
+      operationId: chatWithPoe
+      tags: [porting]
+      summary: Send an OpenAI-compatible chat request through Poe
+      description: Proxies a chat completion through Poe so the API key never reaches the browser.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PoeChatInput"
+      responses:
+        "200":
+          description: Poe chat completion
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PoeChatResponse"
+        "400":
+          description: Invalid chat request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Poe is not configured or unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +103,123 @@ components:
           type: string
       required:
         - status
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+    HtmlInput:
+      type: object
+      properties:
+        html:
+          type: string
+          minLength: 1
+          maxLength: 2000000
+      required:
+        - html
+    PortFinding:
+      type: object
+      properties:
+        severity:
+          type: string
+          enum: [info, warning, blocker]
+        title:
+          type: string
+        detail:
+          type: string
+        action:
+          type: string
+      required: [severity, title, detail, action]
+    HtmlAnalysis:
+      type: object
+      properties:
+        title:
+          type: string
+        bytes:
+          type: number
+        scriptCount:
+          type: number
+        externalScriptCount:
+          type: number
+        inlineScriptCount:
+          type: number
+        externalAssetCount:
+          type: number
+        aiSignalCount:
+          type: number
+        findings:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortFinding"
+        steps:
+          type: array
+          items:
+            type: string
+      required:
+        - title
+        - bytes
+        - scriptCount
+        - externalScriptCount
+        - inlineScriptCount
+        - externalAssetCount
+        - aiSignalCount
+        - findings
+        - steps
+    PoeModels:
+      type: object
+      properties:
+        configured:
+          type: boolean
+        models:
+          type: array
+          items:
+            type: string
+        message:
+          type: string
+      required: [configured, models, message]
+    PoeMessage:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [system, user, assistant]
+        content:
+          type: string
+          minLength: 1
+      required: [role, content]
+    PoeChatInput:
+      type: object
+      properties:
+        model:
+          type: string
+          minLength: 1
+        messages:
+          type: array
+          minItems: 1
+          maxItems: 40
+          items:
+            $ref: "#/components/schemas/PoeMessage"
+        maxTokens:
+          type: number
+          minimum: 1
+          maximum: 8192
+      required: [model, messages]
+    PoeChatResponse:
+      type: object
+      properties:
+        content:
+          type: string
+        model:
+          type: string
+        usage:
+          type: object
+          properties:
+            promptTokens:
+              type: number
+            completionTokens:
+              type: number
+          required: [promptTokens, completionTokens]
+      required: [content, model]
 
