@@ -183,6 +183,19 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
       }
     }, "API server did not start");
 
+    const blockedChat = await jsonRequest(`${baseUrl}/port/poe/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "Claude-Sonnet-4.6",
+        messages: [
+          { role: "user", content: "Please inspect api_key: 'sk-imported-secret-value'." },
+        ],
+      }),
+    });
+    assert.equal(blockedChat.status, 400);
+    assert.equal(blockedChat.body.code, "CHAT_CONTAINS_CREDENTIAL");
+
     const connectionStatus = await jsonRequest(`${baseUrl}/port/replit-project-connection`, {
       headers: ownerHeaders,
     });
@@ -207,6 +220,20 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
       headers: ownerHeaders,
     });
     assert.deepEqual(refreshedConnectionStatus.body, { status: "connected" });
+
+    const blockedHandoff = await jsonRequest(`${baseUrl}/port/replit-projects`, {
+      method: "POST",
+      headers: {
+        ...ownerHeaders,
+        Origin: browserOrigin,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        html: "<!doctype html><script>const api_key = 'sk-imported-secret-value'</script>",
+      }),
+    });
+    assert.equal(blockedHandoff.status, 400);
+    assert.equal(blockedHandoff.body.code, "SOURCE_CONTAINS_CREDENTIAL");
 
     const created = await jsonRequest(`${baseUrl}/port/replit-projects`, {
       method: "POST",

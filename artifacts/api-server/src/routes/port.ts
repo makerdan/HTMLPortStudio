@@ -727,6 +727,17 @@ router.post("/port/poe/chat", async (req, res): Promise<void> => {
     return;
   }
 
+  // Chat requests can come from callers other than the Studio. Never trust the
+  // UI to have checked imported document content before sending it to Poe.
+  if (parsed.data.messages.some((message) => containsPrivilegedCredential(message.content))) {
+    res.status(400).json({
+      error:
+        "This chat request contains a service credential. Remove it before sending content to Poe; the request was not forwarded.",
+      code: "CHAT_CONTAINS_CREDENTIAL",
+    });
+    return;
+  }
+
   try {
     const response = await poeRequest("/chat/completions", {
       method: "POST",
@@ -850,21 +861,21 @@ router.post("/port/replit-projects", requireTrustedCookieOrigin, async (req, res
     return;
   }
 
+  if (containsPrivilegedCredential(parsed.data.html)) {
+    res.status(400).json({
+      error:
+        "This HTML appears to contain a service credential. Remove it before creating a project; the source was not sent to Replit.",
+      code: "SOURCE_CONTAINS_CREDENTIAL",
+    });
+    return;
+  }
+
   if (!(await hasProjectCreationConnection())) {
     res.status(503).json({
       error:
         "Replit project creation is unavailable. Connect the authorized Replit project-creation capability, then try again.",
       code: "PROJECT_CREATION_CONNECTION_UNAVAILABLE",
       action: "A workspace owner can connect it from the HTML Studio setup screen. Never paste a credential into the Studio.",
-    });
-    return;
-  }
-
-  if (containsPrivilegedCredential(parsed.data.html)) {
-    res.status(400).json({
-      error:
-        "This HTML appears to contain a service credential. Remove it before creating a project; the source was not sent to Replit.",
-      code: "SOURCE_CONTAINS_CREDENTIAL",
     });
     return;
   }

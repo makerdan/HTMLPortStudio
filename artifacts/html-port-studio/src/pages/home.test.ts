@@ -29,4 +29,8 @@ test("renders recoverable model, chat, auth, and polling failure paths", async (
   assert.match(source, /Retry status check/);
   assert.match(source, /if \(query\.state\.error\) return false/);
   assert.match(source, /Try logging in again/);
+  assert.match(source, /first 3,000 characters/);
+  assert.match(source, /No document content will be sent to Poe/);
+  assert.match(source, /containsCredential/);
+  assert.match(source, /documentContainsCredential/);
 });

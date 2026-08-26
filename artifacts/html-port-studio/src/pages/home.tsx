@@ -60,6 +60,15 @@ const SEVERITY_ICONS = {
   blocker: <XCircle className="h-4 w-4" />
 } as const;
 
+function containsCredential(value: string): boolean {
+  return [
+    /(?:api[_-]?key|authorization|access[_-]?token|secret|token)\s*[:=]\s*["'][^"']{8,}["']/i,
+    /\b(?:sk|pk|poe|pplx)-[a-z0-9_-]{8,}\b/i,
+    /\bAIza[a-z0-9_-]{12,}\b/i,
+    /\bBearer\s+[a-z0-9._-]{8,}\b/i,
+  ].some((pattern) => pattern.test(value));
+}
+
 function formatBytes(bytes: number, decimals = 2) {
   if (!+bytes) return '0 Bytes';
   const k = 1024;
@@ -115,6 +124,7 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
     { role: 'assistant', content: "Hello! I can help you port this HTML to Replit. What issue are you facing?" }
   ]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const documentContainsCredential = containsCredential(html);
 
   useEffect(() => {
     if (poeData?.models?.length && !selectedModel) {
@@ -130,7 +140,7 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
 
   const handleSend = (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!prompt.trim() || !selectedModel || chatMutation.isPending) return;
+    if (!prompt.trim() || !selectedModel || chatMutation.isPending || documentContainsCredential) return;
 
     const submittedPrompt = prompt.trim();
     const newMessage: PoeMessage = { role: 'user', content: submittedPrompt };
@@ -209,6 +219,19 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
     );
   }
 
+  if (documentContainsCredential) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center p-6 text-center text-muted-foreground">
+        <XCircle className="mb-4 h-8 w-8 text-destructive" />
+        <p className="mb-2 font-medium text-foreground">Assistant paused for your safety</p>
+        <p className="max-w-md text-sm">
+          This document appears to contain a service credential. Remove it before using Poe Assistant.
+          No document content will be sent to Poe.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full flex-col bg-card">
       <div className="flex items-center justify-between border-b p-3">
@@ -228,6 +251,11 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
             </SelectContent>
           </Select>
         ) : null}
+      </div>
+
+      <div className="border-b bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+        Poe receives your chat messages plus only the first 3,000 characters of this HTML document
+        (truncated when longer). Credentials are blocked before forwarding.
       </div>
 
       <div 
