@@ -16,3 +16,17 @@ test("keeps the handoff request source-only and exposes retry progress controls"
   assert.match(source, /Retry step/);
   assert.doesNotMatch(source, /POE_API_KEY|REPLIT_PROJECT_CREATION_TOKEN/);
 });
+
+test("renders recoverable model, chat, auth, and polling failure paths", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /Could not load Poe models/);
+  assert.match(source, /Retry loading models/);
+  assert.match(source, /No Poe models available/);
+  assert.match(source, /Your prompt is ready to retry/);
+  assert.match(source, /Assistant request failed/);
+  assert.match(source, /Retry request/);
+  assert.match(source, /Retry status check/);
+  assert.match(source, /if \(query\.state\.error\) return false/);
+  assert.match(source, /Try logging in again/);
+});

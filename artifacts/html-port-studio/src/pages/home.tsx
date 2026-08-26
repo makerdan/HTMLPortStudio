@@ -100,10 +100,17 @@ function Header({ onReset }: { onReset: () => void }) {
 }
 
 function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFinding[] }) {
-  const { data: poeData, isLoading: modelsLoading } = useListPoeModels();
+  const {
+    data: poeData,
+    isLoading: modelsLoading,
+    isError: modelsError,
+    error: modelsQueryError,
+    refetch: refetchModels,
+  } = useListPoeModels();
   const chatMutation = useChatWithPoe();
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [prompt, setPrompt] = useState('');
+  const [chatError, setChatError] = useState<string | null>(null);
   const [chatHistory, setChatHistory] = useState<PoeMessage[]>([
     { role: 'assistant', content: "Hello! I can help you port this HTML to Replit. What issue are you facing?" }
   ]);
@@ -125,11 +132,12 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
     e?.preventDefault();
     if (!prompt.trim() || !selectedModel || chatMutation.isPending) return;
 
-    const newMessage: PoeMessage = { role: 'user', content: prompt };
+    const submittedPrompt = prompt.trim();
+    const newMessage: PoeMessage = { role: 'user', content: submittedPrompt };
     const newHistory = [...chatHistory, newMessage];
     
     setChatHistory(newHistory);
-    setPrompt('');
+    setChatError(null);
 
     // Prepend system context quietly
     const systemContext = `You are a helpful coding assistant helping port an HTML app from Poe to Replit.\nHere is the user's current HTML:\n\`\`\`html\n${html.substring(0, 3000)}${html.length > 3000 ? '\n...[truncated]' : ''}\n\`\`\`\nHere are the findings from the port analysis: ${findings.map(f => f.title).join(', ')}`;
@@ -141,20 +149,62 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
       }
     }, {
       onSuccess: (res) => {
+          setPrompt('');
         setChatHistory(prev => [...prev, { role: 'assistant', content: res.content }]);
       },
-      onError: () => {
-        setChatHistory(prev => [...prev, { role: 'assistant', content: "Sorry, I encountered an error. Check the API connection and your Poe setup." }]);
+       onError: (error) => {
+         // Keep failed prompts editable and retryable. A failed request is
+         // never represented as an assistant response.
+         setChatHistory(prev => prev.filter((message, index) => index !== prev.length - 1));
+         setPrompt(submittedPrompt);
+         setChatError(apiErrorMessage(error, 'The assistant could not answer. Your prompt is ready to retry.'));
       }
     });
   };
 
-  if (!poeData?.configured && !modelsLoading) {
+  if (modelsLoading) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center p-6 text-center text-muted-foreground">
+        <Loader2 className="mb-4 h-8 w-8 animate-spin text-primary" />
+        <p className="font-medium">Loading Poe models…</p>
+      </div>
+    );
+  }
+
+  if (modelsError) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center p-6 text-center">
+        <AlertTriangle className="mb-4 h-8 w-8 text-destructive" />
+        <p className="mb-2 font-medium">Could not load Poe models</p>
+        <p className="mb-4 text-sm text-muted-foreground">
+          {apiErrorMessage(modelsQueryError, 'The assistant setup could not be loaded.')}
+        </p>
+        <Button type="button" variant="outline" onClick={() => void refetchModels()}>
+          Retry loading models
+        </Button>
+      </div>
+    );
+  }
+
+  if (!poeData?.configured) {
     return (
       <div className="flex h-full flex-col items-center justify-center p-6 text-center text-muted-foreground">
         <AlertTriangle className="mb-4 h-8 w-8 text-warning" />
         <p className="mb-2 font-medium">Poe API Not Configured</p>
         <p className="text-sm">The server is missing Poe API credentials. The assistant is disabled.</p>
+      </div>
+    );
+  }
+
+  if (!poeData.models?.length) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center p-6 text-center">
+        <AlertTriangle className="mb-4 h-8 w-8 text-warning" />
+        <p className="mb-2 font-medium">No Poe models available</p>
+        <p className="mb-4 text-sm text-muted-foreground">The Poe API returned no models for this assistant.</p>
+        <Button type="button" variant="outline" onClick={() => void refetchModels()}>
+          Retry loading models
+        </Button>
       </div>
     );
   }
@@ -166,7 +216,7 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
           <Sparkles className="h-4 w-4 text-primary" />
           Poe Assistant
         </div>
-        {poeData?.models?.length ? (
+        {poeData.models.length ? (
           <Select value={selectedModel} onValueChange={setSelectedModel}>
             <SelectTrigger className="w-[180px] h-8 text-xs">
               <SelectValue placeholder="Select a model" />
@@ -177,9 +227,7 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
               ))}
             </SelectContent>
           </Select>
-        ) : (
-          <Badge variant="outline" className="text-xs">Loading models...</Badge>
-        )}
+        ) : null}
       </div>
 
       <div 
@@ -210,6 +258,25 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
             </div>
           </div>
         )}
+        {chatError && (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Assistant request failed</AlertTitle>
+            <AlertDescription>
+              {chatError}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="mt-3"
+                onClick={() => handleSend()}
+                disabled={chatMutation.isPending}
+              >
+                Retry request
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
       </div>
 
       <div className="border-t p-3">
@@ -234,7 +301,7 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
   );
 }
 
-function apiErrorMessage(error: unknown): string {
+function apiErrorMessage(error: unknown, fallback = 'The Replit project handoff could not be started. Your imported HTML is still here.'): string {
   if (typeof error === 'object' && error !== null && 'data' in error) {
     const data = (error as { data?: unknown }).data;
     if (typeof data === 'object' && data !== null && 'error' in data) {
@@ -242,7 +309,7 @@ function apiErrorMessage(error: unknown): string {
       if (typeof message === 'string') return message;
     }
   }
-  return 'The Replit project handoff could not be started. Your imported HTML is still here.';
+  return fallback;
 }
 
 function HandoffStepIcon({
@@ -263,7 +330,7 @@ function HandoffStepIcon({
 }
 
 function ReplitProjectHandoffPanel({ html }: { html: string }) {
-  const { isAuthenticated, isLoading: authLoading, login } = useAuth();
+  const { isAuthenticated, isLoading: authLoading, error: authError, login } = useAuth();
   const [jobId, setJobId] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [showConnectionSetup, setShowConnectionSetup] = useState(false);
@@ -288,6 +355,7 @@ function ReplitProjectHandoffPanel({ html }: { html: string }) {
       queryKey: ['replit-project-status', jobId],
       enabled: Boolean(jobId),
       refetchInterval: (query) => {
+        if (query.state.error) return false;
         const status = query.state.data?.status;
         return status === 'completed' || status === 'failed' ? false : 800;
       },
@@ -403,6 +471,18 @@ function ReplitProjectHandoffPanel({ html }: { html: string }) {
               Log in to create a project and keep its setup status private to your account.
             </AlertDescription>
           </Alert>
+          {authError && (
+            <Alert variant="destructive" className="mt-3">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Login failed</AlertTitle>
+              <AlertDescription>
+                {authError}
+                <Button type="button" size="sm" variant="outline" className="mt-3" onClick={login}>
+                  Try logging in again
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
         </CardContent>
       )}
       {isAuthenticated && connectionQuery.isError && (
@@ -499,8 +579,22 @@ function ReplitProjectHandoffPanel({ html }: { html: string }) {
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>Project handoff unavailable</AlertTitle>
             <AlertDescription>
-              {localError ||
-                'The setup status could not be loaded. The imported HTML is still in this session.'}
+              {localError || apiErrorMessage(
+                statusQuery.error,
+                'The setup status could not be loaded. The imported HTML is still in this session.',
+              )}
+              {statusQuery.isError && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="mt-3"
+                  onClick={() => void statusQuery.refetch()}
+                  disabled={statusQuery.isFetching}
+                >
+                  {statusQuery.isFetching ? 'Retrying…' : 'Retry status check'}
+                </Button>
+              )}
             </AlertDescription>
           </Alert>
         </CardContent>

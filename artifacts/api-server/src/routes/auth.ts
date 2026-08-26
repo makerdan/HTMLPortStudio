@@ -37,6 +37,19 @@ function setTemporaryCookie(res: Response, name: string, value: string) {
   });
 }
 
+function clearTemporaryCookies(res: Response) {
+  for (const cookie of ["code_verifier", "nonce", "state", "return_to"]) {
+    res.clearCookie(cookie, { path: "/" });
+  }
+}
+
+function getCallbackErrorRedirect(req: Request): string {
+  const returnTo = getSafeReturnTo(req.cookies?.return_to);
+  const redirect = new URL(returnTo, `${getOrigin(req)}/`);
+  redirect.searchParams.set("authError", "login_failed");
+  return redirect.href;
+}
+
 async function upsertUser(claims: Record<string, unknown>) {
   const userData = {
     id: claims.sub as string,
@@ -87,7 +100,10 @@ router.get("/callback", async (req, res) => {
   const callbackUrl = `${getOrigin(req)}/api/callback`;
   const codeVerifier = req.cookies?.code_verifier;
   const expectedState = req.cookies?.state;
-  if (!codeVerifier || !expectedState) return res.redirect("/api/login");
+  if (!codeVerifier || !expectedState) {
+    clearTemporaryCookies(res);
+    return res.redirect(getCallbackErrorRedirect(req));
+  }
   try {
     const currentUrl = new URL(
       `${callbackUrl}?${new URL(req.url, `http://${req.headers.host}`).searchParams}`,
@@ -99,7 +115,10 @@ router.get("/callback", async (req, res) => {
       idTokenExpected: true,
     });
     const claims = tokens.claims();
-    if (!claims) return res.redirect("/api/login");
+     if (!claims) {
+       clearTemporaryCookies(res);
+       return res.redirect(getCallbackErrorRedirect(req));
+     }
     const user = await upsertUser(claims as unknown as Record<string, unknown>);
     const now = Math.floor(Date.now() / 1000);
     const session: SessionData = {
@@ -117,13 +136,12 @@ router.get("/callback", async (req, res) => {
       maxAge: SESSION_TTL,
     });
     const returnTo = getSafeReturnTo(req.cookies?.return_to);
-    for (const cookie of ["code_verifier", "nonce", "state", "return_to"]) {
-      res.clearCookie(cookie, { path: "/" });
-    }
+     clearTemporaryCookies(res);
     res.redirect(returnTo);
   } catch (error) {
     req.log.warn({ error }, "OIDC callback failed");
-    res.redirect("/api/login");
+     clearTemporaryCookies(res);
+     res.redirect(getCallbackErrorRedirect(req));
   }
 });
 
