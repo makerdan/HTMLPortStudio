@@ -78,6 +78,23 @@ function formatBytes(bytes: number, decimals = 2) {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 }
 
+const MAX_HTML_FILE_BYTES = 2 * 1024 * 1024;
+const HTML_FILE_EXTENSIONS = ['.html', '.htm'];
+
+function validateHtmlFile(file: File): string | null {
+  const fileName = file.name.toLowerCase();
+  const hasHtmlExtension = HTML_FILE_EXTENSIONS.some((extension) => fileName.endsWith(extension));
+  const hasHtmlType = file.type === 'text/html';
+
+  if (!hasHtmlExtension && !hasHtmlType) {
+    return 'Choose an HTML file ending in .html or .htm, then try again.';
+  }
+  if (file.size > MAX_HTML_FILE_BYTES) {
+    return `This HTML file is ${formatBytes(file.size)}. Choose a file no larger than 2 MB.`;
+  }
+  return null;
+}
+
 // ----------------------------------------------------------------------
 // Sub-components
 // ----------------------------------------------------------------------
@@ -702,21 +719,31 @@ function ReplitProjectHandoffPanel({ html }: { html: string }) {
 export default function Home() {
   const [htmlInput, setHtmlInput] = useState('');
   const [analysisData, setAnalysisData] = useState<HtmlAnalysis | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
   const analyzeMutation = useAnalyzeHtml();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const importSessionRef = useRef(0);
 
   const handleAnalyze = () => {
     if (!htmlInput.trim()) return;
+    const sessionId = ++importSessionRef.current;
     analyzeMutation.mutate({ data: { html: htmlInput } }, {
       onSuccess: (data) => {
+        if (sessionId !== importSessionRef.current) return;
         setAnalysisData(data);
+      },
+      onError: () => {
+        if (sessionId !== importSessionRef.current) return;
       }
     });
   };
 
   const handleReset = () => {
+    importSessionRef.current += 1;
+    analyzeMutation.reset();
     setAnalysisData(null);
     setHtmlInput('');
+    setFileError(null);
   };
 
   const handleFileSelect = async (
@@ -725,10 +752,18 @@ export default function Home() {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    const validationError = validateHtmlFile(file);
+    event.target.value = '';
+    if (validationError) {
+      setFileError(validationError);
+      return;
+    }
+
     const html = await file.text();
+    importSessionRef.current += 1;
     setHtmlInput(html);
     setAnalysisData(null);
-    event.target.value = '';
+    setFileError(null);
   };
 
   if (!analysisData) {
@@ -780,6 +815,14 @@ export default function Home() {
                   placeholder="Paste your HTML code here..."
                   className="min-h-[300px] font-mono text-sm resize-y border border-black bg-muted/30 focus-visible:ring-primary/50"
                 />
+
+                {fileError && (
+                  <Alert variant="destructive" className="mt-4">
+                    <XCircle className="h-4 w-4" />
+                    <AlertTitle>File could not be imported</AlertTitle>
+                    <AlertDescription>{fileError}</AlertDescription>
+                  </Alert>
+                )}
                 
                 {analyzeMutation.isError && (
                   <Alert variant="destructive" className="mt-4">

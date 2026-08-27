@@ -34,3 +34,28 @@ test("renders recoverable model, chat, auth, and polling failure paths", async (
   assert.match(source, /containsCredential/);
   assert.match(source, /documentContainsCredential/);
 });
+
+test("validates file imports before reading and preserves the existing source on rejection", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+  const validationIndex = source.indexOf("validateHtmlFile(file)");
+  const readIndex = source.indexOf("await file.text()");
+
+  assert.notEqual(validationIndex, -1);
+  assert.notEqual(readIndex, -1);
+  assert.ok(validationIndex < readIndex, "file validation must happen before file.text()");
+  assert.match(source, /MAX_HTML_FILE_BYTES = 2 \* 1024 \* 1024/);
+  assert.match(source, /Choose an HTML file ending in \.html or \.htm/);
+  assert.match(source, /no larger than 2 MB/);
+  assert.match(source, /if \(validationError\) \{\s*setFileError\(validationError\);\s*return;/s);
+  assert.match(source, /event\.target\.value = ''/);
+});
+
+test("suppresses late analysis results after reset or import replacement", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /const importSessionRef = useRef\(0\)/);
+  assert.match(source, /const sessionId = \+\+importSessionRef\.current/);
+  assert.match(source, /if \(sessionId !== importSessionRef\.current\) return;/);
+  assert.match(source, /importSessionRef\.current \+= 1;\s*analyzeMutation\.reset\(\)/s);
+  assert.match(source, /importSessionRef\.current \+= 1;\s*setHtmlInput\(html\)/s);
+});
