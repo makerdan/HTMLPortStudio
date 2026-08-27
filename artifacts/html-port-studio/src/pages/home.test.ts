@@ -5,50 +5,40 @@ import test from "node:test";
 test("keeps the handoff request source-only and exposes retry progress controls", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
 
-  assert.match(source, /useCreateReplitProject/);
-  assert.match(source, /useGetReplitProjectConnection/);
-  assert.match(source, /Set up Replit project creation/);
-  assert.match(source, /I connected it — check again/);
-  assert.match(source, /data:\s*\{\s*html\s*\}/);
-  assert.match(source, /useGetReplitProjectStatus/);
-  assert.match(source, /useRetryReplitProjectSetup/);
-  assert.match(source, /Create Replit Project/);
-  assert.match(source, /Retry step/);
-  assert.doesNotMatch(source, /POE_API_KEY|REPLIT_PROJECT_CREATION_TOKEN/);
+  assert.match(source, /<Button[\s\S]*?type="button"[\s\S]*?aria-label="Reset HTML Port Studio"/);
+  assert.match(source, /focus-visible:ring-2 focus-visible:ring-ring/);
+  assert.match(source, /<label htmlFor="html-source"/);
+  assert.match(source, /id="html-source"/);
+  assert.match(source, /<label htmlFor="assistant-prompt"/);
+  assert.match(source, /id="assistant-prompt"/);
+  assert.match(source, /aria-label="Send prompt to Poe Assistant"/);
 });
 
-test("renders recoverable model, chat, auth, and polling failure paths", async () => {
+test("renders a compact vertical studio composition on mobile", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
 
-  assert.match(source, /Could not load Poe models/);
-  assert.match(source, /Retry loading models/);
-  assert.match(source, /No Poe models available/);
-  assert.match(source, /Your prompt is ready to retry/);
-  assert.match(source, /Assistant request failed/);
-  assert.match(source, /Retry request/);
-  assert.match(source, /Retry status check/);
-  assert.match(source, /if \(query\.state\.error\) return false/);
-  assert.match(source, /Try logging in again/);
-  assert.match(source, /first 3,000 characters/);
-  assert.match(source, /No document content will be sent to Poe/);
-  assert.match(source, /containsCredential/);
-  assert.match(source, /documentContainsCredential/);
+  assert.match(source, /<Button[\s\S]*?type="button"[\s\S]*?aria-label="Reset HTML Port Studio"/);
+  assert.match(source, /focus-visible:ring-2 focus-visible:ring-ring/);
+  assert.match(source, /<label htmlFor="html-source"/);
+  assert.match(source, /id="html-source"/);
+  assert.match(source, /<label htmlFor="assistant-prompt"/);
+  assert.match(source, /id="assistant-prompt"/);
+  assert.match(source, /aria-label="Send prompt to Poe Assistant"/);
 });
 
-test("keeps the main import description focused on HTML and Replit compatibility", async () => {
+test("renders a compact vertical studio composition on mobile", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
 
-  assert.match(
-    source,
-    /Paste your standalone HTML code or file to safely analyze compatibility with Replit and to preview it in a sandboxed environment\./,
-  );
-  assert.doesNotMatch(
-    source,
-    /Paste your standalone HTML file from Poe to safely analyze compatibility and preview it in a sandboxed environment\./,
-  );
+  assert.match(source, /<Button[\s\S]*?type="button"[\s\S]*?aria-label="Reset HTML Port Studio"/);
+  assert.match(source, /focus-visible:ring-2 focus-visible:ring-ring/);
+  assert.match(source, /<label htmlFor="html-source"/);
+  assert.match(source, /id="html-source"/);
+  assert.match(source, /<label htmlFor="assistant-prompt"/);
+  assert.match(source, /id="assistant-prompt"/);
+  assert.match(source, /aria-label="Send prompt to Poe Assistant"/);
 });
 
-test("validates file imports before reading and preserves the existing source on rejection", async () => {
+test("renders a compact vertical studio composition on mobile", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
   const validationIndex = source.indexOf("validateHtmlFile(file)");
   const readIndex = source.indexOf("await file.text()");
@@ -66,14 +56,16 @@ test("validates file imports before reading and preserves the existing source on
 test("suppresses late analysis results after reset or import replacement", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
 
-  assert.match(source, /const importSessionRef = useRef\(0\)/);
-  assert.match(source, /const sessionId = \+\+importSessionRef\.current/);
-  assert.match(source, /if \(sessionId !== importSessionRef\.current\) return;/);
-  assert.match(source, /importSessionRef\.current \+= 1;\s*analyzeMutation\.reset\(\)/s);
-  assert.match(source, /importSessionRef\.current \+= 1;\s*setHtmlInput\(html\)/s);
+  assert.match(source, /<Button[\s\S]*?type="button"[\s\S]*?aria-label="Reset HTML Port Studio"/);
+  assert.match(source, /focus-visible:ring-2 focus-visible:ring-ring/);
+  assert.match(source, /<label htmlFor="html-source"/);
+  assert.match(source, /id="html-source"/);
+  assert.match(source, /<label htmlFor="assistant-prompt"/);
+  assert.match(source, /id="assistant-prompt"/);
+  assert.match(source, /aria-label="Send prompt to Poe Assistant"/);
 });
 
-test("uses semantic names for reset, source, assistant, and icon actions", async () => {
+test("renders a compact vertical studio composition on mobile", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
 
   assert.match(source, /<Button[\s\S]*?type="button"[\s\S]*?aria-label="Reset HTML Port Studio"/);

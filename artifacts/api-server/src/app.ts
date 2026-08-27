@@ -65,7 +65,10 @@ app.use(
   }),
 );
 app.use(cookieParser());
-app.use(express.json({ limit: "2mb" }));
+// Repair prompts include the complete imported document plus a small
+// instruction envelope. Keep the analyzer and handoff limits at 2 MB while
+// allowing a valid near-limit document to reach the existing Poe bridge.
+app.use(express.json({ limit: "8mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(authMiddleware);
 
