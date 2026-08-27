@@ -59,6 +59,36 @@ async function jsonRequest(url: string, init?: RequestInit): Promise<{
   };
 }
 
+// Regression matrix for provider-specific formats and the assignment styles
+// seen in imported HTML. Add a case when a provider introduces a new token
+// shape; both endpoint checks below must remain blocked before any connector
+// or external Poe request is attempted.
+const credentialRegressionMatrix = [
+  { name: "OpenAI", value: "sk-proj-imported-secret-value", source: "const apiKey = VALUE;" },
+  { name: "Anthropic", value: "sk-ant-api03-imported-secret-value", source: "api_key: 'VALUE'" },
+  { name: "Poe", value: "poe-imported-secret-value", source: "POE_API_KEY=VALUE" },
+  { name: "Perplexity", value: "pplx-imported-secret-value", source: "token = `VALUE`" },
+  { name: "Google AI", value: "AIzaSyImportedSecretValue123", source: '"apiToken": "VALUE"' },
+  { name: "Replicate", value: "r8_imported-secret-value", source: "secret: VALUE" },
+  { name: "Hugging Face", value: "hf_imported-secret-value", source: "access_token = VALUE" },
+  { name: "GitHub classic", value: "ghp_imported_secret_value_123456", source: "GITHUB_TOKEN='VALUE'" },
+  { name: "GitHub fine-grained", value: "github_pat_imported_secret_value_123456", source: "token: VALUE" },
+  { name: "Slack", value: "xoxb-1234567890-1234567890-1234567890", source: "authorization = 'Bearer VALUE'" },
+  { name: "AWS access key", value: "AKIAIOSFODNN7EXAMPLE", source: "aws_access_key_id=VALUE" },
+  {
+    name: "AWS secret key",
+    value: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+    source: "aws_secret_access_key='VALUE'",
+  },
+  { name: "Groq", value: "gsk_imported-secret-value", source: "api_key = VALUE" },
+  { name: "SendGrid", value: "SG.imported-secret-value-123456", source: "client_secret: VALUE" },
+  {
+    name: "JWT",
+    value: "eyJhbGciOiJIUzI1NiJ9.imported-secret-payload.signature-value",
+    source: "authorization: VALUE",
+  },
+] as const;
+
 test("forwards source unchanged and resumes only the failed setup skill", async () => {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   const ownerId = `port-test-owner-${randomUUID()}`;
@@ -196,6 +226,20 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
     assert.equal(blockedChat.status, 400);
     assert.equal(blockedChat.body.code, "CHAT_CONTAINS_CREDENTIAL");
 
+    for (const credential of credentialRegressionMatrix) {
+      const valueInSource = credential.source.replace("VALUE", credential.value);
+      const matrixChat = await jsonRequest(`${baseUrl}/port/poe/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "Claude-Sonnet-4.6",
+          messages: [{ role: "user", content: `Review this imported source: ${valueInSource}` }],
+        }),
+      });
+      assert.equal(matrixChat.status, 400, `${credential.name} chat credential was not blocked`);
+      assert.equal(matrixChat.body.code, "CHAT_CONTAINS_CREDENTIAL", credential.name);
+    }
+
     const connectionStatus = await jsonRequest(`${baseUrl}/port/replit-project-connection`, {
       headers: ownerHeaders,
     });
@@ -234,6 +278,27 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
     });
     assert.equal(blockedHandoff.status, 400);
     assert.equal(blockedHandoff.body.code, "SOURCE_CONTAINS_CREDENTIAL");
+
+    for (const credential of credentialRegressionMatrix) {
+      const valueInSource = credential.source.replace("VALUE", credential.value);
+      const matrixHandoff = await jsonRequest(`${baseUrl}/port/replit-projects`, {
+        method: "POST",
+        headers: {
+          ...ownerHeaders,
+          Origin: browserOrigin,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          html: `<!doctype html><script>${valueInSource}</script>`,
+        }),
+      });
+      assert.equal(
+        matrixHandoff.status,
+        400,
+        `${credential.name} project handoff credential was not blocked`,
+      );
+      assert.equal(matrixHandoff.body.code, "SOURCE_CONTAINS_CREDENTIAL", credential.name);
+    }
 
     const created = await jsonRequest(`${baseUrl}/port/replit-projects`, {
       method: "POST",

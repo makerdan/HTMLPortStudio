@@ -391,10 +391,21 @@ function containsPrivilegedCredential(html: string): boolean {
   );
   if (configuredSecrets.some((secret) => html.includes(secret))) return true;
 
+  // Keep provider formats here deliberately explicit and bounded. This is the
+  // server-side safety net for imported source and chat content, so additions
+  // should be accompanied by a representative case in port.test.ts.
   return [
-    /(?:api[_-]?key|authorization|access[_-]?token|secret|token)\s*[:=]\s*["'][^"']{8,}["']/i,
-    /\b(?:sk|pk|poe|pplx)-[a-z0-9_-]{8,}\b/i,
+    /(?:api[_-]?key|authorization|access[_-]?token|secret|token|api[_-]?token|password|aws[_-]?secret[_-]?access[_-]?key|client[_-]?secret|private[_-]?key)\s*[:=]\s*(?:["'`])?[^"'`\s,};]{8,}(?:["'`])?/i,
+    /\b(?:sk|pk|poe|pplx|sk-ant-api\d*)-[a-z0-9_-]{8,}\b/i,
     /\bAIza[a-z0-9_-]{12,}\b/i,
+    /\b(?:r8|hf)_[a-z0-9_-]{8,}\b/i,
+    /\b(?:gsk|npm|dop_v1|lin_api|sq0atp)[_-][a-z0-9_-]{8,}\b/i,
+    /\bSG\.[a-z0-9_-]{16,}\b/i,
+    /\b(?:ghp|gho|ghu|ghs|ghr)_[a-z0-9_-]{20,}\b/i,
+    /\bgithub_pat_[a-z0-9_]{20,}\b/i,
+    /\bxox[bpras]-[a-z0-9-]{10,}\b/i,
+    /\bAKIA[0-9A-Z]{16}\b/,
+    /\beyJ[a-z0-9_-]{10,}\.[a-z0-9_-]{10,}\.[a-z0-9_-]{10,}\b/i,
     /\bBearer\s+[a-z0-9._-]{8,}\b/i,
   ].some((pattern) => pattern.test(html));
 }
