@@ -826,7 +826,7 @@ export default function Home() {
                 </div>
                 <CardTitle className="text-2xl font-bold">Import HTML App</CardTitle>
                 <CardDescription className="text-base mt-2">
-                  Paste your standalone HTML file from Poe to safely analyze compatibility and preview it in a sandboxed environment.
+                  Paste your standalone HTML code or file to safely analyze compatibility with Replit and to preview it in a sandboxed environment.
                 </CardDescription>
               </CardHeader>
               <CardContent>

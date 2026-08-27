@@ -35,6 +35,19 @@ test("renders recoverable model, chat, auth, and polling failure paths", async (
   assert.match(source, /documentContainsCredential/);
 });
 
+test("keeps the main import description focused on HTML and Replit compatibility", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+
+  assert.match(
+    source,
+    /Paste your standalone HTML code or file to safely analyze compatibility with Replit and to preview it in a sandboxed environment\./,
+  );
+  assert.doesNotMatch(
+    source,
+    /Paste your standalone HTML file from Poe to safely analyze compatibility and preview it in a sandboxed environment\./,
+  );
+});
+
 test("validates file imports before reading and preserves the existing source on rejection", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
   const validationIndex = source.indexOf("validateHtmlFile(file)");
