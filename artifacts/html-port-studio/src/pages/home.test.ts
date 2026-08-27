@@ -59,3 +59,28 @@ test("suppresses late analysis results after reset or import replacement", async
   assert.match(source, /importSessionRef\.current \+= 1;\s*analyzeMutation\.reset\(\)/s);
   assert.match(source, /importSessionRef\.current \+= 1;\s*setHtmlInput\(html\)/s);
 });
+
+test("uses semantic names for reset, source, assistant, and icon actions", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /<Button[\s\S]*?type="button"[\s\S]*?aria-label="Reset HTML Port Studio"/);
+  assert.match(source, /focus-visible:ring-2 focus-visible:ring-ring/);
+  assert.match(source, /<label htmlFor="html-source"/);
+  assert.match(source, /id="html-source"/);
+  assert.match(source, /<label htmlFor="assistant-prompt"/);
+  assert.match(source, /id="assistant-prompt"/);
+  assert.match(source, /aria-label="Send prompt to Poe Assistant"/);
+});
+
+test("renders a compact vertical studio composition on mobile", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+
+  // Manual QA: verify import, findings/handoff, preview, and assistant at 375px;
+  // verify the horizontal split and resize handle remain usable at 1440px.
+  assert.match(source, /useIsMobile/);
+  assert.match(source, /direction=\{isMobile \? 'vertical' : 'horizontal'\}/);
+  assert.match(source, /defaultSize=\{isMobile \? 45 : 35\}/);
+  assert.match(source, /defaultSize=\{isMobile \? 55 : 65\}/);
+  assert.match(source, /data-\[panel-group-direction=vertical\]:cursor-row-resize/);
+  assert.match(source, /md:border-r/);
+});

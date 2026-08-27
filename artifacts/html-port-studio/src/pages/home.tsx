@@ -19,7 +19,12 @@ import type {
   ReplitProjectHandoff,
 } from '@workspace/api-client-react';
 import { useAuth } from '@workspace/replit-auth-web';
-import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
+import {
+  ResizableHandle as PanelResizeHandle,
+  ResizablePanel as Panel,
+  ResizablePanelGroup as PanelGroup,
+} from '@/components/ui/resizable';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { 
   CheckCircle, 
   AlertTriangle, 
@@ -104,13 +109,20 @@ function Header({ onReset }: { onReset: () => void }) {
   const { data: health, isError } = useHealthCheck();
 
   return (
-    <header className="flex h-14 items-center justify-between border-b bg-card px-6">
-      <div className="flex items-center gap-2 font-semibold text-foreground cursor-pointer" onClick={onReset}>
-        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
-          <FileCode className="h-4 w-4" />
-        </div>
+    <header className="flex h-14 items-center justify-between border-b bg-card px-3 sm:px-6">
+      <Button
+        type="button"
+        variant="ghost"
+        aria-label="Reset HTML Port Studio"
+        title="Reset HTML Port Studio"
+        className="h-10 gap-2 px-2 font-semibold text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        onClick={onReset}
+      >
+        <span className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
+          <FileCode aria-hidden="true" className="h-4 w-4" />
+        </span>
         HTML Port Studio
-      </div>
+      </Button>
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
           {isError ? (
@@ -249,22 +261,25 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
 
   return (
     <div className="flex h-full flex-col bg-card">
-      <div className="flex items-center justify-between border-b p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b p-3">
         <div className="flex items-center gap-2 text-sm font-medium">
-          <Sparkles className="h-4 w-4 text-primary" />
+          <Sparkles aria-hidden="true" className="h-4 w-4 text-primary" />
           Poe Assistant
         </div>
         {poeData.models.length ? (
-          <Select value={selectedModel} onValueChange={setSelectedModel}>
-            <SelectTrigger className="w-[180px] h-8 text-xs">
-              <SelectValue placeholder="Select a model" />
-            </SelectTrigger>
-            <SelectContent>
-              {poeData.models.map(m => (
-                <SelectItem key={m} value={m} className="text-xs">{m}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            <label htmlFor="poe-model" className="sr-only">Assistant model</label>
+            <Select value={selectedModel} onValueChange={setSelectedModel}>
+              <SelectTrigger id="poe-model" className="h-8 w-[min(180px,70vw)] text-xs">
+                <SelectValue placeholder="Select a model" />
+              </SelectTrigger>
+              <SelectContent>
+                {poeData.models.map(m => (
+                  <SelectItem key={m} value={m} className="text-xs">{m}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         ) : null}
       </div>
 
@@ -324,19 +339,23 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
 
       <div className="border-t p-3">
         <form onSubmit={handleSend} className="flex gap-2">
-          <Input 
+          <label htmlFor="assistant-prompt" className="sr-only">Ask Poe Assistant</label>
+          <Input
+            id="assistant-prompt"
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder="Ask Poe how to fix a blocker..."
             disabled={chatMutation.isPending || !selectedModel}
             className="flex-1"
           />
-          <Button 
-            type="submit" 
-            size="icon" 
+          <Button
+            type="submit"
+            size="icon"
+            aria-label="Send prompt to Poe Assistant"
+            title="Send prompt to Poe Assistant"
             disabled={!prompt.trim() || chatMutation.isPending || !selectedModel}
           >
-            <Send className="h-4 w-4" />
+            <Send aria-hidden="true" className="h-4 w-4" />
           </Button>
         </form>
       </div>
@@ -477,7 +496,7 @@ function ReplitProjectHandoffPanel({ bundle }: { bundle: SourceBundle }) {
   return (
     <Card className="border-primary/20 bg-primary/[0.03] shadow-sm">
       <CardHeader className="pb-3">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <CardTitle className="text-base">Create a Replit Project</CardTitle>
             <CardDescription className="mt-1">
@@ -488,7 +507,7 @@ function ReplitProjectHandoffPanel({ bundle }: { bundle: SourceBundle }) {
           <Button
             type="button"
             size="sm"
-            className="shrink-0 gap-2"
+            className="w-full shrink-0 gap-2 sm:w-auto"
             onClick={isAuthenticated ? handleCreate : login}
             disabled={authLoading || connectionQuery.isLoading || Boolean(jobId) || isWorking}
           >
@@ -676,7 +695,7 @@ function ReplitProjectHandoffPanel({ bundle }: { bundle: SourceBundle }) {
             ))}
           </div>
           {handoff.status === 'failed' && (
-            <div className="flex items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-3">
               <p className="text-sm text-destructive">
                 {failedStep?.error || handoff.error || 'Project creation failed before setup could begin.'}
               </p>
@@ -685,6 +704,7 @@ function ReplitProjectHandoffPanel({ bundle }: { bundle: SourceBundle }) {
                 size="sm"
                 variant="outline"
                 onClick={handleRetry}
+                className="w-full sm:w-auto"
                 disabled={isWorking}
               >
                 Retry step
@@ -692,12 +712,12 @@ function ReplitProjectHandoffPanel({ bundle }: { bundle: SourceBundle }) {
             </div>
           )}
           {handoff.status === 'completed' && (
-            <div className="flex items-center justify-between gap-3 rounded-md border border-green-500/30 bg-green-500/5 p-3 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-green-500/30 bg-green-500/5 p-3 text-sm">
               <span>
                 <strong>{handoff.projectName}</strong> is ready without an editor or version-control workflow.
               </span>
               {handoff.projectUrl ? (
-                <Button asChild size="sm" variant="outline">
+                <Button asChild size="sm" variant="outline" className="w-full sm:w-auto">
                   <a href={handoff.projectUrl} target="_blank" rel="noreferrer">
                     Open project
                   </a>
@@ -725,6 +745,7 @@ export default function Home() {
   const analyzeMutation = useAnalyzeHtml();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importSessionRef = useRef(0);
+  const isMobile = useIsMobile();
 
   const handleAnalyze = () => {
     if (!htmlInput.trim()) return;
@@ -816,8 +837,8 @@ export default function Home() {
                   className="hidden"
                   onChange={handleFileSelect}
                 />
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <p className="text-sm text-muted-foreground">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                  <p id="html-source-help" className="text-sm text-muted-foreground">
                     Choose one standalone file, or paste its source below.
                   </p>
                   <Button
@@ -831,10 +852,15 @@ export default function Home() {
                     Choose HTML file
                   </Button>
                 </div>
-                <Textarea 
+                <label htmlFor="html-source" className="mb-2 block text-sm font-medium text-foreground">
+                  HTML source
+                </label>
+                <Textarea
+                  id="html-source"
                   value={htmlInput}
                   onChange={(e) => setHtmlInput(e.target.value)}
                   placeholder="Paste your HTML code here..."
+                  aria-describedby="html-source-help"
                   className="min-h-[300px] font-mono text-sm resize-y border border-black bg-muted/30 focus-visible:ring-primary/50"
                 />
 
@@ -880,11 +906,15 @@ export default function Home() {
     <div className="flex h-screen flex-col bg-background overflow-hidden animate-in fade-in duration-300">
       <Header onReset={handleReset} />
       
-      <main className="flex-1 overflow-hidden">
-        <PanelGroup direction="horizontal">
+      <main className="flex-1 min-h-0 overflow-hidden">
+        <PanelGroup direction={isMobile ? 'vertical' : 'horizontal'} className="min-h-0">
           
           {/* Left Panel: Analysis Results */}
-          <Panel defaultSize={35} minSize={25} className="border-r bg-card/50">
+          <Panel
+            defaultSize={isMobile ? 45 : 35}
+            minSize={isMobile ? 35 : 25}
+            className="min-h-0 border-b bg-card/50 md:border-b-0 md:border-r"
+          >
             <ScrollArea className="h-full">
               <div className="p-6 space-y-8">
                 
@@ -980,24 +1010,28 @@ export default function Home() {
             </ScrollArea>
           </Panel>
 
-          <PanelResizeHandle className="w-1 bg-border hover:bg-primary/50 transition-colors cursor-col-resize" />
+          <PanelResizeHandle
+            withHandle
+            aria-label="Resize analysis and preview panels"
+            className="bg-border transition-colors hover:bg-primary/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 data-[panel-group-direction=horizontal]:cursor-col-resize data-[panel-group-direction=vertical]:cursor-row-resize"
+          />
 
           {/* Right Panel: Preview & Chat */}
-          <Panel defaultSize={65}>
+          <Panel defaultSize={isMobile ? 55 : 65} minSize={isMobile ? 45 : 25} className="min-h-0">
             <Tabs defaultValue="preview" className="h-full flex flex-col">
               <div className="border-b bg-card px-4 py-2 flex items-center justify-between">
                 <TabsList>
                   <TabsTrigger value="preview" className="gap-2">
-                    <MonitorPlay className="h-4 w-4" />
+                    <MonitorPlay aria-hidden="true" className="h-4 w-4" />
                     Safe Preview
                   </TabsTrigger>
                   <TabsTrigger value="assistant" className="gap-2">
-                    <Sparkles className="h-4 w-4" />
+                    <Sparkles aria-hidden="true" className="h-4 w-4" />
                     Poe Assistant
                   </TabsTrigger>
                 </TabsList>
                 <Button size="sm" variant="outline" className="gap-2 font-mono text-xs" onClick={handleReset}>
-                  <ArrowRight className="h-3 w-3" /> Start Over
+                  <ArrowRight aria-hidden="true" className="h-3 w-3" /> Start Over
                 </Button>
               </div>
 
