@@ -691,32 +691,56 @@ setTimeout(() => void resumeDurableJobs().catch(() => undefined), 0).unref();
 const router: IRouter = Router();
 
 router.post("/port/analyze", async (req, res): Promise<void> => {
-    const parsed = RetryReplitProjectSetupParams.safeParse(req.params);
-
-    const code = error instanceof Error ? error.message : "INVALID_SOURCE_BUNDLE";
-
-    const code = error instanceof Error ? error.message : "INVALID_SOURCE_BUNDLE";
+  const parsed = AnalyzeHtmlBody.safeParse(req.body);
   if (!parsed.success) {
-    req.log.warn({ errors: parsed.error.message }, "Invalid Poe chat request");
-    res.status(400).json({ error: "Provide a model and at least one message." });
+    req.log.warn({ errors: parsed.error.message }, "Invalid HTML analysis request");
+    res.status(400).json({
+      error: "Provide exactly one non-empty HTML document or source bundle.",
+      code: "INVALID_SOURCE_BUNDLE",
+    });
     return;
   }
 
   try {
-    const response = await poeRequest("/chat/completions", {
-      method: "POST",
-      body: JSON.stringify({
-        model: parsed.data.model,
-        messages: parsed.data.messages,
-        max_tokens: parsed.data.maxTokens ?? 1024,
-      }),
+    const bundle = normalizeBundle(
+      parsed.data as { html?: string; bundle?: SourceBundle },
+    );
+    res.json(AnalyzeHtmlResponse.parse(analyzeBundle(bundle)));
+  } catch (error) {
+    const code =
+      error instanceof Error ? error.message : "INVALID_SOURCE_BUNDLE";
+    const tooLarge =
+      code === "BUNDLE_TOO_LARGE" || code === "BUNDLE_FILE_TOO_LARGE";
+    res.status(tooLarge ? 413 : 400).json({
+      error: "Provide exactly one valid source bundle no larger than 2 MB.",
+      code,
     });
+  }
+});
 
+router.get("/port/poe/models", async (req, res): Promise<void> => {
+  if (!process.env.POE_API_KEY) {
+    res.json(
+      ListPoeModelsResponse.parse({
+        configured: false,
+        models: [],
+        message: "Add POE_API_KEY in Replit Secrets to enable Poe.",
+      }),
+    );
+    return;
+  }
+
+  try {
+    const response = await poeRequest("/models");
     if (!response.ok) {
-      req.log.warn({ status: response.status }, "Poe chat request failed");
-      res.status(503).json({
-        error: `Poe returned ${response.status}. Check POE_API_KEY, account access, and the exact PascalCase model ID.`,
-      });
+      req.log.warn({ status: response.status }, "Poe model lookup failed");
+      res.json(
+        ListPoeModelsResponse.parse({
+          configured: true,
+          models: [],
+          message: `Poe is configured, but the model list returned ${response.status}. Check the key and Poe account access.`,
+        }),
+      );
       return;
     }
 
@@ -753,11 +777,7 @@ router.post("/port/analyze", async (req, res): Promise<void> => {
 });
 
 router.post("/port/poe/chat", async (req, res): Promise<void> => {
-    const parsed = RetryReplitProjectSetupParams.safeParse(req.params);
-
-    const code = error instanceof Error ? error.message : "INVALID_SOURCE_BUNDLE";
-
-    const code = error instanceof Error ? error.message : "INVALID_SOURCE_BUNDLE";
+  const parsed = ChatWithPoeBody.safeParse(req.body);
   if (!parsed.success) {
     req.log.warn({ errors: parsed.error.message }, "Invalid Poe chat request");
     res.status(400).json({ error: "Provide a model and at least one message." });
@@ -765,8 +785,12 @@ router.post("/port/poe/chat", async (req, res): Promise<void> => {
   }
 
   if (parsed.data.messages.some((message) => containsPrivilegedCredential({
+    version: 1,
+    sourceType: "pasted_html",
     files: [{ path: "chat.txt", content: message.content }],
-  } as SourceBundle))) {
+    entrypoint: "chat.txt",
+    metadata: { displayName: "Poe chat" },
+  }))) {
     res.status(400).json({
       error:
         "This chat request contains a service credential. Remove it before sending content to Poe; the request was not forwarded.",
@@ -885,17 +909,111 @@ router.post("/port/replit-projects", requireTrustedCookieOrigin, async (req, res
     });
     return;
   }
-    const parsed = RetryReplitProjectSetupParams.safeParse(req.params);
-
-    const code = error instanceof Error ? error.message : "INVALID_SOURCE_BUNDLE";
-
-    const code = error instanceof Error ? error.message : "INVALID_SOURCE_BUNDLE";
+  const parsed = CreateReplitProjectBody.safeParse(req.body);
   if (!parsed.success) {
     req.log.warn({ errors: parsed.error.message }, "Invalid Replit project handoff request");
     const tooLarge = parsed.error.issues.some((issue) => issue.code === "too_big");
+    res.status(tooLarge ? 413 : 400).json({
+      error: "Provide exactly one valid source bundle no larger than 2 MB.",
+      code: tooLarge
+        ? "PROJECT_HANDOFF_SOURCE_TOO_LARGE"
+        : "INVALID_PROJECT_HANDOFF",
+    });
+    return;
+  }
 
   let bundle: SourceBundle;
-    const job = await loadJob(parsed.data.jobId, req.user.id);
+  try {
+    bundle = normalizeBundle(
+      parsed.data as { html?: string; bundle?: SourceBundle },
+    );
+  } catch (error) {
+    const code =
+      error instanceof Error ? error.message : "INVALID_SOURCE_BUNDLE";
+    const tooLarge =
+      code === "BUNDLE_TOO_LARGE" || code === "BUNDLE_FILE_TOO_LARGE";
+    res.status(tooLarge ? 413 : 400).json({
+      error: "Provide exactly one valid source bundle no larger than 2 MB.",
+      code: tooLarge ? "PROJECT_HANDOFF_SOURCE_TOO_LARGE" : code,
+    });
+    return;
+  }
+
+  if (containsPrivilegedCredential(bundle)) {
+    res.status(400).json({
+      error:
+        "This source bundle appears to contain a service credential. Remove it before creating a project; the source was not sent to Replit.",
+      code: "SOURCE_CONTAINS_CREDENTIAL",
+    });
+    return;
+  }
+
+  if (!(await hasProjectCreationConnection())) {
+    res.status(503).json({
+      error:
+        "Replit project creation is unavailable. Connect the authorized Replit project-creation capability, then try again.",
+      code: "PROJECT_CREATION_CONNECTION_UNAVAILABLE",
+      action:
+        "A workspace owner can connect it from the HTML Studio setup screen. Never paste a credential into the Studio.",
+    });
+    return;
+  }
+
+  const entrypointHtml =
+    bundle.files.find((file) => file.path === bundle.entrypoint)?.content ?? "";
+  const job: HandoffJob = {
+    id: randomUUID(),
+    sourceHtml: entrypointHtml,
+    sourceBundle: bundle,
+    projectName: safeProjectName(bundle),
+    status: "queued",
+    projectId: null,
+    projectUrl: null,
+    currentStep: null,
+    steps: SETUP_STEPS.map(({ name }) => ({
+      name,
+      status: "pending",
+      error: null,
+    })),
+    error: null,
+    leaseToken: null,
+  };
+  await db.transaction(async (tx) => {
+    await tx.insert(handoffJobsTable).values({
+      id: job.id,
+      ownerId: req.user.id,
+      sourceHtml: job.sourceHtml,
+      sourceBundle: job.sourceBundle,
+      projectName: job.projectName,
+      status: job.status,
+    });
+    await tx.insert(handoffStepsTable).values(
+      SETUP_STEPS.map((step, position) => ({
+        id: randomUUID(),
+        jobId: job.id,
+        position,
+        name: step.name,
+        slug: step.slug,
+        status: "pending",
+      })),
+    );
+  });
+  res.status(202).json(CreateReplitProjectResponse.parse(publicJob(job)));
+  void runHandoffJob(job.id);
+});
+
+router.get("/port/replit-projects/:jobId", async (req, res): Promise<void> => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({
+      error: "Log in to view this project handoff.",
+      code: "AUTHENTICATION_REQUIRED",
+    });
+    return;
+  }
+  const parsed = GetReplitProjectStatusParams.safeParse(req.params);
+  const job = parsed.success
+    ? await loadJob(parsed.data.jobId, req.user.id)
+    : null;
   if (!job) {
     res.status(404).json({
       error: "That Replit project creation job was not found or has expired.",
@@ -919,36 +1037,6 @@ router.post(
     }
     const parsed = RetryReplitProjectSetupParams.safeParse(req.params);
 
-    const code = error instanceof Error ? error.message : "INVALID_SOURCE_BUNDLE";
-
-    const code = error instanceof Error ? error.message : "INVALID_SOURCE_BUNDLE";
-    const job = await loadJob(parsed.data.jobId, req.user.id);
-  if (!job) {
-    res.status(404).json({
-      error: "That Replit project creation job was not found or has expired.",
-      code: "PROJECT_HANDOFF_NOT_FOUND",
-    });
-    return;
-  }
-  res.json(GetReplitProjectStatusResponse.parse(publicJob(job)));
-});
-
-router.post(
-  "/port/replit-projects/:jobId/retry",
-  requireTrustedCookieOrigin,
-  async (req, res): Promise<void> => {
-    if (!req.isAuthenticated()) {
-      res.status(401).json({
-        error: "Log in to retry this project handoff.",
-        code: "AUTHENTICATION_REQUIRED",
-      });
-      return;
-    }
-    const parsed = RetryReplitProjectSetupParams.safeParse(req.params);
-
-    const code = error instanceof Error ? error.message : "INVALID_SOURCE_BUNDLE";
-
-    const code = error instanceof Error ? error.message : "INVALID_SOURCE_BUNDLE";
     if (!parsed.success) {
       res.status(404).json({
         error: "That Replit project creation job was not found or has expired.",
@@ -1028,8 +1116,6 @@ router.post(
   },
 );
 
-export default router;
-
 const MAX_BUNDLE_BYTES = 2_000_000;
 
 const SAFE_PATH = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[a-zA-Z0-9._/-]+$/;
@@ -1078,4 +1164,4 @@ function normalizeBundle(input: { html?: string; bundle?: SourceBundle }): Sourc
   };
 }
 
-    const status = code === "BUNDLE_TOO_LARGE" || code === "BUNDLE_FILE_TOO_LARGE" ? 413 : 400;
+export default router;
