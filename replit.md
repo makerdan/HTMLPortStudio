@@ -1,6 +1,6 @@
 # HTML Port Studio
 
-Import one standalone HTML file or pasted HTML, run a portability check, preview it safely, and use a server-only Poe bridge when the source app needs AI.
+Import pasted or single-file HTML as a normalized source bundle, run a portability check, preview it safely, and use a server-only Poe bridge when the source app needs AI.
 
 ## Run & Operate
 
@@ -23,20 +23,20 @@ Import one standalone HTML file or pasted HTML, run a portability check, preview
 
 ## Where things live
 
-- `artifacts/html-port-studio/` — import, analysis, safe-preview, and Poe-assistant UI
+- `artifacts/html-port-studio/` — source-bundle import, analysis, safe-preview, and optional Poe-assistant UI
 - `artifacts/api-server/src/routes/port.ts` — portability analysis and server-only Poe API bridge
 - `lib/api-spec/openapi.yaml` — API contract for HTML analysis and Poe operations
 
 ## Architecture decisions
 
-- Imported HTML stays in the browser session until a signed-in user starts a handoff. Handoff source and setup state are then stored in the database, scoped to that user, so an interrupted setup can safely resume after a restart.
+- Imported source bundles stay in the browser session until a signed-in user starts a handoff. Handoff source and setup state are then stored in the database, scoped to that user, so an interrupted setup can safely resume after a restart.
 - Poe requests run only on the API server so `POE_API_KEY` never reaches a browser or imported page.
 - Previewed documents run in a sandbox without same-origin access to the Studio itself.
-- Project handoff sends the original HTML byte-for-byte as `index.html` through the attached server-side Replit connection, then waits for each required setup skill to confirm before starting the next one.
+- Project handoff sends every normalized bundle file byte-for-byte with its explicit entrypoint through the attached server-side Replit connection, then waits for each required setup skill to confirm before starting the next one.
 
 ## Product
 
-- Select a single `.html`/`.htm` file or paste HTML source.
+- Select a single `.html`/`.htm` file or paste HTML source; both become a versioned source bundle.
 - Receive a compact readiness report for scripts, external assets, browser-side requests, and likely AI calls.
 - Preview the document in a sandbox, then follow a tailored migration checklist.
 - When `POE_API_KEY` is configured, choose a live Poe model and ask for targeted porting help.

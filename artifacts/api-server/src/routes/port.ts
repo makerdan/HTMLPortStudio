@@ -33,6 +33,13 @@ type Finding = {
   action: string;
 };
 
+type SourceBundle = {
+  version: 1;
+  sourceType: "pasted_html" | "single_file" | "zip_project" | "github_repository" | "hosted_page" | "playground";
+  files: Array<{ path: string; content: string }>;
+  entrypoint: string;
+  metadata: { displayName: string; sourceUrl?: string; warnings?: string[] };
+};
 function extractTitle(html: string): string {
   const match = html.match(/<title[^>]*>\s*([^<]+?)\s*<\/title>/i);
   return match?.[1]?.trim() || "Untitled HTML app";
@@ -42,28 +49,41 @@ function countMatches(html: string, pattern: RegExp): number {
   return [...html.matchAll(pattern)].length;
 }
 
-function analyzeHtml(html: string) {
+function analyzeBundle(bundle: SourceBundle) {
+  const entrypoint = bundle.files.find((file) => file.path === bundle.entrypoint);
+  if (!entrypoint) throw new Error("BUNDLE_ENTRYPOINT_MISSING");
+  const html = entrypoint.content;
+  const allSource = bundle.files.map((file) => file.content).join("\n");
   const scriptTags = countMatches(html, /<script\b[^>]*>/gi);
   const externalScripts = countMatches(html, /<script\b[^>]*\bsrc\s*=/gi);
   const externalAssets = countMatches(
     html,
     /<(?:img|link|video|audio|source|iframe)\b[^>]*(?:src|href)\s*=\s*["']https?:\/\//gi,
   );
-  const hasPoe = /api\.poe\.com|poe\.com\/v1|Poe[-_\s]?API/i.test(html);
+  const hasPoe = /api\.poe\.com|poe\.com\/v1|Poe[-_\s]?API/i.test(allSource);
   const hasAiClient = /api\.openai\.com|api\.anthropic\.com|generativelanguage\.googleapis\.com|chat\/completions|google\.generativeai|new\s+OpenAI\b/i.test(
-    html,
+    allSource,
   );
   const hasBrowserKey = /(?:api[_-]?key|authorization)\s*[:=]\s*["'](?:sk-|pk-|poe-|Bearer\s)/i.test(
-    html,
+    allSource,
   );
   const hasFetch = /\bfetch\s*\(|XMLHttpRequest|axios\./i.test(html);
   const findings: Finding[] = [];
+
+  for (const warning of bundle.metadata.warnings ?? []) {
+    findings.push({
+      severity: "warning",
+      title: "Source importer warning",
+      detail: warning,
+      action: "Review this importer warning before handing the bundle off to Replit.",
+    });
+  }
 
   if (!/<!doctype\s+html/i.test(html)) {
     findings.push({
       severity: "warning",
       title: "No HTML doctype found",
-      detail: "The document does not declare <!doctype html>, which can trigger legacy browser rendering.",
+      detail: `Entrypoint ${bundle.entrypoint} does not declare <!doctype html>, which can trigger legacy browser rendering.`,
       action: "Add <!doctype html> as the first line before porting.",
     });
   }
@@ -116,8 +136,8 @@ function analyzeHtml(html: string) {
   if (findings.length === 0) {
     findings.push({
       severity: "info",
-      title: "No obvious blockers detected",
-      detail: "This looks like a self-contained HTML document without external scripts or recognizable API calls.",
+       title: "No obvious blockers detected",
+       detail: `The ${bundle.sourceType.replaceAll("_", " ")} bundle has no obvious portability blockers.`,
       action: "Preview it, test its main interaction, then keep the HTML as the portable source.",
     });
   }
@@ -136,8 +156,13 @@ function analyzeHtml(html: string) {
   ];
 
   return {
-    title: extractTitle(html),
+    title: bundle.metadata.displayName || extractTitle(html),
     bytes: new TextEncoder().encode(html).length,
+    sourceType: bundle.sourceType,
+    entrypoint: bundle.entrypoint,
+    fileCount: bundle.files.length,
+    totalBytes: bundle.files.reduce((sum, file) => sum + new TextEncoder().encode(file.content).length, 0),
+    files: bundle.files.map((file) => file.path),
     scriptCount: scriptTags,
     externalScriptCount: externalScripts,
     inlineScriptCount: Math.max(0, scriptTags - externalScripts),
@@ -147,7 +172,6 @@ function analyzeHtml(html: string) {
     steps,
   };
 }
-
 async function poeRequest(path: string, init?: RequestInit): Promise<Response> {
   const apiKey = process.env.POE_API_KEY;
   if (!apiKey) {
@@ -183,7 +207,7 @@ type ProjectCreationResult = {
 type ProjectCreationConnection = {
   createProject(input: {
     name: string;
-    html: string;
+    bundle: SourceBundle;
     idempotencyKey: string;
   }): Promise<ProjectCreationResult>;
   installSkill(input: {
@@ -199,6 +223,7 @@ const PROJECT_CREATION_CONNECTOR = "replit-project-creation";
 type HandoffJob = {
   id: string;
   sourceHtml: string;
+  sourceBundle: SourceBundle;
   projectName: string;
   status: "queued" | "running" | "completed" | "failed";
   projectId: string | null;
@@ -338,14 +363,14 @@ async function awaitSkillConfirmation(
 
 function createProjectConnection(): ProjectCreationConnection {
   return {
-    async createProject({ name, html, idempotencyKey }) {
+    async createProject({ name, bundle, idempotencyKey }) {
       const response = await projectConnectionRequest("/projects", {
         method: "POST",
         body: JSON.stringify({
           name,
-          files: [{ path: "index.html", content: html }],
+          files: bundle.files,
           run: {
-            entrypoint: "index.html",
+            entrypoint: bundle.entrypoint,
             command: "python3 -m http.server ${PORT:-3000} --directory .",
           },
           features: {
@@ -376,8 +401,10 @@ function createProjectConnection(): ProjectCreationConnection {
   };
 }
 
-function safeProjectName(html: string): string {
-  const title = extractTitle(html)
+function safeProjectName(bundle: SourceBundle): string {
+  const title = (bundle.metadata.displayName || extractTitle(
+    bundle.files.find((file) => file.path === bundle.entrypoint)?.content ?? "",
+  ))
     .replace(/[\u0000-\u001f<>:"/\\|?*]+/g, " ")
     .replace(/\s+/g, " ")
     .trim()
@@ -385,7 +412,8 @@ function safeProjectName(html: string): string {
   return `Poe Port - ${title || "HTML App"}`;
 }
 
-function containsPrivilegedCredential(html: string): boolean {
+function containsPrivilegedCredential(bundle: SourceBundle): boolean {
+  const html = bundle.files.map((file) => file.content).join("\n");
   const configuredSecrets = [process.env.POE_API_KEY].filter(
     (secret): secret is string => Boolean(secret && secret.length > 4),
   );
@@ -414,6 +442,7 @@ function toHandoffJob(job: HandoffJobRow, steps: HandoffStepRow[]): HandoffJob {
   return {
     id: job.id,
     sourceHtml: job.sourceHtml,
+    sourceBundle: (job.sourceBundle ?? normalizeBundle({ html: job.sourceHtml })) as SourceBundle,
     projectName: job.projectName,
     status: job.status as HandoffJob["status"],
     projectId: job.projectId,
@@ -578,7 +607,7 @@ async function runHandoffJob(jobId: string): Promise<void> {
       assertLease();
       const project = await connection.createProject({
         name: job.projectName,
-        html: job.sourceHtml,
+        bundle: job.sourceBundle,
         idempotencyKey: `handoff:${job.id}:project`,
       });
       assertLease();
@@ -662,39 +691,32 @@ setTimeout(() => void resumeDurableJobs().catch(() => undefined), 0).unref();
 const router: IRouter = Router();
 
 router.post("/port/analyze", async (req, res): Promise<void> => {
-  const parsed = AnalyzeHtmlBody.safeParse(req.body);
+    const parsed = RetryReplitProjectSetupParams.safeParse(req.params);
+
+    const code = error instanceof Error ? error.message : "INVALID_SOURCE_BUNDLE";
+
+    const code = error instanceof Error ? error.message : "INVALID_SOURCE_BUNDLE";
   if (!parsed.success) {
-    req.log.warn({ errors: parsed.error.message }, "Invalid HTML analysis request");
-    res.status(400).json({ error: "Provide one non-empty HTML document." });
-    return;
-  }
-
-  res.json(AnalyzeHtmlResponse.parse(analyzeHtml(parsed.data.html)));
-});
-
-router.get("/port/poe/models", async (req, res): Promise<void> => {
-  if (!process.env.POE_API_KEY) {
-    res.json(
-      ListPoeModelsResponse.parse({
-        configured: false,
-        models: [],
-        message: "Add POE_API_KEY in Replit Secrets to enable Poe.",
-      }),
-    );
+    req.log.warn({ errors: parsed.error.message }, "Invalid Poe chat request");
+    res.status(400).json({ error: "Provide a model and at least one message." });
     return;
   }
 
   try {
-    const response = await poeRequest("/models");
+    const response = await poeRequest("/chat/completions", {
+      method: "POST",
+      body: JSON.stringify({
+        model: parsed.data.model,
+        messages: parsed.data.messages,
+        max_tokens: parsed.data.maxTokens ?? 1024,
+      }),
+    });
+
     if (!response.ok) {
-      req.log.warn({ status: response.status }, "Poe model lookup failed");
-      res.json(
-        ListPoeModelsResponse.parse({
-          configured: true,
-          models: [],
-          message: `Poe is configured, but the model list returned ${response.status}. Check the key and Poe account access.`,
-        }),
-      );
+      req.log.warn({ status: response.status }, "Poe chat request failed");
+      res.status(503).json({
+        error: `Poe returned ${response.status}. Check POE_API_KEY, account access, and the exact PascalCase model ID.`,
+      });
       return;
     }
 
@@ -731,16 +753,20 @@ router.get("/port/poe/models", async (req, res): Promise<void> => {
 });
 
 router.post("/port/poe/chat", async (req, res): Promise<void> => {
-  const parsed = ChatWithPoeBody.safeParse(req.body);
+    const parsed = RetryReplitProjectSetupParams.safeParse(req.params);
+
+    const code = error instanceof Error ? error.message : "INVALID_SOURCE_BUNDLE";
+
+    const code = error instanceof Error ? error.message : "INVALID_SOURCE_BUNDLE";
   if (!parsed.success) {
     req.log.warn({ errors: parsed.error.message }, "Invalid Poe chat request");
     res.status(400).json({ error: "Provide a model and at least one message." });
     return;
   }
 
-  // Chat requests can come from callers other than the Studio. Never trust the
-  // UI to have checked imported document content before sending it to Poe.
-  if (parsed.data.messages.some((message) => containsPrivilegedCredential(message.content))) {
+  if (parsed.data.messages.some((message) => containsPrivilegedCredential({
+    files: [{ path: "chat.txt", content: message.content }],
+  } as SourceBundle))) {
     res.status(400).json({
       error:
         "This chat request contains a service credential. Remove it before sending content to Poe; the request was not forwarded.",
@@ -859,89 +885,17 @@ router.post("/port/replit-projects", requireTrustedCookieOrigin, async (req, res
     });
     return;
   }
-  const parsed = CreateReplitProjectBody.safeParse(req.body);
+    const parsed = RetryReplitProjectSetupParams.safeParse(req.params);
+
+    const code = error instanceof Error ? error.message : "INVALID_SOURCE_BUNDLE";
+
+    const code = error instanceof Error ? error.message : "INVALID_SOURCE_BUNDLE";
   if (!parsed.success) {
     req.log.warn({ errors: parsed.error.message }, "Invalid Replit project handoff request");
-    const tooLarge = parsed.error.issues.some(
-      (issue) => issue.code === "too_big" && issue.path[0] === "html",
-    );
-    res.status(tooLarge ? 413 : 400).json({
-      error: "Provide one non-empty HTML document no larger than 2 MB.",
-      code: tooLarge ? "PROJECT_HANDOFF_SOURCE_TOO_LARGE" : "INVALID_PROJECT_HANDOFF",
-    });
-    return;
-  }
+    const tooLarge = parsed.error.issues.some((issue) => issue.code === "too_big");
 
-  if (containsPrivilegedCredential(parsed.data.html)) {
-    res.status(400).json({
-      error:
-        "This HTML appears to contain a service credential. Remove it before creating a project; the source was not sent to Replit.",
-      code: "SOURCE_CONTAINS_CREDENTIAL",
-    });
-    return;
-  }
-
-  if (!(await hasProjectCreationConnection())) {
-    res.status(503).json({
-      error:
-        "Replit project creation is unavailable. Connect the authorized Replit project-creation capability, then try again.",
-      code: "PROJECT_CREATION_CONNECTION_UNAVAILABLE",
-      action: "A workspace owner can connect it from the HTML Studio setup screen. Never paste a credential into the Studio.",
-    });
-    return;
-  }
-
-  const job: HandoffJob = {
-    id: randomUUID(),
-    sourceHtml: parsed.data.html,
-    projectName: safeProjectName(parsed.data.html),
-    status: "queued",
-    projectId: null,
-    projectUrl: null,
-    currentStep: null,
-    steps: SETUP_STEPS.map(({ name }) => ({
-      name,
-      status: "pending",
-      error: null,
-    })),
-    error: null,
-    leaseToken: null,
-  };
-  await db.transaction(async (tx) => {
-    await tx.insert(handoffJobsTable).values({
-      id: job.id,
-      ownerId: req.user.id,
-      sourceHtml: job.sourceHtml,
-      projectName: job.projectName,
-      status: job.status,
-    });
-    await tx.insert(handoffStepsTable).values(
-      SETUP_STEPS.map((step, position) => ({
-        id: randomUUID(),
-        jobId: job.id,
-        position,
-        name: step.name,
-        slug: step.slug,
-        status: "pending",
-      })),
-    );
-  });
-  res.status(202).json(CreateReplitProjectResponse.parse(publicJob(job)));
-  void runHandoffJob(job.id);
-});
-
-router.get("/port/replit-projects/:jobId", async (req, res): Promise<void> => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({
-      error: "Log in to view this project handoff.",
-      code: "AUTHENTICATION_REQUIRED",
-    });
-    return;
-  }
-  const parsed = GetReplitProjectStatusParams.safeParse(req.params);
-  const job = parsed.success
-    ? await loadJob(parsed.data.jobId, req.user.id)
-    : null;
+  let bundle: SourceBundle;
+    const job = await loadJob(parsed.data.jobId, req.user.id);
   if (!job) {
     res.status(404).json({
       error: "That Replit project creation job was not found or has expired.",
@@ -964,6 +918,37 @@ router.post(
       return;
     }
     const parsed = RetryReplitProjectSetupParams.safeParse(req.params);
+
+    const code = error instanceof Error ? error.message : "INVALID_SOURCE_BUNDLE";
+
+    const code = error instanceof Error ? error.message : "INVALID_SOURCE_BUNDLE";
+    const job = await loadJob(parsed.data.jobId, req.user.id);
+  if (!job) {
+    res.status(404).json({
+      error: "That Replit project creation job was not found or has expired.",
+      code: "PROJECT_HANDOFF_NOT_FOUND",
+    });
+    return;
+  }
+  res.json(GetReplitProjectStatusResponse.parse(publicJob(job)));
+});
+
+router.post(
+  "/port/replit-projects/:jobId/retry",
+  requireTrustedCookieOrigin,
+  async (req, res): Promise<void> => {
+    if (!req.isAuthenticated()) {
+      res.status(401).json({
+        error: "Log in to retry this project handoff.",
+        code: "AUTHENTICATION_REQUIRED",
+      });
+      return;
+    }
+    const parsed = RetryReplitProjectSetupParams.safeParse(req.params);
+
+    const code = error instanceof Error ? error.message : "INVALID_SOURCE_BUNDLE";
+
+    const code = error instanceof Error ? error.message : "INVALID_SOURCE_BUNDLE";
     if (!parsed.success) {
       res.status(404).json({
         error: "That Replit project creation job was not found or has expired.",
@@ -1044,3 +1029,53 @@ router.post(
 );
 
 export default router;
+
+const MAX_BUNDLE_BYTES = 2_000_000;
+
+const SAFE_PATH = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[a-zA-Z0-9._/-]+$/;
+
+const MAX_BUNDLE_FILES = 200;
+
+const MAX_FILE_BYTES = 1_000_000;
+
+function normalizeBundle(input: { html?: string; bundle?: SourceBundle }): SourceBundle {
+  if (input.html !== undefined && input.bundle !== undefined) {
+    throw new Error("BUNDLE_AMBIGUOUS");
+  }
+  if (input.bundle) {
+    const bundle = input.bundle;
+    const seen = new Set<string>();
+    let totalBytes = 0;
+    if (bundle.files.length > MAX_BUNDLE_FILES) throw new Error("BUNDLE_TOO_MANY_FILES");
+    for (const file of bundle.files) {
+      if (!SAFE_PATH.test(file.path) || file.path.endsWith("/") || file.path.includes("//")) {
+        throw new Error("BUNDLE_UNSAFE_PATH");
+      }
+      if (seen.has(file.path)) throw new Error("BUNDLE_DUPLICATE_PATH");
+      seen.add(file.path);
+      const bytes = new TextEncoder().encode(file.content).length;
+      if (bytes > MAX_FILE_BYTES) throw new Error("BUNDLE_FILE_TOO_LARGE");
+      totalBytes += bytes;
+    }
+    if (totalBytes > MAX_BUNDLE_BYTES) throw new Error("BUNDLE_TOO_LARGE");
+    if (!seen.has(bundle.entrypoint)) throw new Error("BUNDLE_ENTRYPOINT_MISSING");
+    if (!bundle.files.find((file) => file.path === bundle.entrypoint)?.content.trim()) {
+      throw new Error("BUNDLE_ENTRYPOINT_EMPTY");
+    }
+    return {
+      ...bundle,
+      files: bundle.files.map((file) => ({ ...file, path: file.path.replaceAll("\\", "/") })),
+    };
+  }
+  if (typeof input.html !== "string" || !input.html.trim()) throw new Error("BUNDLE_EMPTY");
+  if (new TextEncoder().encode(input.html).length > MAX_BUNDLE_BYTES) throw new Error("BUNDLE_TOO_LARGE");
+  return {
+    version: 1,
+    sourceType: "pasted_html",
+    files: [{ path: "index.html", content: input.html }],
+    entrypoint: "index.html",
+    metadata: { displayName: extractTitle(input.html) },
+  };
+}
+
+    const status = code === "BUNDLE_TOO_LARGE" || code === "BUNDLE_FILE_TOO_LARGE" ? 413 : 400;

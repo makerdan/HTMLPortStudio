@@ -472,7 +472,7 @@ export const getAnalyzeHtmlUrl = () => {
 }
 
 /**
- * Inspects a single HTML document for scripts, external assets, browser APIs, and likely Poe or other AI call sites.
+ * Inspects a normalized source bundle (or a legacy single HTML document) for portability.
  * @summary Analyze imported HTML for Replit portability
  */
 export const analyzeHtml = async (htmlInput: HtmlInput, options?: Parameters<typeof customFetch>[1]): Promise<HtmlAnalysis> => {

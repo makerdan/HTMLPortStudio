@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { PortFinding } from './portFinding';
+import type { SourceType } from './sourceType';
 
 export interface HtmlAnalysis {
   title: string;
@@ -17,4 +18,9 @@ export interface HtmlAnalysis {
   aiSignalCount: number;
   findings: PortFinding[];
   steps: string[];
+  sourceType: SourceType;
+  entrypoint: string;
+  fileCount: number;
+  totalBytes: number;
+  files: string[];
 }

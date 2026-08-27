@@ -32,3 +32,8 @@ export * from './replitProjectInput';
 export * from './replitProjectStepName';
 export * from './replitProjectStepStatus';
 export * from './replitProjectStepStatusStatus';
+export * from './sourceBundle';
+export * from './sourceBundleFile';
+export * from './sourceBundleMetadata';
+export * from './sourceBundleVersion';
+export * from './sourceType';

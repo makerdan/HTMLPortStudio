@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS "handoff_jobs" (
   "id" uuid PRIMARY KEY NOT NULL,
   "owner_id" varchar NOT NULL,
   "source_html" text NOT NULL,
+  "source_bundle" jsonb,
   "project_name" text NOT NULL,
   "status" varchar(16) DEFAULT 'queued' NOT NULL,
   "project_id" text,

@@ -31,13 +31,73 @@ export interface ErrorResponse {
   action?: string;
 }
 
-export interface HtmlInput {
+export type SourceType = typeof SourceType[keyof typeof SourceType];
+
+
+export const SourceType = {
+  pasted_html: 'pasted_html',
+  single_file: 'single_file',
+  zip_project: 'zip_project',
+  github_repository: 'github_repository',
+  hosted_page: 'hosted_page',
+  playground: 'playground',
+} as const;
+
+export interface SourceBundleFile {
+  /**
+     * @minLength 1
+     * @maxLength 512
+     */
+  path: string;
+  /** @maxLength 1000000 */
+  content: string;
+}
+
+export interface SourceBundleMetadata {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  displayName: string;
+  sourceUrl?: string;
+  /**
+     * @maxItems 20
+     * @items.maxLength 500
+     */
+  warnings?: string[];
+}
+
+export type SourceBundleVersion = typeof SourceBundleVersion[keyof typeof SourceBundleVersion];
+
+
+export const SourceBundleVersion = {
+  NUMBER_1: 1,
+} as const;
+
+export interface SourceBundle {
+  version: SourceBundleVersion;
+  sourceType: SourceType;
+  /**
+     * @minItems 1
+     * @maxItems 200
+     */
+  files: SourceBundleFile[];
+  /**
+     * @minLength 1
+     * @maxLength 512
+     */
+  entrypoint: string;
+  metadata: SourceBundleMetadata;
+}
+
+export type HtmlInput = (unknown & {
   /**
      * @minLength 1
      * @maxLength 2000000
      */
-  html: string;
-}
+  html?: string;
+  bundle?: SourceBundle;
+});
 
 export type PortFindingSeverity = typeof PortFindingSeverity[keyof typeof PortFindingSeverity];
 
@@ -65,6 +125,11 @@ export interface HtmlAnalysis {
   aiSignalCount: number;
   findings: PortFinding[];
   steps: string[];
+  sourceType: SourceType;
+  entrypoint: string;
+  fileCount: number;
+  totalBytes: number;
+  files: string[];
 }
 
 export interface PoeModels {
@@ -140,13 +205,14 @@ export interface ReplitProjectConnectionSetup {
   setupUrl: string | null;
 }
 
-export interface ReplitProjectInput {
+export type ReplitProjectInput = (unknown & {
   /**
      * @minLength 1
      * @maxLength 2000000
      */
-  html: string;
-}
+  html?: string;
+  bundle?: SourceBundle;
+});
 
 export type ReplitProjectStepName = typeof ReplitProjectStepName[keyof typeof ReplitProjectStepName];
 

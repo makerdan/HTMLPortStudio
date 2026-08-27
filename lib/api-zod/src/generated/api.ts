@@ -58,16 +58,44 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
- * Inspects a single HTML document for scripts, external assets, browser APIs, and likely Poe or other AI call sites.
+ * Inspects a normalized source bundle (or a legacy single HTML document) for portability.
  * @summary Analyze imported HTML for Replit portability
  */
-export const analyzeHtmlBodyHtmlMax = 2000000;
+export const analyzeHtmlBodyThreeHtmlMax = 2000000;
+
+export const analyzeHtmlBodyThreeBundleFilesItemPathMax = 512;
+
+export const analyzeHtmlBodyThreeBundleFilesItemContentMax = 1000000;
+
+export const analyzeHtmlBodyThreeBundleFilesMax = 200;
+
+export const analyzeHtmlBodyThreeBundleEntrypointMax = 512;
+
+export const analyzeHtmlBodyThreeBundleMetadataDisplayNameMax = 120;
+
+export const analyzeHtmlBodyThreeBundleMetadataWarningsItemMax = 500;
+
+export const analyzeHtmlBodyThreeBundleMetadataWarningsMax = 20;
 
 
 
-export const AnalyzeHtmlBody = zod.object({
-  "html": zod.string().min(1).max(analyzeHtmlBodyHtmlMax)
+export const AnalyzeHtmlBody = zod.union([zod.unknown(),zod.unknown()]).and(zod.object({
+  "html": zod.string().min(1).max(analyzeHtmlBodyThreeHtmlMax).optional(),
+  "bundle": zod.object({
+  "version": zod.literal(1),
+  "sourceType": zod.enum(['pasted_html', 'single_file', 'zip_project', 'github_repository', 'hosted_page', 'playground']),
+  "files": zod.array(zod.object({
+  "path": zod.string().min(1).max(analyzeHtmlBodyThreeBundleFilesItemPathMax),
+  "content": zod.string().max(analyzeHtmlBodyThreeBundleFilesItemContentMax)
+})).min(1).max(analyzeHtmlBodyThreeBundleFilesMax),
+  "entrypoint": zod.string().min(1).max(analyzeHtmlBodyThreeBundleEntrypointMax),
+  "metadata": zod.object({
+  "displayName": zod.string().min(1).max(analyzeHtmlBodyThreeBundleMetadataDisplayNameMax),
+  "sourceUrl": zod.string().optional(),
+  "warnings": zod.array(zod.string().max(analyzeHtmlBodyThreeBundleMetadataWarningsItemMax)).max(analyzeHtmlBodyThreeBundleMetadataWarningsMax).optional()
 })
+}).optional()
+}))
 
 export const AnalyzeHtmlResponse = zod.object({
   "title": zod.string(),
@@ -83,7 +111,12 @@ export const AnalyzeHtmlResponse = zod.object({
   "detail": zod.string(),
   "action": zod.string()
 })),
-  "steps": zod.array(zod.string())
+  "steps": zod.array(zod.string()),
+  "sourceType": zod.enum(['pasted_html', 'single_file', 'zip_project', 'github_repository', 'hosted_page', 'playground']),
+  "entrypoint": zod.string(),
+  "fileCount": zod.number(),
+  "totalBytes": zod.number(),
+  "files": zod.array(zod.string())
 })
 
 
@@ -151,13 +184,41 @@ export const GetReplitProjectConnectionSetupResponse = zod.object({
  * Sends the imported HTML unchanged through the server-only authorized Replit project connection and starts the ordered setup workflow.
  * @summary Create a Replit project from the analyzed HTML
  */
-export const createReplitProjectBodyHtmlMax = 2000000;
+export const createReplitProjectBodyThreeHtmlMax = 2000000;
+
+export const createReplitProjectBodyThreeBundleFilesItemPathMax = 512;
+
+export const createReplitProjectBodyThreeBundleFilesItemContentMax = 1000000;
+
+export const createReplitProjectBodyThreeBundleFilesMax = 200;
+
+export const createReplitProjectBodyThreeBundleEntrypointMax = 512;
+
+export const createReplitProjectBodyThreeBundleMetadataDisplayNameMax = 120;
+
+export const createReplitProjectBodyThreeBundleMetadataWarningsItemMax = 500;
+
+export const createReplitProjectBodyThreeBundleMetadataWarningsMax = 20;
 
 
 
-export const CreateReplitProjectBody = zod.object({
-  "html": zod.string().min(1).max(createReplitProjectBodyHtmlMax)
+export const CreateReplitProjectBody = zod.union([zod.unknown(),zod.unknown()]).and(zod.object({
+  "html": zod.string().min(1).max(createReplitProjectBodyThreeHtmlMax).optional(),
+  "bundle": zod.object({
+  "version": zod.literal(1),
+  "sourceType": zod.enum(['pasted_html', 'single_file', 'zip_project', 'github_repository', 'hosted_page', 'playground']),
+  "files": zod.array(zod.object({
+  "path": zod.string().min(1).max(createReplitProjectBodyThreeBundleFilesItemPathMax),
+  "content": zod.string().max(createReplitProjectBodyThreeBundleFilesItemContentMax)
+})).min(1).max(createReplitProjectBodyThreeBundleFilesMax),
+  "entrypoint": zod.string().min(1).max(createReplitProjectBodyThreeBundleEntrypointMax),
+  "metadata": zod.object({
+  "displayName": zod.string().min(1).max(createReplitProjectBodyThreeBundleMetadataDisplayNameMax),
+  "sourceUrl": zod.string().optional(),
+  "warnings": zod.array(zod.string().max(createReplitProjectBodyThreeBundleMetadataWarningsItemMax)).max(createReplitProjectBodyThreeBundleMetadataWarningsMax).optional()
 })
+}).optional()
+}))
 
 export const CreateReplitProjectResponse = zod.object({
   "jobId": zod.string(),

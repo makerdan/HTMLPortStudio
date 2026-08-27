@@ -2,6 +2,7 @@ import { relations } from "drizzle-orm";
 import {
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -19,6 +20,7 @@ export const handoffJobsTable = pgTable(
       .notNull()
       .references(() => usersTable.id, { onDelete: "cascade" }),
     sourceHtml: text("source_html").notNull(),
+    sourceBundle: jsonb("source_bundle"),
     projectName: text("project_name").notNull(),
     status: varchar("status", { length: 16 }).notNull().default("queued"),
     projectId: text("project_id"),

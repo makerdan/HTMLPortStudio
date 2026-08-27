@@ -5,11 +5,13 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { SourceBundle } from './sourceBundle';
 
-export interface ReplitProjectInput {
+export type ReplitProjectInput = (unknown & {
   /**
      * @minLength 1
      * @maxLength 2000000
      */
-  html: string;
-}
+  html?: string;
+  bundle?: SourceBundle;
+});

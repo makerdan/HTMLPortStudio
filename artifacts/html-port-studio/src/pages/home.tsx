@@ -13,6 +13,7 @@ import {
 } from '@workspace/api-client-react';
 import type {
   HtmlAnalysis,
+  SourceBundle,
   PortFinding,
   PoeMessage,
   ReplitProjectHandoff,
@@ -176,24 +177,21 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
       }
     }, {
       onSuccess: (res) => {
-          setPrompt('');
+        setPrompt('');
         setChatHistory(prev => [...prev, { role: 'assistant', content: res.content }]);
       },
-       onError: (error) => {
-         // Keep failed prompts editable and retryable. A failed request is
-         // never represented as an assistant response.
-         setChatHistory(prev => prev.filter((message, index) => index !== prev.length - 1));
-         setPrompt(submittedPrompt);
-         setChatError(apiErrorMessage(error, 'The assistant could not answer. Your prompt is ready to retry.'));
+      onError: (error) => {
+        setChatHistory(prev => prev.filter((message, index) => index !== prev.length - 1));
+        setPrompt(submittedPrompt);
+        setChatError(apiErrorMessage(error, 'The assistant could not answer. Your prompt is ready to retry.'));
       }
     });
   };
 
   if (modelsLoading) {
     return (
-      <div className="flex h-full flex-col items-center justify-center p-6 text-center text-muted-foreground">
-        <Loader2 className="mb-4 h-8 w-8 animate-spin text-primary" />
-        <p className="font-medium">Loading Poe models…</p>
+      <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading Poe models...
       </div>
     );
   }
@@ -223,7 +221,7 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
     );
   }
 
-  if (!poeData.models?.length) {
+  if (!poeData.models.length) {
     return (
       <div className="flex h-full flex-col items-center justify-center p-6 text-center">
         <AlertTriangle className="mb-4 h-8 w-8 text-warning" />
@@ -346,7 +344,10 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
   );
 }
 
-function apiErrorMessage(error: unknown, fallback = 'The Replit project handoff could not be started. Your imported HTML is still here.'): string {
+function apiErrorMessage(
+  error: unknown,
+  fallback = 'The Replit project handoff could not be started. Your imported HTML is still here.',
+): string {
   if (typeof error === 'object' && error !== null && 'data' in error) {
     const data = (error as { data?: unknown }).data;
     if (typeof data === 'object' && data !== null && 'error' in data) {
@@ -374,7 +375,7 @@ function HandoffStepIcon({
   return <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/40" />;
 }
 
-function ReplitProjectHandoffPanel({ html }: { html: string }) {
+function ReplitProjectHandoffPanel({ bundle }: { bundle: SourceBundle }) {
   const { isAuthenticated, isLoading: authLoading, error: authError, login } = useAuth();
   const [jobId, setJobId] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -432,8 +433,10 @@ function ReplitProjectHandoffPanel({ html }: { html: string }) {
       return;
     }
     setLocalError(null);
+    const html = bundle.files.find((file) => file.path === bundle.entrypoint)?.content ?? '';
+    const legacyInput = { data: { html } };
     createMutation.mutate(
-      { data: { html } },
+      bundle.files.length === 1 && bundle.entrypoint === 'index.html' ? legacyInput : { data: { bundle } },
       {
         onSuccess: (data) => {
           queryClient.setQueryData(['replit-project-status', data.jobId], data);
@@ -624,10 +627,8 @@ function ReplitProjectHandoffPanel({ html }: { html: string }) {
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>Project handoff unavailable</AlertTitle>
             <AlertDescription>
-              {localError || apiErrorMessage(
-                statusQuery.error,
-                'The setup status could not be loaded. The imported HTML is still in this session.',
-              )}
+              {localError ||
+                'The setup status could not be loaded. The imported HTML is still in this session.'}
               {statusQuery.isError && (
                 <Button
                   type="button"
@@ -718,6 +719,7 @@ function ReplitProjectHandoffPanel({ html }: { html: string }) {
 
 export default function Home() {
   const [htmlInput, setHtmlInput] = useState('');
+  const [sourceBundle, setSourceBundle] = useState<SourceBundle | null>(null);
   const [analysisData, setAnalysisData] = useState<HtmlAnalysis | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const analyzeMutation = useAnalyzeHtml();
@@ -726,11 +728,23 @@ export default function Home() {
 
   const handleAnalyze = () => {
     if (!htmlInput.trim()) return;
+    const existingEntrypoint = sourceBundle?.files.find((file) => file.path === sourceBundle.entrypoint);
+    const bundle: SourceBundle =
+      sourceBundle && existingEntrypoint?.content === htmlInput
+        ? sourceBundle
+        : {
+            version: 1,
+            sourceType: 'pasted_html',
+            files: [{ path: 'index.html', content: htmlInput }],
+            entrypoint: 'index.html',
+            metadata: { displayName: 'Untitled HTML app' },
+          };
     const sessionId = ++importSessionRef.current;
-    analyzeMutation.mutate({ data: { html: htmlInput } }, {
+    analyzeMutation.mutate({ data: { bundle } }, {
       onSuccess: (data) => {
         if (sessionId !== importSessionRef.current) return;
         setAnalysisData(data);
+        setSourceBundle(bundle);
       },
       onError: () => {
         if (sessionId !== importSessionRef.current) return;
@@ -743,6 +757,7 @@ export default function Home() {
     analyzeMutation.reset();
     setAnalysisData(null);
     setHtmlInput('');
+    setSourceBundle(null);
     setFileError(null);
   };
 
@@ -762,6 +777,13 @@ export default function Home() {
     const html = await file.text();
     importSessionRef.current += 1;
     setHtmlInput(html);
+    setSourceBundle({
+      version: 1,
+      sourceType: 'single_file',
+      files: [{ path: file.name, content: html }],
+      entrypoint: file.name,
+      metadata: { displayName: file.name.replace(/\.(html?|HTML?)$/, '') || 'HTML app' },
+    });
     setAnalysisData(null);
     setFileError(null);
   };
@@ -936,7 +958,7 @@ export default function Home() {
                   )}
                 </div>
 
-                <ReplitProjectHandoffPanel html={htmlInput} />
+                 {sourceBundle && <ReplitProjectHandoffPanel bundle={sourceBundle} />}
 
                 {/* Steps */}
                 {analysisData.steps.length > 0 && (
@@ -983,7 +1005,7 @@ export default function Home() {
                 <TabsContent value="preview" className="m-0 h-full w-full absolute inset-0 p-4">
                   <div className="h-full w-full rounded-xl overflow-hidden border shadow-sm bg-white">
                     <iframe 
-                      srcDoc={htmlInput}
+                       srcDoc={sourceBundle?.files.find((file) => file.path === sourceBundle.entrypoint)?.content ?? htmlInput}
                        sandbox="allow-scripts allow-forms"
                       className="w-full h-full border-0"
                       title="Preview"

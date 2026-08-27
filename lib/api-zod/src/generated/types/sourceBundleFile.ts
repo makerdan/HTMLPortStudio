@@ -5,13 +5,13 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { SourceBundle } from './sourceBundle';
 
-export type HtmlInput = (unknown & {
+export interface SourceBundleFile {
   /**
      * @minLength 1
-     * @maxLength 2000000
+     * @maxLength 512
      */
-  html?: string;
-  bundle?: SourceBundle;
-});
+  path: string;
+  /** @maxLength 1000000 */
+  content: string;
+}

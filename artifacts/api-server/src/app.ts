@@ -84,7 +84,7 @@ const jsonBodyErrorHandler: ErrorRequestHandler = (
     (error as { type?: unknown }).type === "entity.too.large"
   ) {
     res.status(413).json({
-      error: "Provide one non-empty HTML document no larger than 2 MB.",
+      error: "Provide a non-empty source bundle no larger than 2 MB.",
       code: "PROJECT_HANDOFF_SOURCE_TOO_LARGE",
     });
     return;

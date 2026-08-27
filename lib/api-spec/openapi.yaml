@@ -81,7 +81,7 @@ paths:
       operationId: analyzeHtml
       tags: [porting]
       summary: Analyze imported HTML for Replit portability
-      description: Inspects a single HTML document for scripts, external assets, browser APIs, and likely Poe or other AI call sites.
+      description: Inspects a normalized source bundle (or a legacy single HTML document) for portability.
       requestBody:
         required: true
         content:
@@ -340,6 +340,57 @@ components:
         action:
           type: string
       required: [error]
+    SourceType:
+      type: string
+      enum: [pasted_html, single_file, zip_project, github_repository, hosted_page, playground]
+    SourceBundleFile:
+      type: object
+      required: [path, content]
+      properties:
+        path:
+          type: string
+          minLength: 1
+          maxLength: 512
+        content:
+          type: string
+          maxLength: 1000000
+    SourceBundleMetadata:
+      type: object
+      required: [displayName]
+      properties:
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 120
+        sourceUrl:
+          type: string
+        warnings:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            maxLength: 500
+    SourceBundle:
+      type: object
+      required: [version, sourceType, files, entrypoint, metadata]
+      properties:
+        version:
+          type: integer
+          enum: [1]
+        sourceType:
+          $ref: "#/components/schemas/SourceType"
+        files:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            $ref: "#/components/schemas/SourceBundleFile"
+        entrypoint:
+          type: string
+          minLength: 1
+          maxLength: 512
+        metadata:
+          $ref: "#/components/schemas/SourceBundleMetadata"
     HtmlInput:
       type: object
       properties:
@@ -347,8 +398,11 @@ components:
           type: string
           minLength: 1
           maxLength: 2000000
-      required:
-        - html
+        bundle:
+          $ref: "#/components/schemas/SourceBundle"
+      anyOf:
+        - required: [html]
+        - required: [bundle]
     PortFinding:
       type: object
       properties:
@@ -387,6 +441,18 @@ components:
           type: array
           items:
             type: string
+        sourceType:
+          $ref: "#/components/schemas/SourceType"
+        entrypoint:
+          type: string
+        fileCount:
+          type: number
+        totalBytes:
+          type: number
+        files:
+          type: array
+          items:
+            type: string
       required:
         - title
         - bytes
@@ -397,6 +463,11 @@ components:
         - aiSignalCount
         - findings
         - steps
+        - sourceType
+        - entrypoint
+        - fileCount
+        - totalBytes
+        - files
     PoeModels:
       type: object
       properties:
@@ -475,7 +546,11 @@ components:
           type: string
           minLength: 1
           maxLength: 2000000
-      required: [html]
+        bundle:
+          $ref: "#/components/schemas/SourceBundle"
+      anyOf:
+        - required: [html]
+        - required: [bundle]
     ReplitProjectStepName:
       type: string
       enum:
