@@ -29,6 +29,8 @@ import type {
   GithubImportInput,
   GithubRepository,
   HealthStatus,
+  HostedUrlImport,
+  HostedUrlInput,
   HtmlAnalysis,
   HtmlInput,
   LogoutBrowserSessionParams,
@@ -538,6 +540,78 @@ export const useAnalyzeHtml = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getAnalyzeHtmlMutationOptions(options));
+    }
+
+export const getImportHostedUrlUrl = () => {
+
+
+
+
+  return `/api/port/hosted-url`
+}
+
+/**
+ * Fetches one public HTML document server-side with SSRF, redirect, timeout, and size protections.
+ * @summary Import a public hosted HTML page
+ */
+export const importHostedUrl = async (hostedUrlInput: HostedUrlInput, options?: Parameters<typeof customFetch>[1]): Promise<HostedUrlImport> => {
+
+  return customFetch<HostedUrlImport>(getImportHostedUrlUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(hostedUrlInput)
+  }
+);}
+
+
+
+
+
+export const getImportHostedUrlMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importHostedUrl>>, TError,{data: BodyType<HostedUrlInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof importHostedUrl>>, TError,{data: BodyType<HostedUrlInput>}, TContext> => {
+
+const mutationKey = ['importHostedUrl'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof importHostedUrl>>, {data: BodyType<HostedUrlInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  importHostedUrl(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ImportHostedUrlMutationResult = NonNullable<Awaited<ReturnType<typeof importHostedUrl>>>
+    export type ImportHostedUrlMutationBody = BodyType<HostedUrlInput>
+    export type ImportHostedUrlMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Import a public hosted HTML page
+ */
+export const useImportHostedUrl = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importHostedUrl>>, TError,{data: BodyType<HostedUrlInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof importHostedUrl>>,
+        TError,
+        {data: BodyType<HostedUrlInput>},
+        TContext
+      > => {
+      return useMutation(getImportHostedUrlMutationOptions(options));
     }
 
 export const getGetGithubRepositoryUrl = (params: GetGithubRepositoryParams,) => {

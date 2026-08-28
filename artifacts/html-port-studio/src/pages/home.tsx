@@ -12,6 +12,7 @@ import {
   useRetryReplitProjectSetup,
   useGetGithubRepository,
   useImportGithubRepository,
+  useImportHostedUrl,
 } from '@workspace/api-client-react';
 import type {
   HtmlAnalysis,
@@ -23,6 +24,7 @@ import type {
   ReplitProjectStepStatus,
   GithubImport,
   GithubRef,
+  HostedUrlImport,
 } from '@workspace/api-client-react';
 import { useAuth } from '@workspace/replit-auth-web';
 import {
@@ -50,6 +52,7 @@ import {
   Github,
   FileArchive,
   Files,
+  Globe2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -137,6 +140,21 @@ function validateHtmlFile(file: File): string | null {
     return `This HTML file is ${formatBytes(file.size)}. Choose a file no larger than 2 MB.`;
   }
   return null;
+}
+
+function validateHostedUrl(value: string): string | null {
+  try {
+    const parsed = new URL(value.trim());
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      return 'Use a public HTTP(S) URL beginning with https://.';
+    }
+    if (parsed.username || parsed.password) {
+      return 'Remove usernames and passwords from the URL before importing it.';
+    }
+    return null;
+  } catch {
+    return 'Enter a complete public HTTP(S) URL, such as https://example.com/app.';
+  }
 }
 
 // ----------------------------------------------------------------------
@@ -1010,6 +1028,9 @@ export default function Home() {
   const [githubCandidates, setGithubCandidates] = useState<string[]>([]);
   const [githubError, setGithubError] = useState<string | null>(null);
   const [githubImportData, setGithubImportData] = useState<GithubImport | null>(null);
+  const [hostedUrl, setHostedUrl] = useState('');
+  const [hostedError, setHostedError] = useState<string | null>(null);
+  const [hostedImportData, setHostedImportData] = useState<HostedUrlImport | null>(null);
   const [repairOpen, setRepairOpen] = useState(false);
   const [repairSource, setRepairSource] = useState<string | null>(null);
   const [zipLoading, setZipLoading] = useState(false);
@@ -1025,6 +1046,7 @@ export default function Home() {
     },
   );
   const githubImportMutation = useImportGithubRepository();
+  const hostedImportMutation = useImportHostedUrl();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const zipInputRef = useRef<HTMLInputElement>(null);
   const importSessionRef = useRef(0);
@@ -1161,6 +1183,53 @@ export default function Home() {
     setGithubError(null);
   };
 
+  const handleHostedImport = () => {
+    const value = hostedUrl.trim();
+    const validationError = validateHostedUrl(value);
+    if (validationError) {
+      setHostedError(validationError);
+      return;
+    }
+    if (hostedImportMutation.isPending) return;
+    setHostedError(null);
+    hostedImportMutation.mutate(
+      { data: { url: value } },
+      {
+        onSuccess: (data: HostedUrlImport) => {
+          const bundle = data.bundle;
+          if (bundle.sourceType !== 'hosted_page') {
+            setHostedImportData(null);
+            setHostedError('The server returned an unexpected hosted source. Retry the import.');
+            return;
+          }
+          const entrypointHtml =
+            bundle.files.find((file) => file.path === bundle.entrypoint)?.content ?? '';
+          importSessionRef.current += 1;
+          clearRecovery();
+          setSourceBundle(bundle);
+          setHtmlInput(entrypointHtml);
+          setAnalysisData(null);
+          setHostedImportData(data);
+          setHostedError(null);
+        },
+        onError: (error: unknown) => {
+          setHostedImportData(null);
+          setHostedError(
+            getStudioErrorMessage(
+              error,
+              'The hosted page could not be imported. Your current source is still here.',
+            ),
+          );
+        },
+      },
+    );
+  };
+
+  const handleCancelHostedImport = () => {
+    hostedImportMutation.reset();
+    setHostedError('Hosted import cancelled. You can retry the same URL.');
+  };
+
   const handleReset = () => {
     importSessionRef.current += 1;
     analyzeMutation.reset();
@@ -1180,6 +1249,10 @@ export default function Home() {
     setGithubError(null);
     setGithubImportData(null);
     setZipLoading(false);
+    hostedImportMutation.reset();
+    setHostedUrl('');
+    setHostedError(null);
+    setHostedImportData(null);
   };
 
   const handleFileSelect = async (
@@ -1584,6 +1657,100 @@ export default function Home() {
                       <Button type="button" className="mt-3 w-full" onClick={handleGithubConfirm}>
                         Use this GitHub source
                       </Button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-6 border-t pt-5">
+                  <div className="mb-3 flex items-start gap-3">
+                    <Globe2 className="mt-0.5 h-5 w-5 shrink-0 text-foreground" />
+                    <div>
+                      <h3 className="font-semibold">Import a hosted HTML page</h3>
+                      <p className="text-sm text-muted-foreground">
+                        The server fetches one public HTTP(S) document safely. It never
+                        performs an arbitrary browser-side fetch or follows runtime requests.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      value={hostedUrl}
+                      onChange={(event) => {
+                        setHostedUrl(event.target.value);
+                        setHostedError(null);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          handleHostedImport();
+                        }
+                      }}
+                      placeholder="https://example.com/app"
+                      aria-label="Hosted page URL"
+                      inputMode="url"
+                    />
+                    <Button
+                      type="button"
+                      className="shrink-0"
+                      onClick={handleHostedImport}
+                      disabled={hostedImportMutation.isPending}
+                    >
+                      {hostedImportMutation.isPending ? (
+                        <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Fetching...</>
+                      ) : (
+                        'Fetch hosted HTML'
+                      )}
+                    </Button>
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    HTTPS is required by default. Private, loopback, metadata, credentialed,
+                    non-HTML, oversized, and unsafe redirect destinations are blocked.
+                  </p>
+                  {hostedImportMutation.isPending && (
+                    <div className="mt-3 flex items-center justify-between rounded-lg border bg-muted/20 p-3 text-sm">
+                      <span className="flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Fetching and checking the hosted page...
+                      </span>
+                      <Button type="button" size="sm" variant="outline" onClick={handleCancelHostedImport}>
+                        Cancel
+                      </Button>
+                    </div>
+                  )}
+                  {hostedError && (
+                    <Alert variant="destructive" className="mt-3">
+                      <XCircle className="h-4 w-4" />
+                      <AlertTitle>Hosted page could not be imported</AlertTitle>
+                      <AlertDescription>
+                        {hostedError}
+                        {!hostedImportMutation.isPending && (
+                          <Button type="button" size="sm" variant="outline" className="mt-3" onClick={handleHostedImport}>
+                            Retry hosted import
+                          </Button>
+                        )}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                  {hostedImportData && (
+                    <div className="mt-3 rounded-lg border border-primary/30 bg-primary/[0.03] p-4">
+                      <p className="font-medium">Hosted page fetched safely</p>
+                      <dl className="mt-2 space-y-1 text-sm">
+                        <div><dt className="inline font-medium">Original URL: </dt><dd className="inline break-all">{hostedImportData.originalUrl}</dd></div>
+                        <div><dt className="inline font-medium">Final allowed URL: </dt><dd className="inline break-all">{hostedImportData.finalUrl}</dd></div>
+                        <div><dt className="inline font-medium">Fetch status: </dt><dd className="inline">{hostedImportData.status}</dd></div>
+                      </dl>
+                      {hostedImportData.warnings.length > 0 && (
+                        <div className="mt-3">
+                          <p className="text-sm font-medium">Portability warnings</p>
+                          <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+                            {hostedImportData.warnings.map((warning) => <li key={warning}>{warning}</li>)}
+                          </ul>
+                        </div>
+                      )}
+                      <p className="mt-3 text-xs text-muted-foreground">
+                        The imported HTML can now be analyzed, previewed safely, sent to the optional Poe assistant,
+                        or handed off to Replit after your review.
+                      </p>
                     </div>
                   )}
                 </div>

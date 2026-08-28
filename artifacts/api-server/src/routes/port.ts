@@ -10,6 +10,7 @@ import {
 } from "@workspace/db";
 import { and, asc, eq, lt, or } from "drizzle-orm";
 import { requireTrustedCookieOrigin } from "../middlewares/csrfMiddleware";
+import { fetchHostedUrl, HostedUrlError } from "./hosted-url";
 import {
   AnalyzeHtmlBody,
   AnalyzeHtmlResponse,
@@ -43,6 +44,8 @@ export type SourceBundle = {
     displayName: string;
     sourceUrl?: string;
     warnings?: string[];
+    originalUrl?: string;
+    finalUrl?: string;
     resolvedRef?: string;
     resolvedCommitSha?: string;
     entrypointCandidates?: string[];
@@ -719,6 +722,24 @@ resumeTimer.unref();
 setTimeout(() => void resumeDurableJobs().catch(() => undefined), 0).unref();
 
 const router: IRouter = Router();
+const hostedImportAttempts = new Map<string, number[]>();
+const HOSTED_IMPORT_WINDOW_MS = 60_000;
+const HOSTED_IMPORT_LIMIT = 10;
+
+function hostedImportRateLimited(request: { ip?: string }): boolean {
+  const key = request.ip || "unknown";
+  const now = Date.now();
+  const recent = (hostedImportAttempts.get(key) ?? []).filter(
+    (timestamp) => now - timestamp < HOSTED_IMPORT_WINDOW_MS,
+  );
+  if (recent.length >= HOSTED_IMPORT_LIMIT) {
+    hostedImportAttempts.set(key, recent);
+    return true;
+  }
+  recent.push(now);
+  hostedImportAttempts.set(key, recent);
+  return false;
+}
 
 router.post("/port/analyze", async (req, res): Promise<void> => {
   const parsed = AnalyzeHtmlBody.safeParse(req.body);
@@ -744,6 +765,84 @@ router.post("/port/analyze", async (req, res): Promise<void> => {
     res.status(tooLarge ? 413 : 400).json({
       error: "Provide exactly one valid source bundle no larger than 2 MB.",
       code,
+    });
+  }
+});
+
+router.post("/port/hosted-url", async (req, res): Promise<void> => {
+  if (hostedImportRateLimited(req)) {
+    res.status(429).json({
+      error: "Hosted URL imports are temporarily rate limited. Wait a minute and try again.",
+      code: "HOSTED_URL_RATE_LIMITED",
+      action: "Wait before retrying; use paste or file import if you already have the HTML.",
+    });
+    return;
+  }
+
+  const body =
+    typeof req.body === "object" && req.body !== null
+      ? (req.body as { url?: unknown })
+      : {};
+  if (typeof body.url !== "string") {
+    res.status(400).json({
+      error: "Provide one complete public HTTP(S) URL.",
+      code: "HOSTED_URL_INVALID",
+      action: "Use a URL beginning with https:// that serves an HTML document.",
+    });
+    return;
+  }
+
+  try {
+    const result = await fetchHostedUrl(body.url);
+    const bundle: SourceBundle = {
+      version: 1,
+      sourceType: "hosted_page",
+      files: [{ path: "index.html", content: result.html }],
+      entrypoint: "index.html",
+      metadata: {
+        displayName: extractTitle(result.html),
+        sourceUrl: result.originalUrl,
+        originalUrl: result.originalUrl,
+        finalUrl: result.finalUrl,
+        warnings: result.warnings,
+      },
+    };
+    res.json({
+      originalUrl: result.originalUrl,
+      finalUrl: result.finalUrl,
+      status: "fetched",
+      bundle,
+      warnings: result.warnings,
+    });
+  } catch (error) {
+    const hostedError =
+      error instanceof HostedUrlError
+        ? error
+        : new HostedUrlError(
+            "HOSTED_URL_FETCH_FAILED",
+            "The hosted page could not be fetched. Check the public URL and try again.",
+          );
+    const status =
+      hostedError.code === "HOSTED_URL_TOO_LARGE"
+        ? 413
+        : hostedError.code === "HOSTED_URL_RATE_LIMITED"
+          ? 429
+          : hostedError.code.startsWith("HOSTED_URL_FETCH") ||
+              hostedError.code === "HOSTED_URL_TIMEOUT" ||
+              hostedError.code === "HOSTED_URL_DNS_FAILED" ||
+              hostedError.code === "HOSTED_URL_DNS_REBINDING" ||
+              hostedError.code === "HOSTED_URL_HTTP_ERROR" ||
+              hostedError.code === "HOSTED_URL_NOT_HTML"
+            ? 502
+            : 400;
+    req.log.warn({ code: hostedError.code, ip: req.ip }, "Hosted URL import rejected");
+    res.status(status).json({
+      error: hostedError.message,
+      code: hostedError.code,
+      action:
+        status === 502
+          ? "Check that the page is publicly reachable and serves HTML, then retry."
+          : "Review the URL and remove credentials or private-network destinations before retrying.",
     });
   }
 });

@@ -101,6 +101,49 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /port/hosted-url:
+    post:
+      operationId: importHostedUrl
+      tags: [porting]
+      summary: Import a public hosted HTML page
+      description: Fetches one public HTML document server-side with SSRF, redirect, timeout, and size protections.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HostedUrlInput"
+      responses:
+        "200":
+          description: Hosted HTML source bundle and fetch diagnostics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HostedUrlImport"
+        "400":
+          description: Invalid or unsafe hosted URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Hosted HTML response is too large
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Hosted URL import rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Hosted page could not be fetched
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /port/github/repository:
     get:
       operationId: getGithubRepository
@@ -464,6 +507,10 @@ components:
           maxLength: 120
         sourceUrl:
           type: string
+        originalUrl:
+          type: string
+        finalUrl:
+          type: string
         warnings:
           type: array
           maxItems: 20
@@ -514,6 +561,35 @@ components:
       anyOf:
         - required: [html]
         - required: [bundle]
+    HostedUrlInput:
+      type: object
+      properties:
+        url:
+          type: string
+          minLength: 1
+          maxLength: 2048
+      required: [url]
+    HostedUrlImportStatus:
+      type: string
+      enum: [fetched]
+    HostedUrlImport:
+      type: object
+      properties:
+        originalUrl:
+          type: string
+        finalUrl:
+          type: string
+        status:
+          $ref: "#/components/schemas/HostedUrlImportStatus"
+        bundle:
+          $ref: "#/components/schemas/SourceBundle"
+        warnings:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            maxLength: 500
+      required: [originalUrl, finalUrl, status, bundle, warnings]
     PortFinding:
       type: object
       properties:

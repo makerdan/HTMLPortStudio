@@ -98,6 +98,8 @@ export const AnalyzeHtmlBody = zod.union([zod.unknown(),zod.unknown()]).and(zod.
   "metadata": zod.object({
   "displayName": zod.string().min(1).max(analyzeHtmlBodyThreeBundleMetadataDisplayNameMax),
   "sourceUrl": zod.string().optional(),
+  "originalUrl": zod.string().optional(),
+  "finalUrl": zod.string().optional(),
   "warnings": zod.array(zod.string().max(analyzeHtmlBodyThreeBundleMetadataWarningsItemMax)).max(analyzeHtmlBodyThreeBundleMetadataWarningsMax).optional(),
   "resolvedRef": zod.string().max(analyzeHtmlBodyThreeBundleMetadataResolvedRefMax).optional(),
   "resolvedCommitSha": zod.string().max(analyzeHtmlBodyThreeBundleMetadataResolvedCommitShaMax).optional(),
@@ -128,6 +130,71 @@ export const AnalyzeHtmlResponse = zod.object({
   "files": zod.array(zod.string()),
   "localAssetReferences": zod.array(zod.string()),
   "externalDependencies": zod.array(zod.string())
+})
+
+
+/**
+ * Fetches one public HTML document server-side with SSRF, redirect, timeout, and size protections.
+ * @summary Import a public hosted HTML page
+ */
+export const importHostedUrlBodyUrlMax = 2048;
+
+
+
+export const ImportHostedUrlBody = zod.object({
+  "url": zod.string().min(1).max(importHostedUrlBodyUrlMax)
+})
+
+export const importHostedUrlResponseBundleFilesItemPathMax = 512;
+
+export const importHostedUrlResponseBundleFilesItemContentMax = 1000000;
+
+export const importHostedUrlResponseBundleFilesMax = 200;
+
+export const importHostedUrlResponseBundleEntrypointMax = 512;
+
+export const importHostedUrlResponseBundleMetadataDisplayNameMax = 120;
+
+export const importHostedUrlResponseBundleMetadataWarningsItemMax = 500;
+
+export const importHostedUrlResponseBundleMetadataWarningsMax = 20;
+
+export const importHostedUrlResponseBundleMetadataResolvedRefMax = 256;
+
+export const importHostedUrlResponseBundleMetadataResolvedCommitShaMax = 64;
+
+export const importHostedUrlResponseBundleMetadataEntrypointCandidatesMax = 20;
+
+export const importHostedUrlResponseWarningsItemMax = 500;
+
+export const importHostedUrlResponseWarningsMax = 20;
+
+
+
+export const ImportHostedUrlResponse = zod.object({
+  "originalUrl": zod.string(),
+  "finalUrl": zod.string(),
+  "status": zod.enum(['fetched']),
+  "bundle": zod.object({
+  "version": zod.literal(1),
+  "sourceType": zod.enum(['pasted_html', 'single_file', 'zip_project', 'github_repository', 'hosted_page', 'playground']),
+  "files": zod.array(zod.object({
+  "path": zod.string().min(1).max(importHostedUrlResponseBundleFilesItemPathMax),
+  "content": zod.string().max(importHostedUrlResponseBundleFilesItemContentMax)
+})).min(1).max(importHostedUrlResponseBundleFilesMax),
+  "entrypoint": zod.string().min(1).max(importHostedUrlResponseBundleEntrypointMax),
+  "metadata": zod.object({
+  "displayName": zod.string().min(1).max(importHostedUrlResponseBundleMetadataDisplayNameMax),
+  "sourceUrl": zod.string().optional(),
+  "originalUrl": zod.string().optional(),
+  "finalUrl": zod.string().optional(),
+  "warnings": zod.array(zod.string().max(importHostedUrlResponseBundleMetadataWarningsItemMax)).max(importHostedUrlResponseBundleMetadataWarningsMax).optional(),
+  "resolvedRef": zod.string().max(importHostedUrlResponseBundleMetadataResolvedRefMax).optional(),
+  "resolvedCommitSha": zod.string().max(importHostedUrlResponseBundleMetadataResolvedCommitShaMax).optional(),
+  "entrypointCandidates": zod.array(zod.string()).max(importHostedUrlResponseBundleMetadataEntrypointCandidatesMax).optional()
+})
+}),
+  "warnings": zod.array(zod.string().max(importHostedUrlResponseWarningsItemMax)).max(importHostedUrlResponseWarningsMax)
 })
 
 
@@ -221,6 +288,8 @@ export const ImportGithubRepositoryResponse = zod.object({
   "metadata": zod.object({
   "displayName": zod.string().min(1).max(importGithubRepositoryResponseBundleMetadataDisplayNameMax),
   "sourceUrl": zod.string().optional(),
+  "originalUrl": zod.string().optional(),
+  "finalUrl": zod.string().optional(),
   "warnings": zod.array(zod.string().max(importGithubRepositoryResponseBundleMetadataWarningsItemMax)).max(importGithubRepositoryResponseBundleMetadataWarningsMax).optional(),
   "resolvedRef": zod.string().max(importGithubRepositoryResponseBundleMetadataResolvedRefMax).optional(),
   "resolvedCommitSha": zod.string().max(importGithubRepositoryResponseBundleMetadataResolvedCommitShaMax).optional(),
@@ -370,6 +439,8 @@ export const CreateReplitProjectBody = zod.union([zod.unknown(),zod.unknown()]).
   "metadata": zod.object({
   "displayName": zod.string().min(1).max(createReplitProjectBodyThreeBundleMetadataDisplayNameMax),
   "sourceUrl": zod.string().optional(),
+  "originalUrl": zod.string().optional(),
+  "finalUrl": zod.string().optional(),
   "warnings": zod.array(zod.string().max(createReplitProjectBodyThreeBundleMetadataWarningsItemMax)).max(createReplitProjectBodyThreeBundleMetadataWarningsMax).optional(),
   "resolvedRef": zod.string().max(createReplitProjectBodyThreeBundleMetadataResolvedRefMax).optional(),
   "resolvedCommitSha": zod.string().max(createReplitProjectBodyThreeBundleMetadataResolvedCommitShaMax).optional(),

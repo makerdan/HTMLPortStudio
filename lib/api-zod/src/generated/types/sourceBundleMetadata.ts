@@ -13,6 +13,8 @@ export interface SourceBundleMetadata {
      */
   displayName: string;
   sourceUrl?: string;
+  originalUrl?: string;
+  finalUrl?: string;
   /**
      * @maxItems 20
      * @items.maxLength 500

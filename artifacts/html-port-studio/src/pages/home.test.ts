@@ -354,6 +354,22 @@ test("offers a pinned, review-before-confirming public GitHub import", async () 
   assert.match(source, /GitHub\s+credentials are never requested/);
 });
 
+test("keeps hosted URL fetching server-side and shows fetch diagnostics", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /useImportHostedUrl/);
+  assert.match(source, /validateHostedUrl/);
+  assert.match(source, /Fetch hosted HTML/);
+  assert.match(source, /Fetching and checking the hosted page/);
+  assert.match(source, /Cancel/);
+  assert.match(source, /Retry hosted import/);
+  assert.match(source, /Original URL:/);
+  assert.match(source, /Final allowed URL:/);
+  assert.match(source, /sourceType !== 'hosted_page'/);
+  assert.match(source, /The server fetches one public HTTP\(S\) document/);
+  assert.doesNotMatch(source, /fetch\(hostedUrl/);
+});
+
 test("offers a local ZIP project flow with explicit entrypoint recovery", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
 
@@ -373,6 +389,7 @@ test("does not analyze ZIP source while it is being selected", async () => {
   const zipHandler = source.slice(zipHandlerStart, zipHandlerEnd);
 
   assert.notEqual(zipHandlerStart, -1);
+  assert.match(source, /useImportHostedUrl/);
   assert.doesNotMatch(zipHandler, /analyzeMutation\.mutate/);
   assert.match(zipHandler, /makeZipSourceBundle\(await file\.arrayBuffer\(\), file\.name\)/);
   assert.match(zipHandler, /if \(sessionId !== importSessionRef\.current\) return/);

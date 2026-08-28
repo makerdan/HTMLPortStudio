@@ -60,6 +60,8 @@ export interface SourceBundleMetadata {
      */
   displayName: string;
   sourceUrl?: string;
+  originalUrl?: string;
+  finalUrl?: string;
   /**
      * @maxItems 20
      * @items.maxLength 500
@@ -104,6 +106,33 @@ export type HtmlInput = (unknown & {
   html?: string;
   bundle?: SourceBundle;
 });
+
+export interface HostedUrlInput {
+  /**
+     * @minLength 1
+     * @maxLength 2048
+     */
+  url: string;
+}
+
+export type HostedUrlImportStatus = typeof HostedUrlImportStatus[keyof typeof HostedUrlImportStatus];
+
+
+export const HostedUrlImportStatus = {
+  fetched: 'fetched',
+} as const;
+
+export interface HostedUrlImport {
+  originalUrl: string;
+  finalUrl: string;
+  status: HostedUrlImportStatus;
+  bundle: SourceBundle;
+  /**
+     * @maxItems 20
+     * @items.maxLength 500
+     */
+  warnings: string[];
+}
 
 export type PortFindingSeverity = typeof PortFindingSeverity[keyof typeof PortFindingSeverity];
 
