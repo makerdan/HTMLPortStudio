@@ -20,6 +20,10 @@ author = "agent"
 task = "workflow.run"
 args = "test-standard"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "api-validation"
+
 [[workflows.workflow]]
 name = "test-standard"
 author = "agent"
@@ -27,6 +31,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "pnpm run test-standard"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "api-validation"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm run validate:api"
 
 [workflows.workflow.metadata]
 isValidation = true

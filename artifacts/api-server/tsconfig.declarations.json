@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "disableSourceOfProjectReferenceRedirect": true,
+    "paths": {
+      "@workspace/api-zod": [
+        "../../.cache/api-validation/api-zod-dist/index.d.ts"
+      ]
+    }
+  },
+  "references": [
+    {
+      "path": "../../lib/db"
+    }
+  ]
+}

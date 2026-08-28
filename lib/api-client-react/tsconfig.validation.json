@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "../..",
+    "outDir": "../../.cache/api-validation/api-client-react-dist",
+    "paths": {
+      "@tanstack/react-query": [
+        "lib/api-client-react/node_modules/@tanstack/react-query"
+      ]
+    },
+    "rootDir": "../../.cache/api-validation/api-client-react",
+    "tsBuildInfoFile": "../../.cache/api-validation/api-client-react.tsbuildinfo"
+  },
+  "include": ["../../.cache/api-validation/api-client-react"]
+}

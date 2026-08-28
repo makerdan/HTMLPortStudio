@@ -1,3 +1,3 @@
 - [Node test TypeScript extensions](node-test-typescript.md) — Native strip-types tests load `.ts`; use a TSX-capable runner when the test contains JSX.
-- [Workspace library declaration refresh](library-declaration-refresh.md) — Refresh composite declarations before diagnosing missing shared-library exports.
+- [Workspace declaration validation](library-declaration-refresh.md) — Use isolated outputs and make consumers resolve emitted declarations when validation can run in parallel.
 - [Browser test runtime](browser-test-runtime.md) — Playwright needs its Chromium binary and native graphics/audio libraries in minimal containers.

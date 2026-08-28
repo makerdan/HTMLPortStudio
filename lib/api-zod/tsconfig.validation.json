@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "../..",
+    "outDir": "../../.cache/api-validation/api-zod-dist",
+    "paths": {
+      "zod": ["lib/api-zod/node_modules/zod"]
+    },
+    "rootDir": "../../.cache/api-validation/api-zod",
+    "tsBuildInfoFile": "../../.cache/api-validation/api-zod.tsbuildinfo"
+  },
+  "include": ["../../.cache/api-validation/api-zod"]
+}

@@ -24,6 +24,7 @@ import {
   ListPoeModelsResponse,
   RetryReplitProjectSetupParams,
   RetryReplitProjectSetupResponse,
+  type PoeMessage,
 } from "@workspace/api-zod";
 
 type Finding = {
@@ -784,13 +785,17 @@ router.post("/port/poe/chat", async (req, res): Promise<void> => {
     return;
   }
 
-  if (parsed.data.messages.some((message) => containsPrivilegedCredential({
-    version: 1,
-    sourceType: "pasted_html",
-    files: [{ path: "chat.txt", content: message.content }],
-    entrypoint: "chat.txt",
-    metadata: { displayName: "Poe chat" },
-  }))) {
+  if (
+    parsed.data.messages.some((message: PoeMessage) =>
+      containsPrivilegedCredential({
+        version: 1,
+        sourceType: "pasted_html",
+        files: [{ path: "chat.txt", content: message.content }],
+        entrypoint: "chat.txt",
+        metadata: { displayName: "Poe chat" },
+      }),
+    )
+  ) {
     res.status(400).json({
       error:
         "This chat request contains a service credential. Remove it before sending content to Poe; the request was not forwarded.",
@@ -912,7 +917,9 @@ router.post("/port/replit-projects", requireTrustedCookieOrigin, async (req, res
   const parsed = CreateReplitProjectBody.safeParse(req.body);
   if (!parsed.success) {
     req.log.warn({ errors: parsed.error.message }, "Invalid Replit project handoff request");
-    const tooLarge = parsed.error.issues.some((issue) => issue.code === "too_big");
+    const tooLarge = parsed.error.issues.some(
+      (issue: { code: string }) => issue.code === "too_big",
+    );
     res.status(tooLarge ? 413 : 400).json({
       error: "Provide exactly one valid source bundle no larger than 2 MB.",
       code: tooLarge

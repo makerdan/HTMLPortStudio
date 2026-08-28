@@ -16,7 +16,9 @@ import type {
   SourceBundle,
   PortFinding,
   PoeMessage,
+  PoeChatResponse,
   ReplitProjectHandoff,
+  ReplitProjectStepStatus,
 } from '@workspace/api-client-react';
 import { useAuth } from '@workspace/replit-auth-web';
 import {
@@ -196,11 +198,11 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
         messages: [{ role: 'system', content: systemContext }, ...newHistory]
       }
     }, {
-      onSuccess: (res) => {
+      onSuccess: (res: PoeChatResponse) => {
         setPrompt('');
         setChatHistory(prev => [...prev, { role: 'assistant', content: res.content }]);
       },
-      onError: (error) => {
+      onError: (error: unknown) => {
         setChatHistory(prev => prev.filter((message, index) => index !== prev.length - 1));
         setPrompt(submittedPrompt);
         setChatError(apiErrorMessage(error, 'The assistant could not answer. Your prompt is ready to retry.'));
@@ -282,7 +284,7 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
                 <SelectValue placeholder="Select a model" />
               </SelectTrigger>
               <SelectContent>
-                {poeData.models.map(m => (
+                {poeData.models.map((m: string) => (
                   <SelectItem key={m} value={m} className="text-xs">{m}</SelectItem>
                 ))}
               </SelectContent>
@@ -428,7 +430,9 @@ function ReplitProjectHandoffPanel({ bundle }: { bundle: SourceBundle }) {
     query: {
       queryKey: ['replit-project-status', jobId],
       enabled: Boolean(jobId),
-      refetchInterval: (query) => {
+      refetchInterval: (query: {
+        state: { error: unknown; data?: ReplitProjectHandoff };
+      }) => {
         if (query.state.error) return false;
         const status = query.state.data?.status;
         return status === 'completed' || status === 'failed' ? false : 800;
@@ -442,7 +446,9 @@ function ReplitProjectHandoffPanel({ bundle }: { bundle: SourceBundle }) {
     retryMutation.isPending ||
     handoff?.status === 'queued' ||
     handoff?.status === 'running';
-  const failedStep = handoff?.steps.find((step) => step.status === 'failed');
+  const failedStep = handoff?.steps.find(
+    (step: ReplitProjectStepStatus) => step.status === 'failed',
+  );
   const connectionNeedsSetup =
     isAuthenticated && connectionQuery.data?.status === 'setup_required';
 
@@ -466,11 +472,11 @@ function ReplitProjectHandoffPanel({ bundle }: { bundle: SourceBundle }) {
     createMutation.mutate(
       bundle.files.length === 1 && bundle.entrypoint === 'index.html' ? legacyInput : { data: { bundle } },
       {
-        onSuccess: (data) => {
+        onSuccess: (data: ReplitProjectHandoff) => {
           queryClient.setQueryData(['replit-project-status', data.jobId], data);
           setJobId(data.jobId);
         },
-        onError: (error) => {
+        onError: (error: unknown) => {
           setLocalError(apiErrorMessage(error));
         },
       },
@@ -490,12 +496,12 @@ function ReplitProjectHandoffPanel({ bundle }: { bundle: SourceBundle }) {
     retryMutation.mutate(
       { jobId },
       {
-        onSuccess: (data) => {
+        onSuccess: (data: ReplitProjectHandoff) => {
           queryClient.setQueryData(['replit-project-status', data.jobId], data);
           setJobId(data.jobId);
           void statusQuery.refetch();
         },
-        onError: (error) => {
+        onError: (error: unknown) => {
           setLocalError(apiErrorMessage(error));
         },
       },
@@ -688,7 +694,7 @@ function ReplitProjectHandoffPanel({ bundle }: { bundle: SourceBundle }) {
             )}
           </div>
           <div className="space-y-2">
-            {handoff.steps.map((step) => (
+            {handoff.steps.map((step: ReplitProjectStepStatus) => (
               <div
                 key={step.name}
                 className="flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm"
@@ -776,7 +782,7 @@ export default function Home() {
           };
     const sessionId = ++importSessionRef.current;
     analyzeMutation.mutate({ data: { bundle } }, {
-      onSuccess: (data) => {
+      onSuccess: (data: HtmlAnalysis) => {
         if (sessionId !== importSessionRef.current) return;
         setAnalysisData(data);
         setSourceBundle(bundle);
@@ -1201,12 +1207,12 @@ function PoeRepairPanel({
         },
       },
       {
-        onSuccess: (res) => {
+        onSuccess: (res: PoeChatResponse) => {
           setPrompt('');
           setPendingPrompt(null);
           setChatHistory((prev) => [...prev, { role: 'assistant', content: res.content }]);
         },
-        onError: (error) => {
+        onError: (error: unknown) => {
           setChatHistory((prev) => prev.filter((_message, index) => index !== prev.length - 1));
           setPrompt(message);
           setPendingPrompt(message);

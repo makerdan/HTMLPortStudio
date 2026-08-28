@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "disableSourceOfProjectReferenceRedirect": true,
+    "paths": {
+      "@/*": ["./src/*"],
+      "@workspace/api-client-react": [
+        "../../.cache/api-validation/api-client-react-dist/index.d.ts"
+      ]
+    }
+  },
+  "references": []
+}

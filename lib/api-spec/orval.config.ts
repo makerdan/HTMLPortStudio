@@ -4,6 +4,16 @@ import path from "path";
 const root = path.resolve(__dirname, "..", "..");
 const apiClientReactSrc = path.resolve(root, "lib", "api-client-react", "src");
 const apiZodSrc = path.resolve(root, "lib", "api-zod", "src");
+const validationOutputRoot = process.env.API_CODEGEN_OUTPUT_ROOT;
+const apiClientReactOutput = validationOutputRoot
+  ? path.resolve(validationOutputRoot, "api-client-react")
+  : apiClientReactSrc;
+const apiClientReactMutator = validationOutputRoot
+  ? path.resolve(validationOutputRoot, "custom-fetch.ts")
+  : path.resolve(apiClientReactSrc, "custom-fetch.ts");
+const apiZodOutput = validationOutputRoot
+  ? path.resolve(validationOutputRoot, "api-zod")
+  : apiZodSrc;
 
 // Our exports make assumptions about the title of the API being "Api" (i.e. generated output is `api.ts`).
 const titleTransformer: InputTransformerFn = (config) => {
@@ -22,7 +32,7 @@ export default defineConfig({
       },
     },
     output: {
-      workspace: apiClientReactSrc,
+      workspace: apiClientReactOutput,
       target: "generated",
       client: "react-query",
       mode: "split",
@@ -34,7 +44,7 @@ export default defineConfig({
           includeHttpResponseReturnType: false,
         },
         mutator: {
-          path: path.resolve(apiClientReactSrc, "custom-fetch.ts"),
+          path: apiClientReactMutator,
           name: "customFetch",
         },
       },
@@ -48,7 +58,7 @@ export default defineConfig({
       },
     },
     output: {
-      workspace: apiZodSrc,
+      workspace: apiZodOutput,
       client: "zod",
       target: "generated",
       schemas: { path: "generated/types", type: "typescript" },
@@ -58,10 +68,10 @@ export default defineConfig({
       override: {
         zod: {
           coerce: {
-            query: ['boolean', 'number', 'string'],
-            param: ['boolean', 'number', 'string'],
-            body: ['bigint', 'date'],
-            response: ['bigint', 'date'],
+            query: ["boolean", "number", "string"],
+            param: ["boolean", "number", "string"],
+            body: ["bigint", "date"],
+            response: ["bigint", "date"],
           },
         },
         useDates: true,
