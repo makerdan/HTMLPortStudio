@@ -440,7 +440,9 @@ function RecoveredHandoffPanel({
     query: {
       queryKey: ['replit-project-recovery-status', metadata.jobId],
       enabled: !authLoading && isAuthenticated && user?.id === metadata.ownerId,
-      refetchInterval: (query) => {
+      refetchInterval: (query: {
+        state: { error: unknown; data?: ReplitProjectHandoff };
+      }) => {
         if (query.state.error) return false;
         const status = query.state.data?.status;
         return status === 'completed' || status === 'failed' ? false : 800;
@@ -471,7 +473,7 @@ function RecoveredHandoffPanel({
     retryMutation.mutate(
       { jobId: metadata.jobId },
       {
-        onSuccess: (data) => {
+        onSuccess: (data: ReplitProjectHandoff) => {
           writeHandoffRecovery(createHandoffRecovery(
             data.jobId,
             metadata.ownerId,
@@ -543,7 +545,7 @@ function RecoveredHandoffPanel({
               {handoff.projectId && <span className="font-mono text-xs">Project ID: {handoff.projectId}</span>}
             </div>
             <div className="space-y-2">
-              {handoff.steps.map((step) => (
+              {handoff.steps.map((step: ReplitProjectHandoff['steps'][number]) => (
                 <div key={step.name} className="flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm">
                   <HandoffStepIcon status={step.status} />
                   <span>{step.name}</span>

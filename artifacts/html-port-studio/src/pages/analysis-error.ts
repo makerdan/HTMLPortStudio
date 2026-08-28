@@ -21,7 +21,7 @@ const STRUCTURED_ANALYSIS_ERRORS: Record<string, string> = {
   BUNDLE_EMPTY:
     'The source is empty. Paste or import a non-empty HTML document, then try again.',
   BUNDLE_TOO_LARGE:
-    'This source bundle is too large. Reduce it to 2 MB or less, then try again.',
+    'This source bundle is too large to analyze safely. Keep the HTML entrypoint and its files within 2 MB, then try again.',
   BUNDLE_FILE_TOO_LARGE:
     'One file in this bundle is too large. Reduce it to 1 MB or less, then try again.',
   BUNDLE_TOO_MANY_FILES:
