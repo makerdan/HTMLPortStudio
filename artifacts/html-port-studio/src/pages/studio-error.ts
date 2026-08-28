@@ -2,7 +2,7 @@ type ErrorData = {
   code?: unknown;
 };
 
-const STRUCTURED_STUDIO_ERRORS: Record<string, string> = {
+export const STUDIO_ERROR_MESSAGES = {
   AUTHENTICATION_REQUIRED: 'Log in to continue with this Replit project action.',
   BUNDLE_AMBIGUOUS:
     'Send either one HTML document or one source bundle, not both, then try again.',
@@ -39,7 +39,7 @@ const STRUCTURED_STUDIO_ERRORS: Record<string, string> = {
     'This source appears to contain a service credential. Remove it before creating a project, then try again.',
   INVALID_SOURCE_BUNDLE:
     'The source bundle is not valid. Check that it contains a non-empty HTML entrypoint, then try again.',
-};
+} as const;
 
 export const PROJECT_HANDOFF_FAILURE_FALLBACK =
   'The Replit project setup could not be completed. Retry the failed step.';
@@ -63,5 +63,5 @@ export function getStudioErrorMessage(
   fallback: string,
 ): string {
   const code = getStructuredErrorCode(error);
-  return (code && STRUCTURED_STUDIO_ERRORS[code]) || fallback;
+  return (code && STUDIO_ERROR_MESSAGES[code as keyof typeof STUDIO_ERROR_MESSAGES]) || fallback;
 }

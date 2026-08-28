@@ -12,6 +12,7 @@ import { getAnalysisErrorPresentation } from "./analysis-error.ts";
 import {
   getStudioErrorMessage,
   PROJECT_HANDOFF_FAILURE_FALLBACK,
+  STUDIO_ERROR_MESSAGES,
 } from "./studio-error.ts";
 import {
   ApiError,
@@ -171,6 +172,43 @@ test("allowlists structured assistant and handoff errors", () => {
   assert.doesNotMatch(credentialResult, /super-secret-value/i);
   assert.doesNotMatch(connectionResult, /proxy request|upstream response/i);
   assert.doesNotMatch(bundleResult, /source contents|request credentials/i);
+});
+
+test("keeps every assistant and handoff API code mapped to safe Studio copy", async () => {
+  const portSource = await readFile(
+    new URL("../../../api-server/src/routes/port.ts", import.meta.url),
+    "utf8",
+  );
+  const routeStart = portSource.indexOf('router.post("/port/poe/chat"');
+  const routeEnd = portSource.indexOf("const MAX_BUNDLE_BYTES", routeStart);
+  assert.notEqual(routeStart, -1);
+  assert.notEqual(routeEnd, -1);
+
+  const routeSource = portSource.slice(routeStart, routeEnd);
+  const emittedCodes = [
+    ...routeSource.matchAll(/code:\s*([\s\S]*?),/g),
+    ...routeSource.matchAll(/const code\s*=\s*([\s\S]*?);/g),
+  ]
+    .flatMap((match) => match[1].match(/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/g) ?? [])
+    .filter((code, index, codes) => codes.indexOf(code) === index)
+    .sort();
+  const expectedCodes = [
+    "AUTHENTICATION_REQUIRED",
+    "CHAT_CONTAINS_CREDENTIAL",
+    "INVALID_PROJECT_HANDOFF",
+    "INVALID_SOURCE_BUNDLE",
+    "PROJECT_CREATION_CONNECTION_UNAVAILABLE",
+    "PROJECT_HANDOFF_NOT_FOUND",
+    "PROJECT_HANDOFF_NOT_RETRYABLE",
+    "PROJECT_HANDOFF_SOURCE_TOO_LARGE",
+    "SOURCE_CONTAINS_CREDENTIAL",
+  ].sort();
+
+  assert.deepEqual(emittedCodes, expectedCodes);
+  for (const code of expectedCodes) {
+    assert.equal(typeof STUDIO_ERROR_MESSAGES[code as keyof typeof STUDIO_ERROR_MESSAGES], "string");
+    assert.ok(STUDIO_ERROR_MESSAGES[code as keyof typeof STUDIO_ERROR_MESSAGES].length > 0);
+  }
 });
 
 test("uses concise fallbacks for unknown, transport, and non-JSON errors", () => {
