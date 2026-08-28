@@ -49,6 +49,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { getAnalysisErrorPresentation } from './analysis-error';
 
 // ----------------------------------------------------------------------
 // Types and Helpers
@@ -756,6 +757,9 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importSessionRef = useRef(0);
   const isMobile = useIsMobile();
+  const analysisError = analyzeMutation.isError
+    ? getAnalysisErrorPresentation(analyzeMutation.error)
+    : null;
 
   const handleAnalyze = () => {
     if (!htmlInput.trim()) return;
@@ -887,10 +891,21 @@ export default function Home() {
                 {analyzeMutation.isError && (
                   <Alert variant="destructive" className="mt-4">
                     <XCircle className="h-4 w-4" />
-                    <AlertTitle>Analysis Failed</AlertTitle>
+                    <AlertTitle>{analysisError?.title ?? 'Analysis failed'}</AlertTitle>
                     <AlertDescription>
                       <div className="flex flex-wrap items-center justify-between gap-3">
-                        <span>Could not analyze the provided HTML. Check your connection or formatting.</span>
+                        <span>{analysisError?.message}</span>
+                        {analysisError?.retryable && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={handleAnalyze}
+                            disabled={analyzeMutation.isPending}
+                          >
+                            {analyzeMutation.isPending ? 'Retrying…' : 'Retry analysis'}
+                          </Button>
+                        )}
                         {htmlInput.trim() && (
                           <Button
                             type="button"
