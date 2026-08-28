@@ -34,12 +34,19 @@ type Finding = {
   action: string;
 };
 
-type SourceBundle = {
+export type SourceBundle = {
   version: 1;
   sourceType: "pasted_html" | "single_file" | "zip_project" | "github_repository" | "hosted_page" | "playground";
   files: Array<{ path: string; content: string }>;
   entrypoint: string;
-  metadata: { displayName: string; sourceUrl?: string; warnings?: string[] };
+  metadata: {
+    displayName: string;
+    sourceUrl?: string;
+    warnings?: string[];
+    resolvedRef?: string;
+    resolvedCommitSha?: string;
+    entrypointCandidates?: string[];
+  };
 };
 function extractTitle(html: string): string {
   const match = html.match(/<title[^>]*>\s*([^<]+?)\s*<\/title>/i);
@@ -50,7 +57,7 @@ function countMatches(html: string, pattern: RegExp): number {
   return [...html.matchAll(pattern)].length;
 }
 
-function analyzeBundle(bundle: SourceBundle) {
+export function analyzeBundle(bundle: SourceBundle) {
   const entrypoint = bundle.files.find((file) => file.path === bundle.entrypoint);
   if (!entrypoint) throw new Error("BUNDLE_ENTRYPOINT_MISSING");
   const html = entrypoint.content;
@@ -65,10 +72,28 @@ function analyzeBundle(bundle: SourceBundle) {
   const hasAiClient = /api\.openai\.com|api\.anthropic\.com|generativelanguage\.googleapis\.com|chat\/completions|google\.generativeai|new\s+OpenAI\b/i.test(
     allSource,
   );
-  const hasBrowserKey = /(?:api[_-]?key|authorization)\s*[:=]\s*["'](?:sk-|pk-|poe-|Bearer\s)/i.test(
-    allSource,
-  );
+  const hasBrowserKey = containsPrivilegedCredential(bundle);
   const hasFetch = /\bfetch\s*\(|XMLHttpRequest|axios\./i.test(html);
+  const localAssetReferences = [
+    ...html.matchAll(
+      /<(?:img|link|video|audio|source|iframe|script)\b[^>]*(?:src|href)\s*=\s*["']([^"']+)["']/gi,
+    ),
+  ]
+    .map((match) => match[1])
+    .filter(
+      (reference): reference is string =>
+        Boolean(
+          reference &&
+            !reference.startsWith("#") &&
+            !/^(?:data|mailto|javascript):/i.test(reference) &&
+            !/^https?:\/\//i.test(reference),
+        ),
+    );
+  const externalDependencies = [
+    ...html.matchAll(
+      /<(?:img|link|video|audio|source|iframe|script)\b[^>]*(?:src|href)\s*=\s*["'](https?:\/\/[^"']+)["']/gi,
+    ),
+  ].map((match) => match[1]);
   const findings: Finding[] = [];
 
   for (const warning of bundle.metadata.warnings ?? []) {
@@ -110,8 +135,8 @@ function analyzeBundle(bundle: SourceBundle) {
   if (hasBrowserKey) {
     findings.push({
       severity: "blocker",
-      title: "Possible browser-side API key",
-      detail: "The HTML appears to include an API credential pattern. Browser code cannot safely hold service keys.",
+      title: "Possible service credential",
+      detail: "The imported source appears to include a service credential pattern. Browser code and generated projects cannot safely hold service keys.",
       action: "Remove the key from the HTML, put it in Replit Secrets, and call the server bridge instead.",
     });
   }
@@ -164,6 +189,8 @@ function analyzeBundle(bundle: SourceBundle) {
     fileCount: bundle.files.length,
     totalBytes: bundle.files.reduce((sum, file) => sum + new TextEncoder().encode(file.content).length, 0),
     files: bundle.files.map((file) => file.path),
+    localAssetReferences: [...new Set(localAssetReferences)],
+    externalDependencies: [...new Set(externalDependencies)],
     scriptCount: scriptTags,
     externalScriptCount: externalScripts,
     inlineScriptCount: Math.max(0, scriptTags - externalScripts),

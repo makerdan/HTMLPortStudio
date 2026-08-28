@@ -23,4 +23,6 @@ export interface HtmlAnalysis {
   fileCount: number;
   totalBytes: number;
   files: string[];
+  localAssetReferences: string[];
+  externalDependencies: string[];
 }

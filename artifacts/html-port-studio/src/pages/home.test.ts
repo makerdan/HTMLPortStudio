@@ -339,3 +339,17 @@ test("exposes the reload boundary, owner reconciliation, and lifecycle cleanup",
   assert.match(source, /replit-auth:logout/);
   assert.match(authSource, /dispatchEvent\(new Event\("replit-auth:logout"\)\)/);
 });
+
+test("offers a pinned, review-before-confirming public GitHub import", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /useGetGithubRepository/);
+  assert.match(source, /useImportGithubRepository/);
+  assert.match(source, /Import a public GitHub repository/);
+  assert.match(source, /Or immutable commit SHA/);
+  assert.match(source, /Fetch selected snapshot/);
+  assert.match(source, /Review this read-only snapshot/);
+  assert.match(source, /Use this GitHub source/);
+  assert.match(source, /resolvedCommitSha/);
+  assert.match(source, /GitHub\s+credentials are never requested/);
+});

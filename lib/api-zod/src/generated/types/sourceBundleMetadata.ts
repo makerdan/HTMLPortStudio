@@ -18,4 +18,10 @@ export interface SourceBundleMetadata {
      * @items.maxLength 500
      */
   warnings?: string[];
+  /** @maxLength 256 */
+  resolvedRef?: string;
+  /** @maxLength 64 */
+  resolvedCommitSha?: string;
+  /** @maxItems 20 */
+  entrypointCandidates?: string[];
 }

@@ -3,3 +3,4 @@
 - [Browser test runtime](browser-test-runtime.md) — Playwright needs its Chromium binary and native graphics/audio libraries in minimal containers.
 - [Rebase validation](rebase-validation.md) — After conflict resolution, test files can be malformed without conflict markers; run syntax/tests on every touched file before continuing.
 - [API handoff timing flake](api-handoff-timing-flake.md) — A polling assertion can briefly observe “running” instead of “failed”; isolate and retry before changing backend code.
+- [Public GitHub import boundaries](github-import-boundaries.md) — Resolve refs to commits and fetch bounded text-only source server-side without executing repository code.

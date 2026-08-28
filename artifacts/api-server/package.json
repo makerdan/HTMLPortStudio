@@ -7,7 +7,7 @@
     "dev": "export NODE_ENV=development && pnpm run build && pnpm run start",
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
-    "test:port": "pnpm run build && node --experimental-strip-types --test src/routes/port.test.ts",
+    "test:port": "pnpm run build && node --experimental-strip-types --test src/routes/port.test.ts src/routes/github.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

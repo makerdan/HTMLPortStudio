@@ -1,6 +1,6 @@
 # HTML Port Studio
 
-Import pasted or single-file HTML as a normalized source bundle, run a portability check, preview it safely, and use a server-only Poe bridge when the source app needs AI.
+Import pasted, single-file, or public GitHub HTML apps as normalized source bundles, run a portability check, preview them safely, and use a server-only Poe bridge when the source app needs AI.
 
 ## Run & Operate
 
@@ -25,6 +25,8 @@ Import pasted or single-file HTML as a normalized source bundle, run a portabili
 
 - `artifacts/html-port-studio/` — source-bundle import, analysis, safe-preview, and optional Poe-assistant UI
 - `artifacts/api-server/src/routes/port.ts` — portability analysis and server-only Poe API bridge
+- `artifacts/api-server/src/routes/github.ts` — public GitHub metadata, pinned snapshot import, and repository limits
+- `artifacts/api-server/src/routes/github-utils.ts` — dependency-free GitHub URL, ref, path, and entrypoint validation
 - `lib/api-spec/openapi.yaml` — API contract for HTML analysis and Poe operations
 
 ## Architecture decisions
@@ -38,6 +40,7 @@ Import pasted or single-file HTML as a normalized source bundle, run a portabili
 ## Product
 
 - Select a single `.html`/`.htm` file or paste HTML source; both become a versioned source bundle.
+- Inspect a public GitHub repository, choose a branch or immutable commit, review the resolved SHA and entrypoint, then confirm the read-only snapshot.
 - Receive a compact readiness report for scripts, external assets, browser-side requests, and likely AI calls.
 - Preview the document in a sandbox, then follow a tailored migration checklist.
 - When `POE_API_KEY` is configured, choose a live Poe model and ask for targeted porting help.
@@ -56,6 +59,7 @@ Import pasted or single-file HTML as a normalized source bundle, run a portabili
 - The project handoff requires sign-in and an attached authorized Replit project-creation connection. The API server resolves the connection through Replit’s server SDK; it never passes a credential to the Studio, imported HTML, or generated project. Each handoff job is accessible only to the authenticated owner; unauthenticated or cross-user status/retry requests are rejected.
 - The project handoff is unavailable until the supported authorized Replit project-creation connection is attached. When it is missing, the Studio keeps the imported HTML in the current browser session and shows an owner-only setup screen with a secure Replit connection link and a refresh check.
 - HTML that appears to contain a credential is blocked before handoff. Move service keys to Replit Secrets and use a server route rather than embedding them in `index.html`.
+- GitHub import accepts only canonical public `https://github.com/owner/repository` URLs. It resolves the selected ref to a commit, fetches approved text files through GitHub's public API, skips generated/vendor content, enforces file/depth/size limits, and never executes repository code.
 
 ## Pointers
 

@@ -23,6 +23,11 @@ import type {
   AuthUserEnvelope,
   BeginBrowserLoginParams,
   ErrorResponse,
+  GetGithubRepositoryParams,
+  GithubEntrypointChoice,
+  GithubImport,
+  GithubImportInput,
+  GithubRepository,
   HealthStatus,
   HtmlAnalysis,
   HtmlInput,
@@ -533,6 +538,163 @@ export const useAnalyzeHtml = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getAnalyzeHtmlMutationOptions(options));
+    }
+
+export const getGetGithubRepositoryUrl = (params: GetGithubRepositoryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/port/github/repository?${stringifiedParams}` : `/api/port/github/repository`
+}
+
+/**
+ * Resolves public repository metadata and branch choices without requesting GitHub credentials.
+ * @summary Inspect a public GitHub repository and list selectable refs
+ */
+export const getGithubRepository = async (params: GetGithubRepositoryParams, options?: Parameters<typeof customFetch>[1]): Promise<GithubRepository> => {
+
+  return customFetch<GithubRepository>(getGetGithubRepositoryUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetGithubRepositoryQueryKey = (params?: GetGithubRepositoryParams,) => {
+    return [
+    `/api/port/github/repository`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetGithubRepositoryQueryOptions = <TData = Awaited<ReturnType<typeof getGithubRepository>>, TError = ErrorType<ErrorResponse>>(params: GetGithubRepositoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGithubRepository>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetGithubRepositoryQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getGithubRepository>>> = ({ signal }) => getGithubRepository(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getGithubRepository>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetGithubRepositoryQueryResult = NonNullable<Awaited<ReturnType<typeof getGithubRepository>>>
+export type GetGithubRepositoryQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Inspect a public GitHub repository and list selectable refs
+ */
+
+export function useGetGithubRepository<TData = Awaited<ReturnType<typeof getGithubRepository>>, TError = ErrorType<ErrorResponse>>(
+ params: GetGithubRepositoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGithubRepository>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetGithubRepositoryQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getImportGithubRepositoryUrl = () => {
+
+
+
+
+  return `/api/port/github/import`
+}
+
+/**
+ * Downloads only bounded, approved text files from a public repository at a resolved commit. Repository code is never executed.
+ * @summary Import a pinned public GitHub repository snapshot
+ */
+export const importGithubRepository = async (githubImportInput: GithubImportInput, options?: Parameters<typeof customFetch>[1]): Promise<GithubImport> => {
+
+  return customFetch<GithubImport>(getImportGithubRepositoryUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(githubImportInput)
+  }
+);}
+
+
+
+
+
+export const getImportGithubRepositoryMutationOptions = <TError = ErrorType<ErrorResponse | GithubEntrypointChoice>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importGithubRepository>>, TError,{data: BodyType<GithubImportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof importGithubRepository>>, TError,{data: BodyType<GithubImportInput>}, TContext> => {
+
+const mutationKey = ['importGithubRepository'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof importGithubRepository>>, {data: BodyType<GithubImportInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  importGithubRepository(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ImportGithubRepositoryMutationResult = NonNullable<Awaited<ReturnType<typeof importGithubRepository>>>
+    export type ImportGithubRepositoryMutationBody = BodyType<GithubImportInput>
+    export type ImportGithubRepositoryMutationError = ErrorType<ErrorResponse | GithubEntrypointChoice>
+
+    /**
+ * @summary Import a pinned public GitHub repository snapshot
+ */
+export const useImportGithubRepository = <TError = ErrorType<ErrorResponse | GithubEntrypointChoice>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importGithubRepository>>, TError,{data: BodyType<GithubImportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof importGithubRepository>>,
+        TError,
+        {data: BodyType<GithubImportInput>},
+        TContext
+      > => {
+      return useMutation(getImportGithubRepositoryMutationOptions(options));
     }
 
 export const getListPoeModelsUrl = () => {

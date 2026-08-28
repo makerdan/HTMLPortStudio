@@ -77,6 +77,12 @@ export const analyzeHtmlBodyThreeBundleMetadataWarningsItemMax = 500;
 
 export const analyzeHtmlBodyThreeBundleMetadataWarningsMax = 20;
 
+export const analyzeHtmlBodyThreeBundleMetadataResolvedRefMax = 256;
+
+export const analyzeHtmlBodyThreeBundleMetadataResolvedCommitShaMax = 64;
+
+export const analyzeHtmlBodyThreeBundleMetadataEntrypointCandidatesMax = 20;
+
 
 
 export const AnalyzeHtmlBody = zod.union([zod.unknown(),zod.unknown()]).and(zod.object({
@@ -92,7 +98,10 @@ export const AnalyzeHtmlBody = zod.union([zod.unknown(),zod.unknown()]).and(zod.
   "metadata": zod.object({
   "displayName": zod.string().min(1).max(analyzeHtmlBodyThreeBundleMetadataDisplayNameMax),
   "sourceUrl": zod.string().optional(),
-  "warnings": zod.array(zod.string().max(analyzeHtmlBodyThreeBundleMetadataWarningsItemMax)).max(analyzeHtmlBodyThreeBundleMetadataWarningsMax).optional()
+  "warnings": zod.array(zod.string().max(analyzeHtmlBodyThreeBundleMetadataWarningsItemMax)).max(analyzeHtmlBodyThreeBundleMetadataWarningsMax).optional(),
+  "resolvedRef": zod.string().max(analyzeHtmlBodyThreeBundleMetadataResolvedRefMax).optional(),
+  "resolvedCommitSha": zod.string().max(analyzeHtmlBodyThreeBundleMetadataResolvedCommitShaMax).optional(),
+  "entrypointCandidates": zod.array(zod.string()).max(analyzeHtmlBodyThreeBundleMetadataEntrypointCandidatesMax).optional()
 })
 }).optional()
 }))
@@ -116,7 +125,147 @@ export const AnalyzeHtmlResponse = zod.object({
   "entrypoint": zod.string(),
   "fileCount": zod.number(),
   "totalBytes": zod.number(),
-  "files": zod.array(zod.string())
+  "files": zod.array(zod.string()),
+  "localAssetReferences": zod.array(zod.string()),
+  "externalDependencies": zod.array(zod.string())
+})
+
+
+/**
+ * Resolves public repository metadata and branch choices without requesting GitHub credentials.
+ * @summary Inspect a public GitHub repository and list selectable refs
+ */
+export const getGithubRepositoryQueryUrlMax = 512;
+
+
+
+export const GetGithubRepositoryQueryParams = zod.object({
+  "url": zod.coerce.string().min(1).max(getGithubRepositoryQueryUrlMax)
+})
+
+export const getGithubRepositoryResponseRefsItemShaMin = 7;
+export const getGithubRepositoryResponseRefsItemShaMax = 64;
+
+export const getGithubRepositoryResponseRefsMax = 100;
+
+
+
+export const GetGithubRepositoryResponse = zod.object({
+  "sourceUrl": zod.string(),
+  "fullName": zod.string(),
+  "displayName": zod.string(),
+  "defaultBranch": zod.string(),
+  "description": zod.string().nullable(),
+  "stars": zod.number(),
+  "refs": zod.array(zod.object({
+  "name": zod.string(),
+  "sha": zod.string().min(getGithubRepositoryResponseRefsItemShaMin).max(getGithubRepositoryResponseRefsItemShaMax)
+})).max(getGithubRepositoryResponseRefsMax)
+})
+
+
+/**
+ * Downloads only bounded, approved text files from a public repository at a resolved commit. Repository code is never executed.
+ * @summary Import a pinned public GitHub repository snapshot
+ */
+export const importGithubRepositoryBodyUrlMax = 512;
+
+export const importGithubRepositoryBodyRefMax = 256;
+
+export const importGithubRepositoryBodyEntrypointMax = 512;
+
+
+
+export const ImportGithubRepositoryBody = zod.object({
+  "url": zod.string().min(1).max(importGithubRepositoryBodyUrlMax),
+  "ref": zod.string().min(1).max(importGithubRepositoryBodyRefMax),
+  "entrypoint": zod.string().min(1).max(importGithubRepositoryBodyEntrypointMax).optional()
+})
+
+export const importGithubRepositoryResponseBundleFilesItemPathMax = 512;
+
+export const importGithubRepositoryResponseBundleFilesItemContentMax = 1000000;
+
+export const importGithubRepositoryResponseBundleFilesMax = 200;
+
+export const importGithubRepositoryResponseBundleEntrypointMax = 512;
+
+export const importGithubRepositoryResponseBundleMetadataDisplayNameMax = 120;
+
+export const importGithubRepositoryResponseBundleMetadataWarningsItemMax = 500;
+
+export const importGithubRepositoryResponseBundleMetadataWarningsMax = 20;
+
+export const importGithubRepositoryResponseBundleMetadataResolvedRefMax = 256;
+
+export const importGithubRepositoryResponseBundleMetadataResolvedCommitShaMax = 64;
+
+export const importGithubRepositoryResponseBundleMetadataEntrypointCandidatesMax = 20;
+
+export const importGithubRepositoryResponseRepositoryRefsItemShaMin = 7;
+export const importGithubRepositoryResponseRepositoryRefsItemShaMax = 64;
+
+export const importGithubRepositoryResponseRepositoryRefsMax = 100;
+
+
+
+export const ImportGithubRepositoryResponse = zod.object({
+  "bundle": zod.object({
+  "version": zod.literal(1),
+  "sourceType": zod.enum(['pasted_html', 'single_file', 'zip_project', 'github_repository', 'hosted_page', 'playground']),
+  "files": zod.array(zod.object({
+  "path": zod.string().min(1).max(importGithubRepositoryResponseBundleFilesItemPathMax),
+  "content": zod.string().max(importGithubRepositoryResponseBundleFilesItemContentMax)
+})).min(1).max(importGithubRepositoryResponseBundleFilesMax),
+  "entrypoint": zod.string().min(1).max(importGithubRepositoryResponseBundleEntrypointMax),
+  "metadata": zod.object({
+  "displayName": zod.string().min(1).max(importGithubRepositoryResponseBundleMetadataDisplayNameMax),
+  "sourceUrl": zod.string().optional(),
+  "warnings": zod.array(zod.string().max(importGithubRepositoryResponseBundleMetadataWarningsItemMax)).max(importGithubRepositoryResponseBundleMetadataWarningsMax).optional(),
+  "resolvedRef": zod.string().max(importGithubRepositoryResponseBundleMetadataResolvedRefMax).optional(),
+  "resolvedCommitSha": zod.string().max(importGithubRepositoryResponseBundleMetadataResolvedCommitShaMax).optional(),
+  "entrypointCandidates": zod.array(zod.string()).max(importGithubRepositoryResponseBundleMetadataEntrypointCandidatesMax).optional()
+})
+}),
+  "analysis": zod.object({
+  "title": zod.string(),
+  "bytes": zod.number(),
+  "scriptCount": zod.number(),
+  "externalScriptCount": zod.number(),
+  "inlineScriptCount": zod.number(),
+  "externalAssetCount": zod.number(),
+  "aiSignalCount": zod.number(),
+  "findings": zod.array(zod.object({
+  "severity": zod.enum(['info', 'warning', 'blocker']),
+  "title": zod.string(),
+  "detail": zod.string(),
+  "action": zod.string()
+})),
+  "steps": zod.array(zod.string()),
+  "sourceType": zod.enum(['pasted_html', 'single_file', 'zip_project', 'github_repository', 'hosted_page', 'playground']),
+  "entrypoint": zod.string(),
+  "fileCount": zod.number(),
+  "totalBytes": zod.number(),
+  "files": zod.array(zod.string()),
+  "localAssetReferences": zod.array(zod.string()),
+  "externalDependencies": zod.array(zod.string())
+}),
+  "repository": zod.object({
+  "sourceUrl": zod.string(),
+  "fullName": zod.string(),
+  "displayName": zod.string(),
+  "defaultBranch": zod.string(),
+  "description": zod.string().nullable(),
+  "stars": zod.number(),
+  "refs": zod.array(zod.object({
+  "name": zod.string(),
+  "sha": zod.string().min(importGithubRepositoryResponseRepositoryRefsItemShaMin).max(importGithubRepositoryResponseRepositoryRefsItemShaMax)
+})).max(importGithubRepositoryResponseRepositoryRefsMax)
+}),
+  "resolvedRef": zod.string(),
+  "resolvedCommitSha": zod.string(),
+  "entrypointCandidates": zod.array(zod.string()),
+  "warnings": zod.array(zod.string())
 })
 
 
@@ -200,6 +349,12 @@ export const createReplitProjectBodyThreeBundleMetadataWarningsItemMax = 500;
 
 export const createReplitProjectBodyThreeBundleMetadataWarningsMax = 20;
 
+export const createReplitProjectBodyThreeBundleMetadataResolvedRefMax = 256;
+
+export const createReplitProjectBodyThreeBundleMetadataResolvedCommitShaMax = 64;
+
+export const createReplitProjectBodyThreeBundleMetadataEntrypointCandidatesMax = 20;
+
 
 
 export const CreateReplitProjectBody = zod.union([zod.unknown(),zod.unknown()]).and(zod.object({
@@ -215,7 +370,10 @@ export const CreateReplitProjectBody = zod.union([zod.unknown(),zod.unknown()]).
   "metadata": zod.object({
   "displayName": zod.string().min(1).max(createReplitProjectBodyThreeBundleMetadataDisplayNameMax),
   "sourceUrl": zod.string().optional(),
-  "warnings": zod.array(zod.string().max(createReplitProjectBodyThreeBundleMetadataWarningsItemMax)).max(createReplitProjectBodyThreeBundleMetadataWarningsMax).optional()
+  "warnings": zod.array(zod.string().max(createReplitProjectBodyThreeBundleMetadataWarningsItemMax)).max(createReplitProjectBodyThreeBundleMetadataWarningsMax).optional(),
+  "resolvedRef": zod.string().max(createReplitProjectBodyThreeBundleMetadataResolvedRefMax).optional(),
+  "resolvedCommitSha": zod.string().max(createReplitProjectBodyThreeBundleMetadataResolvedCommitShaMax).optional(),
+  "entrypointCandidates": zod.array(zod.string()).max(createReplitProjectBodyThreeBundleMetadataEntrypointCandidatesMax).optional()
 })
 }).optional()
 }))

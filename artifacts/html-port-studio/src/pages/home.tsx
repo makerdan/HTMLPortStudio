@@ -10,6 +10,8 @@ import {
   useGetReplitProjectConnectionSetup,
   useGetReplitProjectStatus,
   useRetryReplitProjectSetup,
+  useGetGithubRepository,
+  useImportGithubRepository,
 } from '@workspace/api-client-react';
 import type {
   HtmlAnalysis,
@@ -19,6 +21,8 @@ import type {
   PoeChatResponse,
   ReplitProjectHandoff,
   ReplitProjectStepStatus,
+  GithubImport,
+  GithubRef,
 } from '@workspace/api-client-react';
 import { useAuth } from '@workspace/replit-auth-web';
 import {
@@ -43,6 +47,7 @@ import {
   Upload,
   Copy,
   Check,
+  Github,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -393,6 +398,14 @@ function apiErrorCode(error: unknown): string | null {
   if (typeof data !== 'object' || data === null || !('code' in data)) return null;
   const code = (data as { code?: unknown }).code;
   return typeof code === 'string' ? code : null;
+}
+
+function apiErrorDetails(error: unknown): Record<string, unknown> {
+  if (typeof error !== 'object' || error === null || !('data' in error)) return {};
+  const data = (error as { data?: unknown }).data;
+  return typeof data === 'object' && data !== null
+    ? (data as Record<string, unknown>)
+    : {};
 }
 function HandoffStepIcon({
   status,
@@ -979,15 +992,39 @@ export default function Home() {
     () => readHandoffRecovery(),
   );
   const [fileError, setFileError] = useState<string | null>(null);
+  const [githubUrl, setGithubUrl] = useState('');
+  const [githubLookupUrl, setGithubLookupUrl] = useState('');
+  const [githubRef, setGithubRef] = useState('');
+  const [githubCommit, setGithubCommit] = useState('');
+  const [githubEntrypoint, setGithubEntrypoint] = useState('');
+  const [githubCandidates, setGithubCandidates] = useState<string[]>([]);
+  const [githubError, setGithubError] = useState<string | null>(null);
+  const [githubImportData, setGithubImportData] = useState<GithubImport | null>(null);
   const [repairOpen, setRepairOpen] = useState(false);
   const [repairSource, setRepairSource] = useState<string | null>(null);
   const analyzeMutation = useAnalyzeHtml();
+  const githubRepositoryQuery = useGetGithubRepository(
+    { url: githubLookupUrl || 'https://github.com/example/example' },
+    {
+      query: {
+        queryKey: ['github-repository', githubLookupUrl],
+        enabled: Boolean(githubLookupUrl),
+      },
+    },
+  );
+  const githubImportMutation = useImportGithubRepository();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importSessionRef = useRef(0);
   const isMobile = useIsMobile();
   const analysisError = analyzeMutation.isError
     ? getAnalysisErrorPresentation(analyzeMutation.error)
     : null;
+
+  useEffect(() => {
+    if (githubRepositoryQuery.data && !githubRef) {
+      setGithubRef(githubRepositoryQuery.data.defaultBranch);
+    }
+  }, [githubRepositoryQuery.data, githubRef]);
 
   const clearRecovery = useCallback(() => {
     clearHandoffRecovery();
@@ -1035,6 +1072,72 @@ export default function Home() {
     });
   };
 
+  const handleGithubInspect = () => {
+    const nextUrl = githubUrl.trim();
+    setGithubError(null);
+    setGithubCandidates([]);
+    setGithubImportData(null);
+    setGithubCommit('');
+    setGithubRef('');
+    setGithubEntrypoint('');
+    if (nextUrl !== githubLookupUrl) {
+      setGithubLookupUrl(nextUrl);
+    } else {
+      void githubRepositoryQuery.refetch();
+    }
+  };
+
+  const handleGithubImport = () => {
+    const ref = githubCommit.trim() || githubRef.trim();
+    if (!githubLookupUrl || !ref || githubImportMutation.isPending) return;
+    setGithubError(null);
+    githubImportMutation.mutate(
+      {
+        data: {
+          url: githubLookupUrl,
+          ref,
+          ...(githubEntrypoint ? { entrypoint: githubEntrypoint } : {}),
+        },
+      },
+      {
+        onSuccess: (data: GithubImport) => {
+          setGithubImportData(data);
+          setGithubCandidates(data.entrypointCandidates);
+          setGithubEntrypoint(data.bundle.entrypoint);
+        },
+        onError: (error: unknown) => {
+          const candidates = apiErrorDetails(error).entrypointCandidates;
+          setGithubCandidates(
+            Array.isArray(candidates)
+              ? candidates.filter((candidate): candidate is string => typeof candidate === 'string')
+              : [],
+          );
+          setGithubError(
+            getStudioErrorMessage(
+              error,
+              'The GitHub snapshot could not be imported. Your current source is still here.',
+            ),
+          );
+        },
+      },
+    );
+  };
+
+  const handleGithubConfirm = () => {
+    if (!githubImportData) return;
+    const bundle = githubImportData.bundle;
+    const entrypointHtml =
+      bundle.files.find((file) => file.path === bundle.entrypoint)?.content ?? '';
+    importSessionRef.current += 1;
+    clearRecovery();
+    setSourceBundle(bundle);
+    setHtmlInput(entrypointHtml);
+    setAnalysisData(githubImportData.analysis);
+    setGithubImportData(null);
+    setGithubCandidates([]);
+    setGithubError(null);
+  };
+
   const handleReset = () => {
     importSessionRef.current += 1;
     analyzeMutation.reset();
@@ -1045,6 +1148,14 @@ export default function Home() {
     setFileError(null);
     setRepairOpen(false);
     setRepairSource(null);
+    setGithubUrl('');
+    setGithubLookupUrl('');
+    setGithubRef('');
+    setGithubCommit('');
+    setGithubEntrypoint('');
+    setGithubCandidates([]);
+    setGithubError(null);
+    setGithubImportData(null);
   };
 
   const handleFileSelect = async (
@@ -1137,6 +1248,175 @@ export default function Home() {
                   aria-describedby="html-source-help"
                   className="min-h-[300px] font-mono text-sm resize-y border border-black bg-muted/30 focus-visible:ring-primary/50"
                 />
+
+                <div className="mt-6 border-t pt-5">
+                  <div className="mb-3 flex items-start gap-3">
+                    <Github className="mt-0.5 h-5 w-5 shrink-0 text-foreground" />
+                    <div>
+                      <h3 className="font-semibold">Import a public GitHub repository</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Fetch a read-only snapshot from a selected branch or commit. It is
+                        fetched server-side before entering this browser session; GitHub
+                        credentials are never requested.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      value={githubUrl}
+                      onChange={(event) => setGithubUrl(event.target.value)}
+                      placeholder="https://github.com/owner/repository"
+                      aria-label="Public GitHub repository URL"
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') handleGithubInspect();
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleGithubInspect}
+                      disabled={!githubUrl.trim() || githubRepositoryQuery.isFetching}
+                    >
+                      {githubRepositoryQuery.isFetching ? (
+                        <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Inspecting</>
+                      ) : (
+                        'Inspect'
+                      )}
+                    </Button>
+                  </div>
+
+                  {githubRepositoryQuery.isError && (
+                    <Alert variant="destructive" className="mt-3">
+                      <XCircle className="h-4 w-4" />
+                      <AlertTitle>GitHub repository unavailable</AlertTitle>
+                      <AlertDescription>
+                        {getStudioErrorMessage(
+                          githubRepositoryQuery.error,
+                          'The public repository could not be inspected. Check the URL and retry.',
+                        )}
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="mt-3"
+                          onClick={() => void githubRepositoryQuery.refetch()}
+                        >
+                          Retry repository lookup
+                        </Button>
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  {githubRepositoryQuery.data && (
+                    <div className="mt-4 rounded-lg border bg-muted/20 p-4">
+                      <div className="mb-3">
+                        <p className="font-medium">{githubRepositoryQuery.data.fullName}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {githubRepositoryQuery.data.description || 'Public GitHub repository'}
+                        </p>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                            Branch
+                          </label>
+                          <Select value={githubRef} onValueChange={setGithubRef}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Choose a branch" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {githubRepositoryQuery.data.refs.map((ref: GithubRef) => (
+                                <SelectItem key={ref.name} value={ref.name}>
+                                  {ref.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                            Or immutable commit SHA
+                          </label>
+                          <Input
+                            value={githubCommit}
+                            onChange={(event) => setGithubCommit(event.target.value)}
+                            placeholder="40-character commit SHA"
+                          />
+                        </div>
+                      </div>
+                      {githubCandidates.length > 1 && (
+                        <div className="mt-3">
+                          <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                            Choose the HTML entrypoint
+                          </label>
+                          <Select value={githubEntrypoint} onValueChange={setGithubEntrypoint}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Choose an HTML file" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {githubCandidates.map((candidate) => (
+                                <SelectItem key={candidate} value={candidate}>
+                                  {candidate}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                      <Button
+                        type="button"
+                        className="mt-4 w-full"
+                        onClick={handleGithubImport}
+                        disabled={
+                          githubImportMutation.isPending ||
+                          (!githubRef.trim() && !githubCommit.trim())
+                        }
+                      >
+                        {githubImportMutation.isPending ? (
+                          <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Importing snapshot...</>
+                        ) : (
+                          'Fetch selected snapshot'
+                        )}
+                      </Button>
+                    </div>
+                  )}
+
+                  {githubError && (
+                    <Alert variant="destructive" className="mt-3">
+                      <XCircle className="h-4 w-4" />
+                      <AlertTitle>GitHub import needs attention</AlertTitle>
+                      <AlertDescription>
+                        {githubError}
+                        {githubRepositoryQuery.data && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="mt-3"
+                            onClick={handleGithubImport}
+                            disabled={githubImportMutation.isPending}
+                          >
+                            Retry snapshot fetch
+                          </Button>
+                        )}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  {githubImportData && (
+                    <div className="mt-3 rounded-lg border border-primary/30 bg-primary/[0.03] p-4">
+                      <p className="font-medium">Review this read-only snapshot</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Resolved ref <span className="font-mono">{githubImportData.resolvedRef}</span>{' '}
+                        at commit <span className="font-mono">{githubImportData.resolvedCommitSha.slice(0, 12)}</span>.
+                        {githubImportData.warnings.length ? ` ${githubImportData.warnings.join(' ')}` : ''}
+                      </p>
+                      <Button type="button" className="mt-3 w-full" onClick={handleGithubConfirm}>
+                        Use this GitHub source
+                      </Button>
+                    </div>
+                  )}
+                </div>
 
                 {fileError && (
                   <Alert variant="destructive" className="mt-4">
@@ -1232,6 +1512,20 @@ export default function Home() {
                   <h2 className="text-xl font-bold tracking-tight text-foreground mb-4">
                     {analysisData.title || 'Untitled App'}
                   </h2>
+                  {sourceBundle?.sourceType === 'github_repository' && (
+                    <div className="mb-4 rounded-md border border-primary/20 bg-primary/[0.03] px-3 py-2 text-xs text-muted-foreground">
+                      <div className="font-medium text-foreground">GitHub source summary</div>
+                      <div className="mt-1">
+                        Ref: <span className="font-mono">{sourceBundle.metadata.resolvedRef}</span>
+                        {' · '}
+                        Commit:{' '}
+                        <span className="font-mono">{sourceBundle.metadata.resolvedCommitSha}</span>
+                      </div>
+                      <div className="mt-1">
+                        Entrypoint: <span className="font-mono">{sourceBundle.entrypoint}</span>
+                      </div>
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-3">
                     <Card className="bg-card shadow-sm border-border">
                       <CardContent className="p-4 flex flex-col justify-center">

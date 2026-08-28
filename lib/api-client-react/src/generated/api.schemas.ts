@@ -65,6 +65,12 @@ export interface SourceBundleMetadata {
      * @items.maxLength 500
      */
   warnings?: string[];
+  /** @maxLength 256 */
+  resolvedRef?: string;
+  /** @maxLength 64 */
+  resolvedCommitSha?: string;
+  /** @maxItems 20 */
+  entrypointCandidates?: string[];
 }
 
 export type SourceBundleVersion = typeof SourceBundleVersion[keyof typeof SourceBundleVersion];
@@ -130,6 +136,64 @@ export interface HtmlAnalysis {
   fileCount: number;
   totalBytes: number;
   files: string[];
+  localAssetReferences: string[];
+  externalDependencies: string[];
+}
+
+export interface GithubRef {
+  name: string;
+  /**
+     * @minLength 7
+     * @maxLength 64
+     */
+  sha: string;
+}
+
+export interface GithubRepository {
+  sourceUrl: string;
+  fullName: string;
+  displayName: string;
+  defaultBranch: string;
+  /** @nullable */
+  description: string | null;
+  stars: number;
+  /** @maxItems 100 */
+  refs: GithubRef[];
+}
+
+export interface GithubImportInput {
+  /**
+     * @minLength 1
+     * @maxLength 512
+     */
+  url: string;
+  /**
+     * @minLength 1
+     * @maxLength 256
+     */
+  ref: string;
+  /**
+     * @minLength 1
+     * @maxLength 512
+     */
+  entrypoint?: string;
+}
+
+export interface GithubEntrypointChoice {
+  error: string;
+  code: string;
+  /** @maxItems 20 */
+  entrypointCandidates: string[];
+}
+
+export interface GithubImport {
+  bundle: SourceBundle;
+  analysis: HtmlAnalysis;
+  repository: GithubRepository;
+  resolvedRef: string;
+  resolvedCommitSha: string;
+  entrypointCandidates: string[];
+  warnings: string[];
 }
 
 export interface PoeModels {
@@ -273,5 +337,13 @@ returnTo?: string;
 
 export type LogoutBrowserSessionParams = {
 returnTo?: string;
+};
+
+export type GetGithubRepositoryParams = {
+/**
+ * @minLength 1
+ * @maxLength 512
+ */
+url: string;
 };
 

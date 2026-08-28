@@ -101,6 +101,106 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /port/github/repository:
+    get:
+      operationId: getGithubRepository
+      tags: [porting]
+      summary: Inspect a public GitHub repository and list selectable refs
+      description: Resolves public repository metadata and branch choices without requesting GitHub credentials.
+      parameters:
+        - name: url
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 512
+      responses:
+        "200":
+          description: Public repository metadata and refs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GithubRepository"
+        "400":
+          description: Malformed or unsupported GitHub URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Repository is missing or private
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: GitHub public API rate limit reached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: GitHub could not be reached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /port/github/import:
+    post:
+      operationId: importGithubRepository
+      tags: [porting]
+      summary: Import a pinned public GitHub repository snapshot
+      description: Downloads only bounded, approved text files from a public repository at a resolved commit. Repository code is never executed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GithubImportInput"
+      responses:
+        "200":
+          description: Normalized public repository source bundle and analysis
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GithubImport"
+        "400":
+          description: Invalid URL or ref
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Repository, ref, or HTML entrypoint was not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: More than one safe HTML entrypoint needs an explicit choice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GithubEntrypointChoice"
+        "413":
+          description: Snapshot exceeds importer limits
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: GitHub public API rate limit reached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: GitHub could not be reached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /port/poe/models:
     get:
       operationId: listPoeModels
@@ -370,6 +470,17 @@ components:
           items:
             type: string
             maxLength: 500
+        resolvedRef:
+          type: string
+          maxLength: 256
+        resolvedCommitSha:
+          type: string
+          maxLength: 64
+        entrypointCandidates:
+          type: array
+          maxItems: 20
+          items:
+            type: string
     SourceBundle:
       type: object
       required: [version, sourceType, files, entrypoint, metadata]
@@ -453,6 +564,14 @@ components:
           type: array
           items:
             type: string
+        localAssetReferences:
+          type: array
+          items:
+            type: string
+        externalDependencies:
+          type: array
+          items:
+            type: string
       required:
         - title
         - bytes
@@ -468,6 +587,90 @@ components:
         - fileCount
         - totalBytes
         - files
+        - localAssetReferences
+        - externalDependencies
+    GithubRef:
+      type: object
+      properties:
+        name:
+          type: string
+        sha:
+          type: string
+          minLength: 7
+          maxLength: 64
+      required: [name, sha]
+    GithubRepository:
+      type: object
+      properties:
+        sourceUrl:
+          type: string
+        fullName:
+          type: string
+        displayName:
+          type: string
+        defaultBranch:
+          type: string
+        description:
+          type: ["string", "null"]
+        stars:
+          type: number
+        refs:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/GithubRef"
+      required: [sourceUrl, fullName, displayName, defaultBranch, description, stars, refs]
+    GithubImportInput:
+      type: object
+      properties:
+        url:
+          type: string
+          minLength: 1
+          maxLength: 512
+        ref:
+          type: string
+          minLength: 1
+          maxLength: 256
+        entrypoint:
+          type: string
+          minLength: 1
+          maxLength: 512
+      required: [url, ref]
+    GithubEntrypointChoice:
+      type: object
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+        entrypointCandidates:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+      required: [error, code, entrypointCandidates]
+    GithubImport:
+      type: object
+      properties:
+        bundle:
+          $ref: "#/components/schemas/SourceBundle"
+        analysis:
+          $ref: "#/components/schemas/HtmlAnalysis"
+        repository:
+          $ref: "#/components/schemas/GithubRepository"
+        resolvedRef:
+          type: string
+        resolvedCommitSha:
+          type: string
+        entrypointCandidates:
+          type: array
+          items:
+            type: string
+        warnings:
+          type: array
+          items:
+            type: string
+      required: [bundle, analysis, repository, resolvedRef, resolvedCommitSha, entrypointCandidates, warnings]
     PoeModels:
       type: object
       properties:
