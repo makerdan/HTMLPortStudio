@@ -519,34 +519,36 @@ async function persistJob(job: HandoffJob): Promise<void> {
     eq(handoffJobsTable.status, "running"),
     eq(handoffJobsTable.leaseToken, job.leaseToken!),
   );
-  const [updated] = await db
-    .update(handoffJobsTable)
-    .set({
-      status: job.status,
-      projectId: job.projectId,
-      projectUrl: job.projectUrl,
-      currentStep: job.currentStep,
-      error: job.error,
-      leaseExpiresAt:
-        job.status === "running" ? new Date(Date.now() + JOB_LEASE_MS) : null,
-      updatedAt: new Date(),
-    })
-    .where(where)
-    .returning({ id: handoffJobsTable.id });
-  if (!updated) throw new LeaseLostError();
-  await Promise.all(
-    job.steps.map((step, position) =>
-      db
-        .update(handoffStepsTable)
-        .set({ status: step.status, error: step.error, updatedAt: new Date() })
-        .where(
-          and(
-            eq(handoffStepsTable.jobId, job.id),
-            eq(handoffStepsTable.position, position),
+  await db.transaction(async (tx) => {
+    const [updated] = await tx
+      .update(handoffJobsTable)
+      .set({
+        status: job.status,
+        projectId: job.projectId,
+        projectUrl: job.projectUrl,
+        currentStep: job.currentStep,
+        error: job.error,
+        leaseExpiresAt:
+          job.status === "running" ? new Date(Date.now() + JOB_LEASE_MS) : null,
+        updatedAt: new Date(),
+      })
+      .where(where)
+      .returning({ id: handoffJobsTable.id });
+    if (!updated) throw new LeaseLostError();
+    await Promise.all(
+      job.steps.map((step, position) =>
+        tx
+          .update(handoffStepsTable)
+          .set({ status: step.status, error: step.error, updatedAt: new Date() })
+          .where(
+            and(
+              eq(handoffStepsTable.jobId, job.id),
+              eq(handoffStepsTable.position, position),
+            ),
           ),
-        ),
-    ),
-  );
+      ),
+    );
+  });
 }
 
 async function runHandoffJob(jobId: string): Promise<void> {
@@ -692,7 +694,7 @@ setTimeout(() => void resumeDurableJobs().catch(() => undefined), 0).unref();
 const router: IRouter = Router();
 
 router.post("/port/analyze", async (req, res): Promise<void> => {
-  const parsed = AnalyzeHtmlBody.safeParse(req.body);
+    const parsed = RetryReplitProjectSetupParams.safeParse(req.params);
   if (!parsed.success) {
     req.log.warn({ errors: parsed.error.message }, "Invalid HTML analysis request");
     res.status(400).json({
@@ -703,10 +705,11 @@ router.post("/port/analyze", async (req, res): Promise<void> => {
   }
 
   try {
-    const bundle = normalizeBundle(
+  let bundle: SourceBundle;
+  try {
+    bundle = normalizeBundle(
       parsed.data as { html?: string; bundle?: SourceBundle },
     );
-    res.json(AnalyzeHtmlResponse.parse(analyzeBundle(bundle)));
   } catch (error) {
     const code =
       error instanceof Error ? error.message : "INVALID_SOURCE_BUNDLE";
@@ -732,16 +735,20 @@ router.get("/port/poe/models", async (req, res): Promise<void> => {
   }
 
   try {
-    const response = await poeRequest("/models");
+    const response = await poeRequest("/chat/completions", {
+      method: "POST",
+      body: JSON.stringify({
+        model: parsed.data.model,
+        messages: parsed.data.messages,
+        max_tokens: parsed.data.maxTokens ?? 1024,
+      }),
+    });
+
     if (!response.ok) {
-      req.log.warn({ status: response.status }, "Poe model lookup failed");
-      res.json(
-        ListPoeModelsResponse.parse({
-          configured: true,
-          models: [],
-          message: `Poe is configured, but the model list returned ${response.status}. Check the key and Poe account access.`,
-        }),
-      );
+      req.log.warn({ status: response.status }, "Poe chat request failed");
+      res.status(503).json({
+        error: `Poe returned ${response.status}. Check POE_API_KEY, account access, and the exact PascalCase model ID.`,
+      });
       return;
     }
 
@@ -778,7 +785,7 @@ router.get("/port/poe/models", async (req, res): Promise<void> => {
 });
 
 router.post("/port/poe/chat", async (req, res): Promise<void> => {
-  const parsed = ChatWithPoeBody.safeParse(req.body);
+    const parsed = RetryReplitProjectSetupParams.safeParse(req.params);
   if (!parsed.success) {
     req.log.warn({ errors: parsed.error.message }, "Invalid Poe chat request");
     res.status(400).json({ error: "Provide a model and at least one message." });
@@ -914,12 +921,11 @@ router.post("/port/replit-projects", requireTrustedCookieOrigin, async (req, res
     });
     return;
   }
-  const parsed = CreateReplitProjectBody.safeParse(req.body);
+    const parsed = RetryReplitProjectSetupParams.safeParse(req.params);
   if (!parsed.success) {
     req.log.warn({ errors: parsed.error.message }, "Invalid Replit project handoff request");
-    const tooLarge = parsed.error.issues.some(
-      (issue: { code: string }) => issue.code === "too_big",
-    );
+    const tooLarge =
+      code === "BUNDLE_TOO_LARGE" || code === "BUNDLE_FILE_TOO_LARGE";
     res.status(tooLarge ? 413 : 400).json({
       error: "Provide exactly one valid source bundle no larger than 2 MB.",
       code: tooLarge
@@ -968,59 +974,30 @@ router.post("/port/replit-projects", requireTrustedCookieOrigin, async (req, res
 
   const entrypointHtml =
     bundle.files.find((file) => file.path === bundle.entrypoint)?.content ?? "";
-  const job: HandoffJob = {
-    id: randomUUID(),
-    sourceHtml: entrypointHtml,
-    sourceBundle: bundle,
-    projectName: safeProjectName(bundle),
-    status: "queued",
-    projectId: null,
-    projectUrl: null,
-    currentStep: null,
-    steps: SETUP_STEPS.map(({ name }) => ({
-      name,
-      status: "pending",
-      error: null,
-    })),
-    error: null,
-    leaseToken: null,
-  };
-  await db.transaction(async (tx) => {
-    await tx.insert(handoffJobsTable).values({
-      id: job.id,
-      ownerId: req.user.id,
-      sourceHtml: job.sourceHtml,
-      sourceBundle: job.sourceBundle,
-      projectName: job.projectName,
-      status: job.status,
-    });
-    await tx.insert(handoffStepsTable).values(
-      SETUP_STEPS.map((step, position) => ({
-        id: randomUUID(),
-        jobId: job.id,
-        position,
-        name: step.name,
-        slug: step.slug,
-        status: "pending",
-      })),
-    );
-  });
-  res.status(202).json(CreateReplitProjectResponse.parse(publicJob(job)));
-  void runHandoffJob(job.id);
-});
-
-router.get("/port/replit-projects/:jobId", async (req, res): Promise<void> => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({
-      error: "Log in to view this project handoff.",
-      code: "AUTHENTICATION_REQUIRED",
+    const job = await loadJob(parsed.data.jobId, req.user.id);
+  if (!job) {
+    res.status(404).json({
+      error: "That Replit project creation job was not found or has expired.",
+      code: "PROJECT_HANDOFF_NOT_FOUND",
     });
     return;
   }
-  const parsed = GetReplitProjectStatusParams.safeParse(req.params);
-  const job = parsed.success
-    ? await loadJob(parsed.data.jobId, req.user.id)
-    : null;
+  res.json(GetReplitProjectStatusResponse.parse(publicJob(job)));
+});
+
+router.post(
+  "/port/replit-projects/:jobId/retry",
+  requireTrustedCookieOrigin,
+  async (req, res): Promise<void> => {
+    if (!req.isAuthenticated()) {
+      res.status(401).json({
+        error: "Log in to retry this project handoff.",
+        code: "AUTHENTICATION_REQUIRED",
+      });
+      return;
+    }
+    const parsed = RetryReplitProjectSetupParams.safeParse(req.params);
+    const job = await loadJob(parsed.data.jobId, req.user.id);
   if (!job) {
     res.status(404).json({
       error: "That Replit project creation job was not found or has expired.",

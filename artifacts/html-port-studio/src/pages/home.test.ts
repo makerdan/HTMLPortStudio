@@ -1,45 +1,55 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import {
+  HANDOFF_RECOVERY_STORAGE_KEY,
+  createHandoffRecovery,
+  isValidHandoffRecoveryMetadata,
+  readHandoffRecovery,
+  writeHandoffRecovery,
+} from "../session-recovery.ts";
 import { getAnalysisErrorPresentation } from "./analysis-error.ts";
 
+function makeStorage(initial: Record<string, string> = {}) {
+  const values = new Map(Object.entries(initial));
+  return {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => void values.set(key, value),
+    removeItem: (key: string) => void values.delete(key),
+    value: (key: string) => values.get(key) ?? null,
+  };
+}
 test("keeps the handoff request source-only and exposes retry progress controls", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
 
-  assert.match(source, /<Button[\s\S]*?type="button"[\s\S]*?aria-label="Reset HTML Port Studio"/);
-  assert.match(source, /focus-visible:ring-2 focus-visible:ring-ring/);
-  assert.match(source, /<label htmlFor="html-source"/);
-  assert.match(source, /id="html-source"/);
-  assert.match(source, /<label htmlFor="assistant-prompt"/);
-  assert.match(source, /id="assistant-prompt"/);
-  assert.match(source, /aria-label="Send prompt to Poe Assistant"/);
+  assert.match(source, /const importSessionRef = useRef\(0\)/);
+  assert.match(source, /const sessionId = \+\+importSessionRef\.current/);
+  assert.match(source, /if \(sessionId !== importSessionRef\.current\) return;/);
+  assert.match(source, /importSessionRef\.current \+= 1;\s*analyzeMutation\.reset\(\)/s);
+  assert.match(source, /importSessionRef\.current \+= 1;\s*setHtmlInput\(html\)/s);
 });
 
-test("renders a compact vertical studio composition on mobile", async () => {
+test("uses semantic names for reset, source, assistant, and icon actions", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
 
-  assert.match(source, /<Button[\s\S]*?type="button"[\s\S]*?aria-label="Reset HTML Port Studio"/);
-  assert.match(source, /focus-visible:ring-2 focus-visible:ring-ring/);
-  assert.match(source, /<label htmlFor="html-source"/);
-  assert.match(source, /id="html-source"/);
-  assert.match(source, /<label htmlFor="assistant-prompt"/);
-  assert.match(source, /id="assistant-prompt"/);
-  assert.match(source, /aria-label="Send prompt to Poe Assistant"/);
+  assert.match(source, /const importSessionRef = useRef\(0\)/);
+  assert.match(source, /const sessionId = \+\+importSessionRef\.current/);
+  assert.match(source, /if \(sessionId !== importSessionRef\.current\) return;/);
+  assert.match(source, /importSessionRef\.current \+= 1;\s*analyzeMutation\.reset\(\)/s);
+  assert.match(source, /importSessionRef\.current \+= 1;\s*setHtmlInput\(html\)/s);
 });
 
-test("renders a compact vertical studio composition on mobile", async () => {
+test("uses semantic names for reset, source, assistant, and icon actions", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
 
-  assert.match(source, /<Button[\s\S]*?type="button"[\s\S]*?aria-label="Reset HTML Port Studio"/);
-  assert.match(source, /focus-visible:ring-2 focus-visible:ring-ring/);
-  assert.match(source, /<label htmlFor="html-source"/);
-  assert.match(source, /id="html-source"/);
-  assert.match(source, /<label htmlFor="assistant-prompt"/);
-  assert.match(source, /id="assistant-prompt"/);
-  assert.match(source, /aria-label="Send prompt to Poe Assistant"/);
+  assert.match(source, /const importSessionRef = useRef\(0\)/);
+  assert.match(source, /const sessionId = \+\+importSessionRef\.current/);
+  assert.match(source, /if \(sessionId !== importSessionRef\.current\) return;/);
+  assert.match(source, /importSessionRef\.current \+= 1;\s*analyzeMutation\.reset\(\)/s);
+  assert.match(source, /importSessionRef\.current \+= 1;\s*setHtmlInput\(html\)/s);
 });
 
-test("renders a compact vertical studio composition on mobile", async () => {
+test("uses semantic names for reset, source, assistant, and icon actions", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
   const validationIndex = source.indexOf("validateHtmlFile(file)");
   const readIndex = source.indexOf("await file.text()");
@@ -57,6 +67,16 @@ test("renders a compact vertical studio composition on mobile", async () => {
 test("suppresses late analysis results after reset or import replacement", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
 
+  assert.match(source, /const importSessionRef = useRef\(0\)/);
+  assert.match(source, /const sessionId = \+\+importSessionRef\.current/);
+  assert.match(source, /if \(sessionId !== importSessionRef\.current\) return;/);
+  assert.match(source, /importSessionRef\.current \+= 1;\s*analyzeMutation\.reset\(\)/s);
+  assert.match(source, /importSessionRef\.current \+= 1;\s*setHtmlInput\(html\)/s);
+});
+
+test("uses semantic names for reset, source, assistant, and icon actions", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+
   assert.match(source, /<Button[\s\S]*?type="button"[\s\S]*?aria-label="Reset HTML Port Studio"/);
   assert.match(source, /focus-visible:ring-2 focus-visible:ring-ring/);
   assert.match(source, /<label htmlFor="html-source"/);
@@ -69,8 +89,8 @@ test("suppresses late analysis results after reset or import replacement", async
 test("maps structured analysis errors to safe, actionable guidance", () => {
   const result = getAnalysisErrorPresentation({
     data: {
-      code: "BUNDLE_ENTRYPOINT_MISSING",
-      error: "internal source details that must not be shown",
+      code: "BUNDLE_TOO_LARGE",
+      error: "secret=do-not-display",
     },
   });
 
@@ -110,18 +130,6 @@ test("uses a concise retryable fallback for transport and non-JSON failures", ()
 test("renders a compact vertical studio composition on mobile", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
 
-  assert.match(source, /<Button[\s\S]*?type="button"[\s\S]*?aria-label="Reset HTML Port Studio"/);
-  assert.match(source, /focus-visible:ring-2 focus-visible:ring-ring/);
-  assert.match(source, /<label htmlFor="html-source"/);
-  assert.match(source, /id="html-source"/);
-  assert.match(source, /<label htmlFor="assistant-prompt"/);
-  assert.match(source, /id="assistant-prompt"/);
-  assert.match(source, /aria-label="Send prompt to Poe Assistant"/);
-});
-
-test("renders a compact vertical studio composition on mobile", async () => {
-  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
-
   // Manual QA: verify import, findings/handoff, preview, and assistant at 375px;
   // verify the horizontal split and resize handle remain usable at 1440px.
   assert.match(source, /useIsMobile/);
@@ -130,4 +138,85 @@ test("renders a compact vertical studio composition on mobile", async () => {
   assert.match(source, /defaultSize=\{isMobile \? 55 : 65\}/);
   assert.match(source, /data-\[panel-group-direction=vertical\]:cursor-row-resize/);
   assert.match(source, /md:border-r/);
+});
+
+test("keeps recovery metadata non-sensitive and session-scoped", () => {
+  const storage = makeStorage({
+    [HANDOFF_RECOVERY_STORAGE_KEY]: JSON.stringify({
+      ...createHandoffRecovery(
+        "123e4567-e89b-12d3-a456-426614174000",
+        "owner-123",
+        "123e4567-e89b-12d3-a456-426614174001",
+        1,
+      ),
+      html: "<script>const token = 'secret'</script>",
+    }),
+  });
+  const metadata = createHandoffRecovery(
+    "123e4567-e89b-12d3-a456-426614174000",
+    "owner-123",
+    "123e4567-e89b-12d3-a456-426614174001",
+  );
+
+  assert.equal(writeHandoffRecovery(metadata, storage), true);
+  const stored = storage.value(HANDOFF_RECOVERY_STORAGE_KEY);
+  assert.ok(stored);
+  assert.doesNotMatch(stored, /html|authorization|secret|token|credential-bearing source/i);
+  assert.deepEqual(readHandoffRecovery(storage), metadata);
+});
+
+test("does not share recovery metadata between separate browser sessions", () => {
+  const firstTab = makeStorage();
+  const secondTab = makeStorage();
+  const metadata = createHandoffRecovery(
+    "123e4567-e89b-12d3-a456-426614174000",
+    "owner-123",
+    "123e4567-e89b-12d3-a456-426614174001",
+  );
+  writeHandoffRecovery(metadata, firstTab);
+  assert.equal(readHandoffRecovery(secondTab), null);
+});
+
+test("discards invalid and stale recovery records instead of restoring them", () => {
+  const storage = makeStorage({
+    [HANDOFF_RECOVERY_STORAGE_KEY]: JSON.stringify({
+      ...createHandoffRecovery(
+        "123e4567-e89b-12d3-a456-426614174000",
+        "owner-123",
+        "123e4567-e89b-12d3-a456-426614174001",
+        1,
+      ),
+      html: "<script>const token = 'secret'</script>",
+    }),
+  });
+
+  assert.equal(readHandoffRecovery(storage, 2_000), null);
+  assert.equal(storage.value(HANDOFF_RECOVERY_STORAGE_KEY), null);
+  assert.equal(
+    isValidHandoffRecoveryMetadata({
+      version: 1,
+      jobId: "123e4567-e89b-12d3-a456-426614174000",
+      ownerId: "owner-123",
+      browserSessionId: "123e4567-e89b-12d3-a456-426614174001",
+      createdAt: Date.now() - 8 * 24 * 60 * 60 * 1000,
+    }),
+    false,
+  );
+});
+
+test("exposes the reload boundary, owner reconciliation, and lifecycle cleanup", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+  const authSource = await readFile(
+    new URL("../../../../lib/replit-auth-web/src/use-auth.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(source, /A reload does not restore imported HTML or analysis/);
+  assert.match(source, /Only this signed-in handoff status can be recovered/);
+  assert.match(source, /metadata\.ownerId === user\.id/);
+  assert.match(source, /metadata\.browserSessionId === browserSessionId/);
+  assert.match(source, /clearHandoffRecovery\(\)/);
+  assert.match(source, /Starting a new source clears this recovery record/);
+  assert.match(source, /replit-auth:logout/);
+  assert.match(authSource, /dispatchEvent\(new Event\("replit-auth:logout"\)\)/);
 });

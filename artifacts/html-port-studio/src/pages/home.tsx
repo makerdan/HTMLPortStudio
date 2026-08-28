@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { 
   useAnalyzeHtml, 
@@ -52,6 +52,14 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { getAnalysisErrorPresentation } from './analysis-error';
+import {
+  clearHandoffRecovery,
+  createHandoffRecovery,
+  getBrowserSessionId,
+  readHandoffRecovery,
+  type HandoffRecoveryMetadata,
+  writeHandoffRecovery,
+} from '../session-recovery';
 
 // ----------------------------------------------------------------------
 // Types and Helpers
@@ -388,6 +396,13 @@ function apiErrorMessage(
   return fallback;
 }
 
+function apiErrorCode(error: unknown): string | null {
+  if (typeof error !== 'object' || error === null || !('data' in error)) return null;
+  const data = (error as { data?: unknown }).data;
+  if (typeof data !== 'object' || data === null || !('code' in data)) return null;
+  const code = (data as { code?: unknown }).code;
+  return typeof code === 'string' ? code : null;
+}
 function HandoffStepIcon({
   status,
 }: {
@@ -405,14 +420,171 @@ function HandoffStepIcon({
   return <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/40" />;
 }
 
-function ReplitProjectHandoffPanel({ bundle }: { bundle: SourceBundle }) {
-  const { isAuthenticated, isLoading: authLoading, error: authError, login } = useAuth();
+function RecoveredHandoffPanel({
+  metadata,
+  onClear,
+}: {
+  metadata: HandoffRecoveryMetadata;
+  onClear: () => void;
+}) {
+  const {
+    user,
+    isAuthenticated,
+    isLoading: authLoading,
+    error: authError,
+    login,
+  } = useAuth();
+  const retryMutation = useRetryReplitProjectSetup();
+  const queryClient = useQueryClient();
+  const statusQuery = useGetReplitProjectStatus(metadata.jobId, {
+    query: {
+      queryKey: ['replit-project-recovery-status', metadata.jobId],
+      enabled: !authLoading && isAuthenticated && user?.id === metadata.ownerId,
+      refetchInterval: (query) => {
+        if (query.state.error) return false;
+        const status = query.state.data?.status;
+        return status === 'completed' || status === 'failed' ? false : 800;
+      },
+    },
+  });
+  const handoff = statusQuery.data;
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!isAuthenticated || !user || user.id !== metadata.ownerId) {
+      onClear();
+    }
+  }, [authLoading, isAuthenticated, metadata.ownerId, onClear, user]);
+
+  useEffect(() => {
+    if (statusQuery.data?.status === 'completed') {
+      onClear();
+      return;
+    }
+    const code = apiErrorCode(statusQuery.error);
+    if (code === 'PROJECT_HANDOFF_NOT_FOUND' || code === 'AUTHENTICATION_REQUIRED') {
+      onClear();
+    }
+  }, [onClear, statusQuery.data?.status, statusQuery.error]);
+
+  const handleRetry = () => {
+    retryMutation.mutate(
+      { jobId: metadata.jobId },
+      {
+        onSuccess: (data) => {
+          writeHandoffRecovery(createHandoffRecovery(
+            data.jobId,
+            metadata.ownerId,
+            metadata.browserSessionId,
+          ));
+          queryClient.setQueryData(
+            ['replit-project-recovery-status', metadata.jobId],
+            data,
+          );
+        },
+      },
+    );
+  };
+
+  if (!handoff && !statusQuery.isError) {
+    return (
+      <Card className="border-primary/20 bg-primary/[0.03] shadow-sm">
+        <CardContent className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Checking the private handoff status for this browser session…
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="border-primary/20 bg-primary/[0.03] shadow-sm">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Resume handoff status</CardTitle>
+        <CardDescription>
+          A reload does not restore imported HTML or analysis. Only this signed-in handoff status can be recovered, and it is not treated as an active document in this tab.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3 pt-0">
+        {authError && (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Login check failed</AlertTitle>
+            <AlertDescription>
+              {authError}
+              <Button type="button" size="sm" variant="outline" className="mt-3" onClick={login}>
+                Try logging in again
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+        {statusQuery.isError ? (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Handoff status unavailable</AlertTitle>
+            <AlertDescription>
+              {apiErrorMessage(statusQuery.error, 'The private handoff status could not be loaded.')}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="mt-3"
+                onClick={() => void statusQuery.refetch()}
+                disabled={statusQuery.isFetching}
+              >
+                {statusQuery.isFetching ? 'Retrying…' : 'Retry status check'}
+              </Button>
+            </AlertDescription>
+          </Alert>
+        ) : handoff ? (
+          <>
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+              <span className="font-medium capitalize">{handoff.status} handoff</span>
+              {handoff.projectId && <span className="font-mono text-xs">Project ID: {handoff.projectId}</span>}
+            </div>
+            <div className="space-y-2">
+              {handoff.steps.map((step) => (
+                <div key={step.name} className="flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm">
+                  <HandoffStepIcon status={step.status} />
+                  <span>{step.name}</span>
+                  {step.status === 'failed' && <span className="ml-auto text-xs text-destructive">Failed</span>}
+                </div>
+              ))}
+            </div>
+            {handoff.status === 'failed' && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-3">
+                <p className="text-sm text-destructive">{handoff.error || 'Project setup failed.'}</p>
+                <Button type="button" size="sm" variant="outline" onClick={handleRetry} disabled={retryMutation.isPending}>
+                  {retryMutation.isPending ? 'Retrying…' : 'Retry step'}
+                </Button>
+              </div>
+            )}
+          </>
+        ) : null}
+        <p className="text-xs text-muted-foreground">
+          Re-import the source to analyze or preview it again. Starting a new source clears this recovery record.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+function ReplitProjectHandoffPanel({
+  bundle,
+  onRecoverySaved,
+  onRecoveryCleared,
+}: {
+  bundle: SourceBundle;
+  onRecoverySaved: (metadata: HandoffRecoveryMetadata) => void;
+  onRecoveryCleared: () => void;
+}) {
+  const { user, isAuthenticated, isLoading: authLoading, error: authError, login } = useAuth();
   const [jobId, setJobId] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [showConnectionSetup, setShowConnectionSetup] = useState(false);
   const queryClient = useQueryClient();
   const createMutation = useCreateReplitProject();
   const retryMutation = useRetryReplitProjectSetup();
+  const browserSessionId = getBrowserSessionId();
   const connectionQuery = useGetReplitProjectConnection({
     query: {
       queryKey: ['replit-project-connection'],
@@ -453,6 +625,21 @@ function ReplitProjectHandoffPanel({ bundle }: { bundle: SourceBundle }) {
     isAuthenticated && connectionQuery.data?.status === 'setup_required';
 
   useEffect(() => {
+    if (authLoading || !isAuthenticated || !user || !browserSessionId) return;
+    const metadata = readHandoffRecovery();
+    if (!metadata) return;
+    if (
+      metadata.ownerId === user.id &&
+      metadata.browserSessionId === browserSessionId
+    ) {
+      setJobId(metadata.jobId);
+      return;
+    }
+    clearHandoffRecovery();
+    onRecoveryCleared();
+  }, [authLoading, browserSessionId, isAuthenticated, onRecoveryCleared, user]);
+
+  useEffect(() => {
     if (!showConnectionSetup) return;
     const refreshConnection = () => {
       void connectionQuery.refetch();
@@ -460,6 +647,19 @@ function ReplitProjectHandoffPanel({ bundle }: { bundle: SourceBundle }) {
     window.addEventListener('focus', refreshConnection);
     return () => window.removeEventListener('focus', refreshConnection);
   }, [showConnectionSetup, connectionQuery.refetch]);
+
+  useEffect(() => {
+    if (statusQuery.data?.status === 'completed') {
+      clearHandoffRecovery();
+      onRecoveryCleared();
+      return;
+    }
+    const code = apiErrorCode(statusQuery.error);
+    if (code === 'PROJECT_HANDOFF_NOT_FOUND' || code === 'AUTHENTICATION_REQUIRED') {
+      clearHandoffRecovery();
+      onRecoveryCleared();
+    }
+  }, [onRecoveryCleared, statusQuery.data?.status, statusQuery.error]);
 
   const handleCreate = () => {
     if (connectionNeedsSetup) {
@@ -475,6 +675,11 @@ function ReplitProjectHandoffPanel({ bundle }: { bundle: SourceBundle }) {
         onSuccess: (data: ReplitProjectHandoff) => {
           queryClient.setQueryData(['replit-project-status', data.jobId], data);
           setJobId(data.jobId);
+          if (user && browserSessionId) {
+            const metadata = createHandoffRecovery(data.jobId, user.id, browserSessionId);
+            writeHandoffRecovery(metadata);
+            onRecoverySaved(metadata);
+          }
         },
         onError: (error: unknown) => {
           setLocalError(apiErrorMessage(error));
@@ -499,6 +704,11 @@ function ReplitProjectHandoffPanel({ bundle }: { bundle: SourceBundle }) {
         onSuccess: (data: ReplitProjectHandoff) => {
           queryClient.setQueryData(['replit-project-status', data.jobId], data);
           setJobId(data.jobId);
+          if (user && browserSessionId) {
+            const metadata = createHandoffRecovery(data.jobId, user.id, browserSessionId);
+            writeHandoffRecovery(metadata);
+            onRecoverySaved(metadata);
+          }
           void statusQuery.refetch();
         },
         onError: (error: unknown) => {
@@ -516,7 +726,9 @@ function ReplitProjectHandoffPanel({ bundle }: { bundle: SourceBundle }) {
             <CardTitle className="text-base">Create a Replit Project</CardTitle>
             <CardDescription className="mt-1">
               Send this exact HTML into a runnable Replit project and install the
-              required setup skills in order.
+              required setup skills in order. Your source stays only in this browser
+              tab until you start; a reload loses the source and analysis, while only
+              the signed-in handoff status can be recovered.
             </CardDescription>
           </div>
           <Button
@@ -756,6 +968,9 @@ export default function Home() {
   const [htmlInput, setHtmlInput] = useState('');
   const [sourceBundle, setSourceBundle] = useState<SourceBundle | null>(null);
   const [analysisData, setAnalysisData] = useState<HtmlAnalysis | null>(null);
+  const [recoveryMetadata, setRecoveryMetadata] = useState<HandoffRecoveryMetadata | null>(
+    () => readHandoffRecovery(),
+  );
   const [fileError, setFileError] = useState<string | null>(null);
   const [repairOpen, setRepairOpen] = useState(false);
   const [repairSource, setRepairSource] = useState<string | null>(null);
@@ -767,9 +982,29 @@ export default function Home() {
     ? getAnalysisErrorPresentation(analyzeMutation.error)
     : null;
 
+  const clearRecovery = useCallback(() => {
+    clearHandoffRecovery();
+    setRecoveryMetadata(null);
+  }, []);
+
+  const saveRecovery = useCallback((metadata: HandoffRecoveryMetadata) => {
+    if (writeHandoffRecovery(metadata)) {
+      setRecoveryMetadata(metadata);
+    }
+  }, []);
+
+  useEffect(() => {
+    const clearOnLogout = () => clearRecovery();
+    window.addEventListener('replit-auth:logout', clearOnLogout);
+    return () => window.removeEventListener('replit-auth:logout', clearOnLogout);
+  }, [clearRecovery]);
+
   const handleAnalyze = () => {
     if (!htmlInput.trim()) return;
     const existingEntrypoint = sourceBundle?.files.find((file) => file.path === sourceBundle.entrypoint);
+    if (!sourceBundle || existingEntrypoint?.content !== htmlInput) {
+      clearRecovery();
+    }
     const bundle: SourceBundle =
       sourceBundle && existingEntrypoint?.content === htmlInput
         ? sourceBundle
@@ -796,6 +1031,7 @@ export default function Home() {
   const handleReset = () => {
     importSessionRef.current += 1;
     analyzeMutation.reset();
+    clearRecovery();
     setAnalysisData(null);
     setHtmlInput('');
     setSourceBundle(null);
@@ -820,6 +1056,7 @@ export default function Home() {
     const html = await file.text();
     importSessionRef.current += 1;
     setHtmlInput(html);
+    clearRecovery();
     setSourceBundle({
       version: 1,
       sourceType: 'single_file',
@@ -831,12 +1068,20 @@ export default function Home() {
     setFileError(null);
   };
 
+  const handleHtmlInputChange = (html: string) => {
+    if (html !== htmlInput) clearRecovery();
+    setHtmlInput(html);
+  };
+
   if (!analysisData) {
     return (
       <div className="min-h-screen flex flex-col bg-background">
         <Header onReset={handleReset} />
         <main className="flex-1 flex flex-col items-center justify-center p-6">
-          <div className="w-full max-w-3xl animate-in fade-in zoom-in-95 duration-300">
+          <div className="w-full max-w-3xl space-y-4 animate-in fade-in zoom-in-95 duration-300">
+            {recoveryMetadata && (
+              <RecoveredHandoffPanel metadata={recoveryMetadata} onClear={clearRecovery} />
+            )}
             <Card className="border-border shadow-lg">
               <CardHeader className="text-center pb-4">
                 <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-primary/10 p-1.5 shadow-sm ring-1 ring-primary/15">
@@ -880,7 +1125,7 @@ export default function Home() {
                 <Textarea
                   id="html-source"
                   value={htmlInput}
-                  onChange={(e) => setHtmlInput(e.target.value)}
+                  onChange={(e) => handleHtmlInputChange(e.target.value)}
                   placeholder="Paste your HTML code here..."
                   aria-describedby="html-source-help"
                   className="min-h-[300px] font-mono text-sm resize-y border border-black bg-muted/30 focus-visible:ring-primary/50"
@@ -1045,7 +1290,13 @@ export default function Home() {
                   )}
                 </div>
 
-                 {sourceBundle && <ReplitProjectHandoffPanel bundle={sourceBundle} />}
+                 {sourceBundle && (
+                   <ReplitProjectHandoffPanel
+                     bundle={sourceBundle}
+                     onRecoverySaved={saveRecovery}
+                     onRecoveryCleared={clearRecovery}
+                   />
+                 )}
 
                 {/* Steps */}
                 {analysisData.steps.length > 0 && (

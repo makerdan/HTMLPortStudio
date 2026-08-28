@@ -30,6 +30,7 @@ Import pasted or single-file HTML as a normalized source bundle, run a portabili
 ## Architecture decisions
 
 - Imported source bundles stay in the browser session until a signed-in user starts a handoff. Handoff source and setup state are then stored in the database, scoped to that user, so an interrupted setup can safely resume after a restart.
+- Browser reload recovery stores only a validated job ID, owner ID, tab-scoped browser-session ID, and timestamp in `sessionStorage`. Raw HTML, analysis, credentials, and source-derived content are never stored there; reloads recover status only after authenticated server reconciliation, and reset, source replacement, logout, completion, or failed ownership checks clear the record.
 - Poe requests run only on the API server so `POE_API_KEY` never reaches a browser or imported page.
 - Previewed documents run in a sandbox without same-origin access to the Studio itself.
 - Project handoff sends every normalized bundle file byte-for-byte with its explicit entrypoint through the attached server-side Replit connection, then waits for each required setup skill to confirm before starting the next one.

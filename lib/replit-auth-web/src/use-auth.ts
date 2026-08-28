@@ -42,6 +42,7 @@ export function useAuth() {
     window.location.href = `/api/login?returnTo=${encodeURIComponent(returnTo)}`;
   }, [returnTo]);
   const logout = useCallback(() => {
+    window.dispatchEvent(new Event("replit-auth:logout"));
     window.location.href = `/api/logout?returnTo=${encodeURIComponent(returnTo)}`;
   }, [returnTo]);
   return { user, isLoading, isAuthenticated: Boolean(user), error, login, logout };
