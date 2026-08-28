@@ -40,7 +40,9 @@ import {
   Send,
   Loader2,
   ListChecks,
-  Upload
+  Upload,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -1414,6 +1416,7 @@ function PoeRepairPanel({
   const [hasStarted, setHasStarted] = useState(false);
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
   const [chatHistory, setChatHistory] = useState<PoeMessage[]>([]);
+  const [copyStatus, setCopyStatus] = useState<Record<number, 'success' | 'error'>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
   const startedSourceRef = useRef<string | null>(null);
   const documentContainsCredential = containsCredential(html);
@@ -1502,6 +1505,18 @@ function PoeRepairPanel({
     documentContainsCredential,
     initialPrompt,
   ]);
+
+  const handleCopyResponse = async (messageIndex: number, content: string) => {
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error('Clipboard access is unavailable.');
+      }
+      await navigator.clipboard.writeText(content);
+      setCopyStatus((previous) => ({ ...previous, [messageIndex]: 'success' }));
+    } catch {
+      setCopyStatus((previous) => ({ ...previous, [messageIndex]: 'error' }));
+    }
+  };
 
   if (!open) return null;
 
@@ -1603,14 +1618,50 @@ function PoeRepairPanel({
           )}
           {chatHistory.map((message, index) => (
             <div key={`${message.role}-${index}`} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div
-                className={`max-w-[92%] rounded-lg px-3 py-2 text-sm ${
-                  message.role === 'user'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted font-mono whitespace-pre-wrap text-foreground'
-                }`}
-              >
-                {message.content}
+              <div className="flex max-w-[92%] flex-col items-start gap-1">
+                <div
+                  className={`rounded-lg px-3 py-2 text-sm ${
+                    message.role === 'user'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted font-mono whitespace-pre-wrap text-foreground'
+                  }`}
+                >
+                  {message.content}
+                </div>
+                {message.role === 'assistant' && (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 gap-1.5 px-2 text-xs"
+                      aria-label={
+                        copyStatus[index] === 'success'
+                          ? 'Copy response again'
+                          : 'Copy response'
+                      }
+                      title="Copy response"
+                      onClick={() => void handleCopyResponse(index, message.content)}
+                    >
+                      {copyStatus[index] === 'success' ? (
+                        <Check aria-hidden="true" className="h-3.5 w-3.5" />
+                      ) : (
+                        <Copy aria-hidden="true" className="h-3.5 w-3.5" />
+                      )}
+                      {copyStatus[index] === 'success' ? 'Copy again' : 'Copy response'}
+                    </Button>
+                    {copyStatus[index] === 'success' && (
+                      <span role="status" className="text-xs text-green-700">
+                        Response copied to clipboard.
+                      </span>
+                    )}
+                    {copyStatus[index] === 'error' && (
+                      <span role="alert" className="text-xs text-destructive">
+                        Could not copy response. Try again.
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           ))}

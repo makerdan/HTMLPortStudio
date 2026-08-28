@@ -22,7 +22,15 @@ function makeStorage(initial: Record<string, string> = {}) {
 test("keeps the handoff request source-only and exposes retry progress controls", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
 
-  const importDescriptionStart = source.indexOf("<CardTitle className=\"text-2xl font-bold\">Import HTML App</CardTitle>");
+  assert.match(source, /const importSessionRef = useRef\(0\)/);
+  assert.match(source, /const sessionId = \+\+importSessionRef\.current/);
+  assert.match(source, /if \(sessionId !== importSessionRef\.current\) return;/);
+  assert.match(source, /importSessionRef\.current \+= 1;\s*analyzeMutation\.reset\(\)/s);
+  assert.match(source, /importSessionRef\.current \+= 1;\s*setHtmlInput\(html\)/s);
+});
+
+test("uses semantic names for reset, source, assistant, and icon actions", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
 
   assert.match(source, /const importSessionRef = useRef\(0\)/);
   assert.match(source, /const sessionId = \+\+importSessionRef\.current/);
@@ -34,8 +42,6 @@ test("keeps the handoff request source-only and exposes retry progress controls"
 test("uses semantic names for reset, source, assistant, and icon actions", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
 
-  const importDescriptionStart = source.indexOf("<CardTitle className=\"text-2xl font-bold\">Import HTML App</CardTitle>");
-
   assert.match(source, /const importSessionRef = useRef\(0\)/);
   assert.match(source, /const sessionId = \+\+importSessionRef\.current/);
   assert.match(source, /if \(sessionId !== importSessionRef\.current\) return;/);
@@ -46,19 +52,6 @@ test("uses semantic names for reset, source, assistant, and icon actions", async
 test("uses semantic names for reset, source, assistant, and icon actions", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
 
-  const importDescriptionStart = source.indexOf("<CardTitle className=\"text-2xl font-bold\">Import HTML App</CardTitle>");
-
-  assert.match(source, /const importSessionRef = useRef\(0\)/);
-  assert.match(source, /const sessionId = \+\+importSessionRef\.current/);
-  assert.match(source, /if \(sessionId !== importSessionRef\.current\) return;/);
-  assert.match(source, /importSessionRef\.current \+= 1;\s*analyzeMutation\.reset\(\)/s);
-  assert.match(source, /importSessionRef\.current \+= 1;\s*setHtmlInput\(html\)/s);
-});
-
-test("uses semantic names for reset, source, assistant, and icon actions", async () => {
-  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
-
-  const importDescriptionStart = source.indexOf("<CardTitle className=\"text-2xl font-bold\">Import HTML App</CardTitle>");
   const validationIndex = source.indexOf("validateHtmlFile(file)");
   const readIndex = source.indexOf("await file.text()");
 
@@ -75,8 +68,6 @@ test("uses semantic names for reset, source, assistant, and icon actions", async
 test("suppresses late analysis results after reset or import replacement", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
 
-  const importDescriptionStart = source.indexOf("<CardTitle className=\"text-2xl font-bold\">Import HTML App</CardTitle>");
-
   assert.match(source, /const importSessionRef = useRef\(0\)/);
   assert.match(source, /const sessionId = \+\+importSessionRef\.current/);
   assert.match(source, /if \(sessionId !== importSessionRef\.current\) return;/);
@@ -84,10 +75,31 @@ test("suppresses late analysis results after reset or import replacement", async
   assert.match(source, /importSessionRef\.current \+= 1;\s*setHtmlInput\(html\)/s);
 });
 
-test("uses semantic names for reset, source, assistant, and icon actions", async () => {
+test("provides a recoverable copy action for every Gemini response", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
 
-  const importDescriptionStart = source.indexOf("<CardTitle className=\"text-2xl font-bold\">Import HTML App</CardTitle>");
+  assert.match(source, /message\.role === 'assistant'/);
+  assert.match(source, /aria-label=\{[\s\S]*'Copy response'/);
+  assert.match(source, /navigator\.clipboard\?\.writeText/);
+  assert.match(source, /await navigator\.clipboard\.writeText\(content\)/);
+  assert.match(source, /Response copied to clipboard\./);
+  assert.match(source, /Could not copy response\. Try again\./);
+  assert.match(source, /onClick=\{\(\) => void handleCopyResponse\(index, message\.content\)\}/);
+});
+
+test("keeps copying isolated from imported source and analysis", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+  const copyHandlerStart = source.indexOf("const handleCopyResponse");
+  const copyHandlerEnd = source.indexOf("if (!open) return null;", copyHandlerStart);
+  const copyHandler = source.slice(copyHandlerStart, copyHandlerEnd);
+
+  assert.notEqual(copyHandlerStart, -1);
+  assert.notEqual(copyHandlerEnd, -1);
+  assert.doesNotMatch(copyHandler, /setHtmlInput|setSourceBundle|setAnalysisData|handleAnalyze|analyzeMutation/);
+});
+
+test("uses semantic names for reset, source, assistant, and icon actions", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
 
   assert.match(source, /<Button[\s\S]*?type="button"[\s\S]*?aria-label="Reset HTML Port Studio"/);
   assert.match(source, /focus-visible:ring-2 focus-visible:ring-ring/);
@@ -141,8 +153,6 @@ test("uses a concise retryable fallback for transport and non-JSON failures", ()
 
 test("renders a compact vertical studio composition on mobile", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
-
-  const importDescriptionStart = source.indexOf("<CardTitle className=\"text-2xl font-bold\">Import HTML App</CardTitle>");
 
   // Manual QA: verify import, findings/handoff, preview, and assistant at 375px;
   // verify the horizontal split and resize handle remain usable at 1440px.
@@ -221,7 +231,6 @@ test("discards invalid and stale recovery records instead of restoring them", ()
 test("exposes the reload boundary, owner reconciliation, and lifecycle cleanup", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
 
-  const importDescriptionStart = source.indexOf("<CardTitle className=\"text-2xl font-bold\">Import HTML App</CardTitle>");
   const authSource = await readFile(
     new URL("../../../../lib/replit-auth-web/src/use-auth.ts", import.meta.url),
     "utf8",
@@ -236,15 +245,3 @@ test("exposes the reload boundary, owner reconciliation, and lifecycle cleanup",
   assert.match(source, /replit-auth:logout/);
   assert.match(authSource, /dispatchEvent\(new Event\("replit-auth:logout"\)\)/);
 });
-
-  const poeAssistantEnd = source.indexOf("function PoeRepairPanel");
-
-  const handoffStart = source.indexOf("function ReplitProjectHandoffPanel");
-
-  const poeAssistantSource = source.slice(assistantStart, poeAssistantEnd);
-
-  const mainPageStart = source.indexOf("// Main Page");
-
-  const assistantStart = source.indexOf("function PoeAssistantPanel");
-
-  const importDescriptionEnd = source.indexOf("</CardHeader>", importDescriptionStart);
