@@ -134,43 +134,6 @@ function looksLikeJson(text: string): boolean {
   return trimmed.startsWith("{") || trimmed.startsWith("[");
 }
 
-function getStringField(value: unknown, key: string): string | undefined {
-  if (!value || typeof value !== "object") return undefined;
-
-  const candidate = (value as Record<string, unknown>)[key];
-  if (typeof candidate !== "string") return undefined;
-
-  const trimmed = candidate.trim();
-  return trimmed === "" ? undefined : trimmed;
-}
-
-function truncate(text: string, maxLength = 300): string {
-  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
-}
-
-function buildErrorMessage(response: Response, data: unknown): string {
-  const prefix = `HTTP ${response.status} ${response.statusText}`;
-
-  if (typeof data === "string") {
-    const text = data.trim();
-    return text ? `${prefix}: ${truncate(text)}` : prefix;
-  }
-
-  const title = getStringField(data, "title");
-  const detail = getStringField(data, "detail");
-  const message =
-    getStringField(data, "message") ??
-    getStringField(data, "error_description") ??
-    getStringField(data, "error");
-
-  if (title && detail) return `${prefix}: ${title} — ${detail}`;
-  if (detail) return `${prefix}: ${detail}`;
-  if (message) return `${prefix}: ${message}`;
-  if (title) return `${prefix}: ${title}`;
-
-  return prefix;
-}
-
 export class ApiError<T = unknown> extends Error {
   readonly name = "ApiError";
   readonly status: number;
@@ -186,7 +149,7 @@ export class ApiError<T = unknown> extends Error {
     data: T | null,
     requestInfo: { method: string; url: string },
   ) {
-    super(buildErrorMessage(response, data));
+    super(`Request failed with status ${response.status}.`);
     Object.setPrototypeOf(this, new.target.prototype);
 
     this.status = response.status;
@@ -216,10 +179,7 @@ export class ResponseParseError extends Error {
     cause: unknown,
     requestInfo: { method: string; url: string },
   ) {
-    super(
-      `Failed to parse response from ${requestInfo.method} ${response.url || requestInfo.url} ` +
-        `(${response.status} ${response.statusText}) as JSON`,
-    );
+    super(`The server returned an unreadable response (status ${response.status}).`);
     Object.setPrototypeOf(this, new.target.prototype);
 
     this.status = response.status;

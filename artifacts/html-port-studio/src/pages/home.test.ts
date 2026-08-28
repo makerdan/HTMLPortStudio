@@ -9,6 +9,14 @@ import {
   writeHandoffRecovery,
 } from "../session-recovery.ts";
 import { getAnalysisErrorPresentation } from "./analysis-error.ts";
+import {
+  getStudioErrorMessage,
+  PROJECT_HANDOFF_FAILURE_FALLBACK,
+} from "./studio-error.ts";
+import {
+  ApiError,
+  ResponseParseError,
+} from "../../../../lib/api-client-react/src/custom-fetch.ts";
 
 function makeStorage(initial: Record<string, string> = {}) {
   const values = new Map(Object.entries(initial));
@@ -19,7 +27,8 @@ function makeStorage(initial: Record<string, string> = {}) {
     value: (key: string) => values.get(key) ?? null,
   };
 }
-test("keeps the handoff request source-only and exposes retry progress controls", async () => {
+
+test("keeps source requests scoped to the current import", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
 
   assert.match(source, /const importSessionRef = useRef\(0\)/);
@@ -27,52 +36,23 @@ test("keeps the handoff request source-only and exposes retry progress controls"
   assert.match(source, /if \(sessionId !== importSessionRef\.current\) return;/);
   assert.match(source, /importSessionRef\.current \+= 1;\s*analyzeMutation\.reset\(\)/s);
   assert.match(source, /importSessionRef\.current \+= 1;\s*setHtmlInput\(html\)/s);
+  assert.match(source, /<label htmlFor="html-source"/);
+  assert.match(source, /<label htmlFor="assistant-prompt"/);
 });
 
-test("uses semantic names for reset, source, assistant, and icon actions", async () => {
+test("validates HTML files before reading their contents", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
-
-  assert.match(source, /const importSessionRef = useRef\(0\)/);
-  assert.match(source, /const sessionId = \+\+importSessionRef\.current/);
-  assert.match(source, /if \(sessionId !== importSessionRef\.current\) return;/);
-  assert.match(source, /importSessionRef\.current \+= 1;\s*analyzeMutation\.reset\(\)/s);
-  assert.match(source, /importSessionRef\.current \+= 1;\s*setHtmlInput\(html\)/s);
-});
-
-test("uses semantic names for reset, source, assistant, and icon actions", async () => {
-  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
-
-  assert.match(source, /const importSessionRef = useRef\(0\)/);
-  assert.match(source, /const sessionId = \+\+importSessionRef\.current/);
-  assert.match(source, /if \(sessionId !== importSessionRef\.current\) return;/);
-  assert.match(source, /importSessionRef\.current \+= 1;\s*analyzeMutation\.reset\(\)/s);
-  assert.match(source, /importSessionRef\.current \+= 1;\s*setHtmlInput\(html\)/s);
-});
-
-test("uses semantic names for reset, source, assistant, and icon actions", async () => {
-  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
-
   const validationIndex = source.indexOf("validateHtmlFile(file)");
   const readIndex = source.indexOf("await file.text()");
 
   assert.notEqual(validationIndex, -1);
   assert.notEqual(readIndex, -1);
-  assert.ok(validationIndex < readIndex, "file validation must happen before file.text()");
+  assert.ok(validationIndex < readIndex);
   assert.match(source, /MAX_HTML_FILE_BYTES = 2 \* 1024 \* 1024/);
   assert.match(source, /Choose an HTML file ending in \.html or \.htm/);
   assert.match(source, /no larger than 2 MB/);
   assert.match(source, /if \(validationError\) \{\s*setFileError\(validationError\);\s*return;/s);
   assert.match(source, /event\.target\.value = ''/);
-});
-
-test("suppresses late analysis results after reset or import replacement", async () => {
-  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
-
-  assert.match(source, /const importSessionRef = useRef\(0\)/);
-  assert.match(source, /const sessionId = \+\+importSessionRef\.current/);
-  assert.match(source, /if \(sessionId !== importSessionRef\.current\) return;/);
-  assert.match(source, /importSessionRef\.current \+= 1;\s*analyzeMutation\.reset\(\)/s);
-  assert.match(source, /importSessionRef\.current \+= 1;\s*setHtmlInput\(html\)/s);
 });
 
 test("provides a recoverable copy action for every Gemini response", async () => {
@@ -87,7 +67,7 @@ test("provides a recoverable copy action for every Gemini response", async () =>
   assert.match(source, /onClick=\{\(\) => void handleCopyResponse\(index, message\.content\)\}/);
 });
 
-test("keeps copying isolated from imported source and analysis", async () => {
+test("keeps Gemini copy isolated from imported source and analysis", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
   const copyHandlerStart = source.indexOf("const handleCopyResponse");
   const copyHandlerEnd = source.indexOf("if (!open) return null;", copyHandlerStart);
@@ -98,23 +78,11 @@ test("keeps copying isolated from imported source and analysis", async () => {
   assert.doesNotMatch(copyHandler, /setHtmlInput|setSourceBundle|setAnalysisData|handleAnalyze|analyzeMutation/);
 });
 
-test("uses semantic names for reset, source, assistant, and icon actions", async () => {
-  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
-
-  assert.match(source, /<Button[\s\S]*?type="button"[\s\S]*?aria-label="Reset HTML Port Studio"/);
-  assert.match(source, /focus-visible:ring-2 focus-visible:ring-ring/);
-  assert.match(source, /<label htmlFor="html-source"/);
-  assert.match(source, /id="html-source"/);
-  assert.match(source, /<label htmlFor="assistant-prompt"/);
-  assert.match(source, /id="assistant-prompt"/);
-  assert.match(source, /aria-label="Send prompt to Poe Assistant"/);
-});
-
 test("maps structured analysis errors to safe, actionable guidance", () => {
   const result = getAnalysisErrorPresentation({
     data: {
-      code: "BUNDLE_TOO_LARGE",
-      error: "secret=do-not-display",
+      code: "BUNDLE_ENTRYPOINT_MISSING",
+      error: "internal source details that must not be shown",
     },
   });
 
@@ -137,13 +105,15 @@ test("explains oversized bundles without exposing the API response", () => {
   assert.equal(result.retryable, false);
 });
 
-test("uses a concise retryable fallback for transport and non-JSON failures", () => {
-  const transportResult = getAnalysisErrorPresentation(new TypeError("Failed to fetch"));
-  const nonJsonResult = getAnalysisErrorPresentation({
-    data: "<html>gateway response with source-like content</html>",
-  });
+test("uses concise retryable fallbacks for analysis transport and non-JSON failures", () => {
+  const results = [
+    getAnalysisErrorPresentation(new TypeError("Failed to fetch")),
+    getAnalysisErrorPresentation({
+      data: "<html>gateway response with source-like content</html>",
+    }),
+  ];
 
-  for (const result of [transportResult, nonJsonResult]) {
+  for (const result of results) {
     assert.equal(result.title, "Analysis unavailable");
     assert.match(result.message, /connection|analysis service/i);
     assert.equal(result.retryable, true);
@@ -151,12 +121,14 @@ test("uses a concise retryable fallback for transport and non-JSON failures", ()
   }
 });
 
-test("renders a compact vertical studio composition on mobile", async () => {
+test("renders the responsive Studio composition and accessible actions", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
 
-  // Manual QA: verify import, findings/handoff, preview, and assistant at 375px;
-  // verify the horizontal split and resize handle remain usable at 1440px.
-  assert.match(source, /useIsMobile/);
+  assert.match(source, /aria-label="Reset HTML Port Studio"/);
+  assert.match(source, /focus-visible:ring-2 focus-visible:ring-ring/);
+  assert.match(source, /id="html-source"/);
+  assert.match(source, /id="assistant-prompt"/);
+  assert.match(source, /aria-label="Send prompt to Poe Assistant"/);
   assert.match(source, /direction=\{isMobile \? 'vertical' : 'horizontal'\}/);
   assert.match(source, /defaultSize=\{isMobile \? 45 : 35\}/);
   assert.match(source, /defaultSize=\{isMobile \? 55 : 65\}/);
@@ -164,18 +136,102 @@ test("renders a compact vertical studio composition on mobile", async () => {
   assert.match(source, /md:border-r/);
 });
 
+test("allowlists structured assistant and handoff errors", () => {
+  const credentialResult = getStudioErrorMessage(
+    {
+      data: {
+        code: "CHAT_CONTAINS_CREDENTIAL",
+        error: "credential=super-secret-value",
+      },
+    },
+    "assistant fallback",
+  );
+  const connectionResult = getStudioErrorMessage(
+    {
+      data: {
+        code: "PROJECT_CREATION_CONNECTION_UNAVAILABLE",
+        error: "proxy request headers and upstream response details",
+      },
+    },
+    "handoff fallback",
+  );
+  const bundleResult = getStudioErrorMessage(
+    {
+      data: {
+        code: "BUNDLE_ENTRYPOINT_MISSING",
+        error: "source contents and request credentials",
+      },
+    },
+    "handoff fallback",
+  );
+
+  assert.match(credentialResult, /service credential/i);
+  assert.match(connectionResult, /setup screen/i);
+  assert.match(bundleResult, /entrypoint/i);
+  assert.doesNotMatch(credentialResult, /super-secret-value/i);
+  assert.doesNotMatch(connectionResult, /proxy request|upstream response/i);
+  assert.doesNotMatch(bundleResult, /source contents|request credentials/i);
+});
+
+test("uses concise fallbacks for unknown, transport, and non-JSON errors", () => {
+  const fallback = "The assistant could not answer. Your prompt is ready to retry.";
+  const errors = [
+    new TypeError("Failed to fetch: Authorization: Bearer secret-token"),
+    {
+      data: "<html>gateway response containing source contents and credentials</html>",
+    },
+    {
+      data: {
+        code: "UNKNOWN_UPSTREAM_CODE",
+        error: "raw upstream details with secret-token",
+      },
+    },
+  ];
+
+  for (const error of errors) {
+    assert.equal(getStudioErrorMessage(error, fallback), fallback);
+  }
+
+  assert.equal(
+    PROJECT_HANDOFF_FAILURE_FALLBACK,
+    "The Replit project setup could not be completed. Retry the failed step.",
+  );
+});
+
+test("does not render raw server error fields in non-analysis surfaces", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+
+  assert.doesNotMatch(source, /apiErrorMessage/);
+  assert.doesNotMatch(source, /failedStep\?\.error\s*\|\||handoff\.error\s*\|\|/);
+  assert.doesNotMatch(source, /\{authError\}/);
+  assert.match(source, /getStudioErrorMessage\(error/);
+  assert.match(source, /PROJECT_HANDOFF_FAILURE_FALLBACK/);
+});
+
+test("keeps shared fetch error messages free of raw response details", () => {
+  const response = new Response(
+    "gateway body with source contents and secret-token",
+    { status: 502, statusText: "upstream request details" },
+  );
+  const apiError = new ApiError(
+    response,
+    "gateway body with source contents and secret-token",
+    { method: "POST", url: "https://example.test/api/hand-off?token=secret-token" },
+  );
+  const parseError = new ResponseParseError(
+    response,
+    "gateway body with source contents and secret-token",
+    new SyntaxError("secret-token"),
+    { method: "POST", url: "https://example.test/api/hand-off?token=secret-token" },
+  );
+
+  for (const error of [apiError, parseError]) {
+    assert.doesNotMatch(error.message, /gateway body|source contents|secret-token|upstream request/i);
+  }
+});
+
 test("keeps recovery metadata non-sensitive and session-scoped", () => {
-  const storage = makeStorage({
-    [HANDOFF_RECOVERY_STORAGE_KEY]: JSON.stringify({
-      ...createHandoffRecovery(
-        "123e4567-e89b-12d3-a456-426614174000",
-        "owner-123",
-        "123e4567-e89b-12d3-a456-426614174001",
-        1,
-      ),
-      html: "<script>const token = 'secret'</script>",
-    }),
-  });
+  const storage = makeStorage();
   const metadata = createHandoffRecovery(
     "123e4567-e89b-12d3-a456-426614174000",
     "owner-123",
@@ -197,6 +253,7 @@ test("does not share recovery metadata between separate browser sessions", () =>
     "owner-123",
     "123e4567-e89b-12d3-a456-426614174001",
   );
+
   writeHandoffRecovery(metadata, firstTab);
   assert.equal(readHandoffRecovery(secondTab), null);
 });
@@ -230,7 +287,6 @@ test("discards invalid and stale recovery records instead of restoring them", ()
 
 test("exposes the reload boundary, owner reconciliation, and lifecycle cleanup", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
-
   const authSource = await readFile(
     new URL("../../../../lib/replit-auth-web/src/use-auth.ts", import.meta.url),
     "utf8",

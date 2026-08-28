@@ -62,11 +62,14 @@ import {
   type HandoffRecoveryMetadata,
   writeHandoffRecovery,
 } from '../session-recovery';
+import {
+  getStudioErrorMessage,
+  PROJECT_HANDOFF_FAILURE_FALLBACK,
+} from './studio-error';
 
 // ----------------------------------------------------------------------
 // Types and Helpers
 // ----------------------------------------------------------------------
-
 const SEVERITY_COLORS = {
   info: 'info',
   warning: 'warning',
@@ -215,7 +218,7 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
       onError: (error: unknown) => {
         setChatHistory(prev => prev.filter((message, index) => index !== prev.length - 1));
         setPrompt(submittedPrompt);
-        setChatError(apiErrorMessage(error, 'The assistant could not answer. Your prompt is ready to retry.'));
+        setChatError(getStudioErrorMessage(error, 'The assistant could not answer. Your prompt is ready to retry.'));
       }
     });
   };
@@ -234,7 +237,7 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
         <AlertTriangle className="mb-4 h-8 w-8 text-destructive" />
         <p className="mb-2 font-medium">Could not load Poe models</p>
         <p className="mb-4 text-sm text-muted-foreground">
-          {apiErrorMessage(modelsQueryError, 'The assistant setup could not be loaded.')}
+          {getStudioErrorMessage(modelsQueryError, 'The assistant setup could not be loaded.')}
         </p>
         <Button type="button" variant="outline" onClick={() => void refetchModels()}>
           Retry loading models
@@ -384,20 +387,6 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
 }
 
 const GEMINI_REPAIR_MODEL = 'Gemini-3.1-Pro';
-function apiErrorMessage(
-  error: unknown,
-  fallback = 'The Replit project handoff could not be started. Your imported HTML is still here.',
-): string {
-  if (typeof error === 'object' && error !== null && 'data' in error) {
-    const data = (error as { data?: unknown }).data;
-    if (typeof data === 'object' && data !== null && 'error' in data) {
-      const message = (data as { error?: unknown }).error;
-      if (typeof message === 'string') return message;
-    }
-  }
-  return fallback;
-}
-
 function apiErrorCode(error: unknown): string | null {
   if (typeof error !== 'object' || error === null || !('data' in error)) return null;
   const data = (error as { data?: unknown }).data;
@@ -515,7 +504,10 @@ function RecoveredHandoffPanel({
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>Login check failed</AlertTitle>
             <AlertDescription>
-              {authError}
+              {getStudioErrorMessage(
+                authError,
+                'The login check could not be completed. Try logging in again.',
+              )}
               <Button type="button" size="sm" variant="outline" className="mt-3" onClick={login}>
                 Try logging in again
               </Button>
@@ -527,7 +519,10 @@ function RecoveredHandoffPanel({
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>Handoff status unavailable</AlertTitle>
             <AlertDescription>
-              {apiErrorMessage(statusQuery.error, 'The private handoff status could not be loaded.')}
+              {getStudioErrorMessage(
+                statusQuery.error,
+                'The private handoff status could not be loaded.',
+              )}
               <Button
                 type="button"
                 size="sm"
@@ -557,7 +552,7 @@ function RecoveredHandoffPanel({
             </div>
             {handoff.status === 'failed' && (
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-3">
-                <p className="text-sm text-destructive">{handoff.error || 'Project setup failed.'}</p>
+                <p className="text-sm text-destructive">{PROJECT_HANDOFF_FAILURE_FALLBACK}</p>
                 <Button type="button" size="sm" variant="outline" onClick={handleRetry} disabled={retryMutation.isPending}>
                   {retryMutation.isPending ? 'Retrying…' : 'Retry step'}
                 </Button>
@@ -622,9 +617,6 @@ function ReplitProjectHandoffPanel({
     retryMutation.isPending ||
     handoff?.status === 'queued' ||
     handoff?.status === 'running';
-  const failedStep = handoff?.steps.find(
-    (step: ReplitProjectStepStatus) => step.status === 'failed',
-  );
   const connectionNeedsSetup =
     isAuthenticated && connectionQuery.data?.status === 'setup_required';
 
@@ -686,7 +678,7 @@ function ReplitProjectHandoffPanel({
           }
         },
         onError: (error: unknown) => {
-          setLocalError(apiErrorMessage(error));
+          setLocalError(getStudioErrorMessage(error, 'The Replit project handoff could not be started. Your imported HTML is still here.'));
         },
       },
     );
@@ -716,7 +708,7 @@ function ReplitProjectHandoffPanel({
           void statusQuery.refetch();
         },
         onError: (error: unknown) => {
-          setLocalError(apiErrorMessage(error));
+          setLocalError(getStudioErrorMessage(error, 'The Replit project handoff could not be retried. Your imported HTML is still here.'));
         },
       },
     );
@@ -774,7 +766,10 @@ function ReplitProjectHandoffPanel({
               <AlertTriangle className="h-4 w-4" />
               <AlertTitle>Login failed</AlertTitle>
               <AlertDescription>
-                {authError}
+                {getStudioErrorMessage(
+                  authError,
+                  'The login check could not be completed. Try logging in again.',
+                )}
                 <Button type="button" size="sm" variant="outline" className="mt-3" onClick={login}>
                   Try logging in again
                 </Button>
@@ -855,7 +850,12 @@ function ReplitProjectHandoffPanel({
                 <Alert variant="destructive">
                   <AlertTriangle className="h-4 w-4" />
                   <AlertTitle>Setup link unavailable</AlertTitle>
-                  <AlertDescription>{apiErrorMessage(connectionSetupQuery.error)}</AlertDescription>
+                  <AlertDescription>
+                    {getStudioErrorMessage(
+                      connectionSetupQuery.error,
+                      'Secure project setup could not be opened. Try again from this screen.',
+                    )}
+                  </AlertDescription>
                 </Alert>
               )
             )}
@@ -878,7 +878,10 @@ function ReplitProjectHandoffPanel({
             <AlertTitle>Project handoff unavailable</AlertTitle>
             <AlertDescription>
               {localError ||
-                'The setup status could not be loaded. The imported HTML is still in this session.'}
+                getStudioErrorMessage(
+                  statusQuery.error,
+                  'The setup status could not be loaded. The imported HTML is still in this session.',
+                )}
               {statusQuery.isError && (
                 <Button
                   type="button"
@@ -928,7 +931,7 @@ function ReplitProjectHandoffPanel({
           {handoff.status === 'failed' && (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-3">
               <p className="text-sm text-destructive">
-                {failedStep?.error || handoff.error || 'Project creation failed before setup could begin.'}
+                {PROJECT_HANDOFF_FAILURE_FALLBACK}
               </p>
               <Button
                 type="button"
@@ -1472,7 +1475,7 @@ function PoeRepairPanel({
           setChatHistory((prev) => prev.filter((_message, index) => index !== prev.length - 1));
           setPrompt(message);
           setPendingPrompt(message);
-          setChatError(apiErrorMessage(error, 'Gemini could not answer. Your request is ready to retry.'));
+          setChatError(getStudioErrorMessage(error, 'Gemini could not answer. Your request is ready to retry.'));
         },
       },
     );
@@ -1562,7 +1565,7 @@ function PoeRepairPanel({
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>Could not load Gemini repair model</AlertTitle>
             <AlertDescription>
-              {apiErrorMessage(modelsQueryError, 'The Poe model list could not be loaded.')}
+              {getStudioErrorMessage(modelsQueryError, 'The Poe model list could not be loaded.')}
               <br />
               <Button type="button" size="sm" variant="outline" className="mt-3" onClick={() => void refetchModels()}>
                 Retry loading models

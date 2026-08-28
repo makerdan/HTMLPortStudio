@@ -1,4 +1,5 @@
 - [Node test TypeScript extensions](node-test-typescript.md) — Native strip-types tests load `.ts`; use a TSX-capable runner when the test contains JSX.
 - [Workspace declaration validation](library-declaration-refresh.md) — Use isolated outputs and make consumers resolve emitted declarations when validation can run in parallel.
 - [Browser test runtime](browser-test-runtime.md) — Playwright needs its Chromium binary and native graphics/audio libraries in minimal containers.
+- [Rebase validation](rebase-validation.md) — After conflict resolution, test files can be malformed without conflict markers; run syntax/tests on every touched file before continuing.
 - [API handoff timing flake](api-handoff-timing-flake.md) — A polling assertion can briefly observe “running” instead of “failed”; isolate and retry before changing backend code.
