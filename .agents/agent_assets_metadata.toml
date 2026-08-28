@@ -28,3 +28,17 @@ mtime_ms = 1787887901570
 storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:ced8e084-60d0-4238-8abc-31704510412d/5bfb0a4e-a063-4bf6-bfcb-f96ab1374032/59c12b52-ef68-4f55-b6cb-03910960bd16"
 storage_version_token = "1787887906858524"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "t3rYc2DiZQdesFfG8Vkh6"
+uri = "file://downloads/clerk-for-dan.zip"
+type = "unspecified"
+title = "Clerk For Dan skill"
+description = "ZIP download containing the unchanged canonical .agents/skills/clerk-for-dan/SKILL.md file."
+logical_id = "06b9a766-a1ce-4e67-b1db-13ad1804b1cd"
+content_hash = "sha256:59f60b13588e0f030b975b5da54f421eaac2081b6a77496b0ec416e938e09c5e"
+size = 5863
+mtime_ms = 1787889187864
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:ced8e084-60d0-4238-8abc-31704510412d/06b9a766-a1ce-4e67-b1db-13ad1804b1cd/b82a5139-a0cc-4d20-aa3a-8779773446aa"
+storage_version_token = "1787889191664135"
+content_type = "application/octet-stream"
