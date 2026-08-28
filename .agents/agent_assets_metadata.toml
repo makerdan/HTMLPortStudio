@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "n7DpQBLR6vFCcHbfZFy3r"
+uri = "file://downloads/skill-compression.zip"
+type = "unspecified"
+title = "Skill Compression skill"
+description = "ZIP download containing the unchanged available Skill Compression SKILL.md file."
+logical_id = "b2432718-8206-480d-801b-13a6e5eb2a9b"
+content_hash = "sha256:4fc158cf699994de3ac2a30ad418c8bca6940fc523fced9c7e2100f895ec538c"
+size = 6625
+mtime_ms = 1787887519548
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:ced8e084-60d0-4238-8abc-31704510412d/b2432718-8206-480d-801b-13a6e5eb2a9b/0d8111ae-cc28-468c-8e4f-1db885cab5d2"
+storage_version_token = "1787887527985602"
+content_type = "application/octet-stream"
