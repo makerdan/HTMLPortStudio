@@ -14,3 +14,17 @@ mtime_ms = 1787887519548
 storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:ced8e084-60d0-4238-8abc-31704510412d/b2432718-8206-480d-801b-13a6e5eb2a9b/0d8111ae-cc28-468c-8e4f-1db885cab5d2"
 storage_version_token = "1787887527985602"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "zNNOwEBLlvinDxlw6Vpq6"
+uri = "file://downloads/poe-setup.zip"
+type = "unspecified"
+title = "Poe Setup skill"
+description = "ZIP download containing the unchanged available Poe Setup SKILL.md file."
+logical_id = "5bfb0a4e-a063-4bf6-bfcb-f96ab1374032"
+content_hash = "sha256:7b2b78b3f308ee15fb9aed828a84b7e3d9c0f77fba25274214d6b8c65381ea7f"
+size = 3115
+mtime_ms = 1787887901570
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:ced8e084-60d0-4238-8abc-31704510412d/5bfb0a4e-a063-4bf6-bfcb-f96ab1374032/59c12b52-ef68-4f55-b6cb-03910960bd16"
+storage_version_token = "1787887906858524"
+content_type = "application/octet-stream"
