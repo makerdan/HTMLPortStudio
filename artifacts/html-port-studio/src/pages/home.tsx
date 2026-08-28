@@ -48,6 +48,8 @@ import {
   Copy,
   Check,
   Github,
+  FileArchive,
+  Files,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -71,6 +73,14 @@ import {
   getStudioErrorMessage,
   PROJECT_HANDOFF_FAILURE_FALLBACK,
 } from './studio-error';
+import {
+  ZipSourceError,
+  createSafePreviewHtml,
+  findBundleDependencyWarnings,
+  formatZipBytes,
+  getHtmlEntrypointTitle,
+  makeZipSourceBundle,
+} from '@/lib/zip-source';
 
 // ----------------------------------------------------------------------
 // Types and Helpers
@@ -1002,6 +1012,8 @@ export default function Home() {
   const [githubImportData, setGithubImportData] = useState<GithubImport | null>(null);
   const [repairOpen, setRepairOpen] = useState(false);
   const [repairSource, setRepairSource] = useState<string | null>(null);
+  const [zipLoading, setZipLoading] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState('');
   const analyzeMutation = useAnalyzeHtml();
   const githubRepositoryQuery = useGetGithubRepository(
     { url: githubLookupUrl || 'https://github.com/example/example' },
@@ -1014,11 +1026,22 @@ export default function Home() {
   );
   const githubImportMutation = useImportGithubRepository();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const zipInputRef = useRef<HTMLInputElement>(null);
   const importSessionRef = useRef(0);
   const isMobile = useIsMobile();
   const analysisError = analyzeMutation.isError
     ? getAnalysisErrorPresentation(analyzeMutation.error)
     : null;
+
+  useEffect(() => {
+    if (!sourceBundle) {
+      setPreviewHtml('');
+      return;
+    }
+    const preview = createSafePreviewHtml(sourceBundle);
+    setPreviewHtml(preview.html);
+    return preview.revoke;
+  }, [sourceBundle]);
 
   useEffect(() => {
     if (githubRepositoryQuery.data && !githubRef) {
@@ -1156,6 +1179,7 @@ export default function Home() {
     setGithubCandidates([]);
     setGithubError(null);
     setGithubImportData(null);
+    setZipLoading(false);
   };
 
   const handleFileSelect = async (
@@ -1185,6 +1209,78 @@ export default function Home() {
     setAnalysisData(null);
     setFileError(null);
   };
+
+  const handleZipSelect = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith('.zip')) {
+      setFileError('Choose a ZIP file ending in .zip, then try again.');
+      return;
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      setFileError(
+        `This ZIP is ${formatZipBytes(file.size)}. Choose an archive no larger than 25 MB.`,
+      );
+      return;
+    }
+
+    setZipLoading(true);
+    setFileError(null);
+    const sessionId = ++importSessionRef.current;
+    try {
+      const bundle = makeZipSourceBundle(await file.arrayBuffer(), file.name);
+      if (sessionId !== importSessionRef.current) return;
+      const entrypointFile = bundle.files.find((entry) => entry.path === bundle.entrypoint);
+      if (!entrypointFile) {
+        throw new ZipSourceError(
+          'ZIP_NO_HTML',
+          'The ZIP entrypoint could not be selected. Choose another archive.',
+        );
+      }
+      clearRecovery();
+      setSourceBundle(bundle);
+      setHtmlInput(entrypointFile.content);
+      setAnalysisData(null);
+    } catch (error) {
+      setFileError(
+        error instanceof ZipSourceError
+          ? error.message
+          : 'The ZIP archive could not be imported. It may be malformed.',
+      );
+    } finally {
+      setZipLoading(false);
+    }
+  };
+
+  const handleEntrypointChange = (entrypoint: string) => {
+    if (!sourceBundle) return;
+    const entrypointFile = sourceBundle.files.find((file) => file.path === entrypoint);
+    if (!entrypointFile) return;
+    const warnings = findBundleDependencyWarnings(sourceBundle.files, entrypoint);
+    importSessionRef.current += 1;
+    clearRecovery();
+    setSourceBundle({
+      ...sourceBundle,
+      entrypoint,
+      metadata: {
+        ...sourceBundle.metadata,
+        warnings: warnings.length ? warnings : undefined,
+      },
+    });
+    setHtmlInput(entrypointFile.content);
+    setAnalysisData(null);
+    setFileError(null);
+  };
+
+  const entrypointSelectionRequired =
+    sourceBundle?.sourceType === 'zip_project' &&
+    sourceBundle.metadata.warnings?.some((warning) =>
+      warning.startsWith('Multiple HTML entrypoints'),
+    );
 
   const handleHtmlInputChange = (html: string) => {
     if (html !== htmlInput) clearRecovery();
@@ -1222,20 +1318,45 @@ export default function Home() {
                   className="hidden"
                   onChange={handleFileSelect}
                 />
+                 <input
+                   ref={zipInputRef}
+                   type="file"
+                   accept=".zip,application/zip,application/x-zip-compressed"
+                   className="hidden"
+                   onChange={handleZipSelect}
+                 />
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                   <p id="html-source-help" className="text-sm text-muted-foreground">
-                    Choose one standalone file, or paste its source below.
+                     Choose a standalone file or ZIP project, or paste its source below.
                   </p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="default"
-                    className="h-11 shrink-0 gap-2 border border-purple-500 px-5 text-sm font-semibold"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <Upload className="h-3.5 w-3.5" />
-                    Choose HTML file
-                  </Button>
+                   <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                     <Button
+                       type="button"
+                       variant="outline"
+                       size="default"
+                       className="h-11 gap-2 border border-purple-500 px-4 text-sm font-semibold"
+                       onClick={() => fileInputRef.current?.click()}
+                       disabled={zipLoading}
+                     >
+                       <Upload className="h-3.5 w-3.5" />
+                       Choose HTML file
+                     </Button>
+                     <Button
+                       type="button"
+                       variant="outline"
+                       size="default"
+                       className="h-11 gap-2 border border-primary px-4 text-sm font-semibold"
+                       onClick={() => zipInputRef.current?.click()}
+                       disabled={zipLoading}
+                     >
+                       {zipLoading ? (
+                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                       ) : (
+                         <FileArchive className="h-3.5 w-3.5" />
+                       )}
+                       {zipLoading ? 'Unpacking ZIP...' : 'Choose ZIP project'}
+                     </Button>
+                   </div>
                 </div>
                 <label htmlFor="html-source" className="mb-2 block text-sm font-medium text-foreground">
                   HTML source
@@ -1248,6 +1369,55 @@ export default function Home() {
                   aria-describedby="html-source-help"
                   className="min-h-[300px] font-mono text-sm resize-y border border-black bg-muted/30 focus-visible:ring-primary/50"
                 />
+
+                 {sourceBundle && (
+                   <Card className="mt-4 border-primary/20 bg-primary/[0.03]">
+                     <CardContent className="p-4">
+                       <div className="flex flex-wrap items-start justify-between gap-3">
+                         <div className="flex items-start gap-3">
+                           <div className="mt-0.5 rounded-md bg-primary/10 p-2 text-primary">
+                             <Files className="h-4 w-4" />
+                           </div>
+                           <div>
+                             <p className="text-sm font-semibold">{sourceBundle.metadata.displayName}</p>
+                             <p className="text-xs text-muted-foreground">
+                               {sourceBundle.files.length} file{sourceBundle.files.length === 1 ? '' : 's'} ·{' '}
+                               {formatBytes(
+                                 sourceBundle.files.reduce(
+                                   (total, file) => total + new TextEncoder().encode(file.content).length,
+                                   0,
+                                 ),
+                               )}{' '}
+                               normalized locally
+                             </p>
+                           </div>
+                         </div>
+                         {sourceBundle.files.filter((file) => /\.(?:html?)$/i.test(file.path)).length > 1 && (
+                           <Select value={sourceBundle.entrypoint} onValueChange={handleEntrypointChange}>
+                             <SelectTrigger className="w-full sm:w-[260px]">
+                               <SelectValue placeholder="Choose entrypoint" />
+                             </SelectTrigger>
+                             <SelectContent>
+                               {sourceBundle.files
+                                 .filter((file) => /\.(?:html?)$/i.test(file.path))
+                                 .map((file) => (
+                                   <SelectItem key={file.path} value={file.path}>
+                                     {getHtmlEntrypointTitle(file.content, file.path)} · {file.path}
+                                   </SelectItem>
+                                 ))}
+                             </SelectContent>
+                           </Select>
+                         )}
+                       </div>
+                       <p className="mt-3 border-t pt-3 text-xs text-muted-foreground">
+                         Entrypoint: <span className="font-mono text-foreground">{sourceBundle.entrypoint}</span>
+                         {sourceBundle.sourceType === 'zip_project'
+                           ? ' · Selecting the ZIP only unpacks files locally; analyze when ready.'
+                           : ''}
+                       </p>
+                     </CardContent>
+                   </Card>
+                 )}
 
                 <div className="mt-6 border-t pt-5">
                   <div className="mb-3 flex items-start gap-3">
@@ -1473,11 +1643,13 @@ export default function Home() {
 
                 <Button 
                   onClick={handleAnalyze}
-                  disabled={!htmlInput.trim() || analyzeMutation.isPending}
+                  disabled={!htmlInput.trim() || analyzeMutation.isPending || entrypointSelectionRequired}
                   className="w-full mt-6 h-12 text-base font-medium"
                 >
                   {analyzeMutation.isPending ? (
                     <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Analyzing...</>
+                  ) : entrypointSelectionRequired ? (
+                    <><Files className="mr-2 h-5 w-5" /> Choose an entrypoint to continue</>
                   ) : (
                     <><Activity className="mr-2 h-5 w-5" /> Analyze & Preview</>
                   )}
@@ -1648,7 +1820,7 @@ export default function Home() {
                 <TabsContent value="preview" className="m-0 h-full w-full absolute inset-0 p-4">
                   <div className="h-full w-full rounded-xl overflow-hidden border shadow-sm bg-white">
                     <iframe 
-                       srcDoc={sourceBundle?.files.find((file) => file.path === sourceBundle.entrypoint)?.content ?? htmlInput}
+                       srcDoc={previewHtml || (sourceBundle?.files.find((file) => file.path === sourceBundle.entrypoint)?.content ?? htmlInput)}
                        sandbox="allow-scripts allow-forms"
                       className="w-full h-full border-0"
                       title="Preview"

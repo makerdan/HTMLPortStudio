@@ -353,3 +353,27 @@ test("offers a pinned, review-before-confirming public GitHub import", async () 
   assert.match(source, /resolvedCommitSha/);
   assert.match(source, /GitHub\s+credentials are never requested/);
 });
+
+test("offers a local ZIP project flow with explicit entrypoint recovery", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /makeZipSourceBundle/);
+  assert.match(source, /accept="\.zip,application\/zip,application\/x-zip-compressed"/);
+  assert.match(source, /Choose ZIP project/);
+  assert.match(source, /Unpacking ZIP\.\.\./);
+  assert.match(source, /Choose an entrypoint to continue/);
+  assert.match(source, /Multiple HTML entrypoints/);
+  assert.match(source, /Selecting the ZIP only unpacks files locally/);
+});
+
+test("does not analyze ZIP source while it is being selected", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+  const zipHandlerStart = source.indexOf("const handleZipSelect");
+  const zipHandlerEnd = source.indexOf("const handleEntrypointChange", zipHandlerStart);
+  const zipHandler = source.slice(zipHandlerStart, zipHandlerEnd);
+
+  assert.notEqual(zipHandlerStart, -1);
+  assert.doesNotMatch(zipHandler, /analyzeMutation\.mutate/);
+  assert.match(zipHandler, /makeZipSourceBundle\(await file\.arrayBuffer\(\), file\.name\)/);
+  assert.match(zipHandler, /if \(sessionId !== importSessionRef\.current\) return/);
+});
