@@ -33,19 +33,22 @@ Perform this preflight before provisioning, migration, configuration,
 customization, troubleshooting, testing, or any other Clerk action:
 
 1. Verify from current Replit workspace/project ownership evidence that the
-   workspace owner is Dan. Use platform-provided ownership evidence, not the
-   repository name, a profile field, a claim in chat, an application user, or
-   an inferred identity.
+   workspace owner is Dan. Use the current owner identity and role shown by
+   Replit's authoritative workspace/project ownership information, or an
+   authorized platform ownership check that explicitly identifies the owner.
+   The repository name, a profile field, a claim in chat, a display name, an
+   application user, or collaborator access is not ownership evidence.
 2. Confirm that the requester is acting as the verified owner, rather than
    merely having access to a shared workspace.
 3. Confirm that the Replit authorization needed for the requested operation is
    available.
 
-If ownership is not explicitly verifiable, the requester is only a
-collaborator, ownership is ambiguous, or authorization evidence is unavailable,
-stop. State that Clerk work cannot proceed until current workspace ownership
-and authorization are verified. Do not provision anything, inspect or change
-Clerk configuration, run migration/testing actions, or guess an identity.
+If the authoritative evidence does not explicitly verify Dan as the current
+owner, if the requester is only a collaborator, if ownership is ambiguous, or
+if authorization evidence is unavailable, stop. State that Clerk work cannot
+proceed until current workspace ownership and authorization are verified. Do
+not provision anything, inspect or change Clerk configuration, run
+migration/testing actions, or guess an identity.
 
 Do not encode Dan's personal identifiers, account metadata, credentials, or
 ownership evidence in this file or in application code. Do not bypass an
@@ -104,6 +107,21 @@ Route strictly from the returned management status and dashboard access:
 Do not infer management status from a key prefix, code imports, or the existence
 of a Clerk package. Do not manually edit, rotate, rename, or reveal
 Replit-managed Clerk secrets.
+
+After status routing, classify the request before choosing an action:
+
+- For a factual or conceptual inquiry about Clerk Auth, supported features,
+  pricing, environments, login providers, OAuth credentials, consent-screen
+  branding, or the Auth pane, call `searchReplitDocs` as required by the
+  canonical skill before answering. For a managed dashboard-only setting,
+  follow the canonical `dashboardAccess` route instead; do not use a guessed
+  dashboard location or a raw Clerk dashboard URL.
+- For implementation or configuration changes, read the canonical setup and
+  customization reference and follow its exact provisioning, proxy, routing,
+  environment, and UI instructions. Do not provision merely because the user
+  asked an informational question.
+- For migration, troubleshooting, or regression/post-setup verification,
+  follow the dedicated sections below after the same status gate.
 
 ## Installation and application-shape selection
 
@@ -196,19 +214,30 @@ make a migration convenient.
 ## Troubleshooting workflow
 
 For a reported Clerk failure, preserve both the ownership gate and management
-status gate, then read the canonical troubleshooting and setup references
-together. If the environment is not stated, ask whether the issue is
-**Dev (preview)** or **Prod (published app)** using the canonical choices.
+status gate, then reload `.local/skills/clerk-auth/SKILL.md` and read the
+canonical troubleshooting and setup references together. If the user is
+handling Clerk-related errors surfaced in console logs while addressing a
+request, treat those as **Dev (preview)**. Otherwise, if the environment is
+not stated, call `AskQuestion` with exactly:
+
+```json
+{
+  "question": "Where are you seeing this Clerk issue?",
+  "choices": ["Dev (preview)", "Prod (published app)"]
+}
+```
 
 Prefer this order:
 
-1. Compare the app's Clerk wiring to the current canonical snippets.
-2. Update `@clerk/*` packages only within the workspace's package-policy
-   constraints, then make the smallest Clerk-specific correction.
+1. Update `@clerk/*` packages to the latest versions permitted by the
+   workspace's `minimumReleaseAge` policy in `pnpm-workspace.yaml`.
+2. Compare the app's Clerk wiring to the current canonical snippets and make
+   the smallest Clerk-specific correction.
 3. Check adjacent infrastructure only when indicated, such as CSP directives
    blocking Clerk/Turnstile.
-4. Restart the relevant development workflows for dev issues; for production
-   issues, verify preview first and then ask for republishing as appropriate.
+4. For Dev (preview) issues, restart both the backend and frontend workflows,
+   even if no code change was needed. For Prod (published app) issues, verify
+   that the preview remains healthy, then ask the user to republish and retry.
 5. Re-test the original symptom and record the observed result without
    exposing secrets.
 
