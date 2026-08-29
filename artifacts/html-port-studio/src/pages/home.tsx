@@ -2303,11 +2303,11 @@ export default function Home() {
             <Tabs defaultValue="preview" className="h-full flex flex-col">
               <div className="border-b bg-card px-4 py-2 flex items-center justify-between">
                 <TabsList>
-                  <TabsTrigger value="preview" className="gap-2">
+                  <TabsTrigger value="preview" className="studio-button gap-2">
                     <MonitorPlay aria-hidden="true" className="h-4 w-4" />
                     Safe Preview
                   </TabsTrigger>
-                  <TabsTrigger value="assistant" className="gap-2">
+                  <TabsTrigger value="assistant" className="studio-button gap-2">
                     <Sparkles aria-hidden="true" className="h-4 w-4" />
                     Poe Assistant
                   </TabsTrigger>

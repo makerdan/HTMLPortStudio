@@ -106,3 +106,9 @@
     @apply font-sans antialiased bg-background text-foreground;
   }
 }
+
+@layer components {
+  .studio-button {
+    border: 1px solid hsl(var(--border));
+  }
+}

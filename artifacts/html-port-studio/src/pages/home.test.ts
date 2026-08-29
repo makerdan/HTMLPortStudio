@@ -153,6 +153,26 @@ test("renders the responsive Studio composition and accessible actions", async (
   assert.match(source, /md:border-r/);
 });
 
+test("gives Studio controls a token border without crossing the preview iframe", async () => {
+  const homeSource = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+  const buttonSource = await readFile(
+    new URL("../components/ui/button.tsx", import.meta.url),
+    "utf8",
+  );
+  const fallbackSource = await readFile(
+    new URL("../components/error-boundary.tsx", import.meta.url),
+    "utf8",
+  );
+  const styles = await readFile(new URL("../index.css", import.meta.url), "utf8");
+
+  assert.match(buttonSource, /"studio-button inline-flex/);
+  assert.match(fallbackSource, /className="studio-button mt-4/);
+  assert.match(styles, /\.studio-button\s*\{\s*border:\s*1px solid hsl\(var\(--border\)\);\s*\}/s);
+  assert.match(homeSource, /<TabsTrigger value="preview" className="studio-button gap-2">/);
+  assert.match(homeSource, /<TabsTrigger value="assistant" className="studio-button gap-2">/);
+  assert.match(homeSource, /<iframe[\s\S]*sandbox="allow-scripts allow-forms"[\s\S]*className="w-full h-full border-0"/);
+});
+
 test("allowlists structured assistant and handoff errors", () => {
   const credentialResult = getStudioErrorMessage(
     {
