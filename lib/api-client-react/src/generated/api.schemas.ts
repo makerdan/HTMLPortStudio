@@ -134,6 +134,41 @@ export interface HostedUrlImport {
   warnings: string[];
 }
 
+export type PlaygroundProvider = typeof PlaygroundProvider[keyof typeof PlaygroundProvider];
+
+
+export const PlaygroundProvider = {
+  codepen: 'codepen',
+  jsfiddle: 'jsfiddle',
+} as const;
+
+export interface PlaygroundImportInput {
+  /**
+     * @minLength 1
+     * @maxLength 512
+     */
+  url: string;
+}
+
+export type PlaygroundImportStatus = typeof PlaygroundImportStatus[keyof typeof PlaygroundImportStatus];
+
+
+export const PlaygroundImportStatus = {
+  imported: 'imported',
+} as const;
+
+export interface PlaygroundImport {
+  provider: PlaygroundProvider;
+  originalUrl: string;
+  status: PlaygroundImportStatus;
+  bundle: SourceBundle;
+  /**
+     * @maxItems 20
+     * @items.maxLength 500
+     */
+  warnings: string[];
+}
+
 export type PortFindingSeverity = typeof PortFindingSeverity[keyof typeof PortFindingSeverity];
 
 

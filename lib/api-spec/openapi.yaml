@@ -144,6 +144,49 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /port/playground/import:
+    post:
+      operationId: importPlayground
+      tags: [porting]
+      summary: Import a public CodePen or JSFiddle playground
+      description: Recognizes supported public playground URLs and fetches only provider-owned export or rendered-result endpoints server-side.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlaygroundImportInput"
+      responses:
+        "200":
+          description: Normalized playground source bundle with attribution and limitations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaygroundImport"
+        "400":
+          description: Unsupported, malformed, credentialed, empty, or unsafe playground URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Playground export exceeds importer limits
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Playground import rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Provider export could not be fetched
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /port/github/repository:
     get:
       operationId: getGithubRepository
@@ -590,6 +633,38 @@ components:
             type: string
             maxLength: 500
       required: [originalUrl, finalUrl, status, bundle, warnings]
+    PlaygroundProvider:
+      type: string
+      enum: [codepen, jsfiddle]
+    PlaygroundImportInput:
+      type: object
+      properties:
+        url:
+          type: string
+          minLength: 1
+          maxLength: 512
+      required: [url]
+    PlaygroundImportStatus:
+      type: string
+      enum: [imported]
+    PlaygroundImport:
+      type: object
+      properties:
+        provider:
+          $ref: "#/components/schemas/PlaygroundProvider"
+        originalUrl:
+          type: string
+        status:
+          $ref: "#/components/schemas/PlaygroundImportStatus"
+        bundle:
+          $ref: "#/components/schemas/SourceBundle"
+        warnings:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            maxLength: 500
+      required: [provider, originalUrl, status, bundle, warnings]
     PortFinding:
       type: object
       properties:

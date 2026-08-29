@@ -34,6 +34,8 @@ import type {
   HtmlAnalysis,
   HtmlInput,
   LogoutBrowserSessionParams,
+  PlaygroundImport,
+  PlaygroundImportInput,
   PoeChatInput,
   PoeChatResponse,
   PoeModels,
@@ -612,6 +614,78 @@ export const useImportHostedUrl = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getImportHostedUrlMutationOptions(options));
+    }
+
+export const getImportPlaygroundUrl = () => {
+
+
+
+
+  return `/api/port/playground/import`
+}
+
+/**
+ * Recognizes supported public playground URLs and fetches only provider-owned export or rendered-result endpoints server-side.
+ * @summary Import a public CodePen or JSFiddle playground
+ */
+export const importPlayground = async (playgroundImportInput: PlaygroundImportInput, options?: Parameters<typeof customFetch>[1]): Promise<PlaygroundImport> => {
+
+  return customFetch<PlaygroundImport>(getImportPlaygroundUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(playgroundImportInput)
+  }
+);}
+
+
+
+
+
+export const getImportPlaygroundMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importPlayground>>, TError,{data: BodyType<PlaygroundImportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof importPlayground>>, TError,{data: BodyType<PlaygroundImportInput>}, TContext> => {
+
+const mutationKey = ['importPlayground'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof importPlayground>>, {data: BodyType<PlaygroundImportInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  importPlayground(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ImportPlaygroundMutationResult = NonNullable<Awaited<ReturnType<typeof importPlayground>>>
+    export type ImportPlaygroundMutationBody = BodyType<PlaygroundImportInput>
+    export type ImportPlaygroundMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Import a public CodePen or JSFiddle playground
+ */
+export const useImportPlayground = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importPlayground>>, TError,{data: BodyType<PlaygroundImportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof importPlayground>>,
+        TError,
+        {data: BodyType<PlaygroundImportInput>},
+        TContext
+      > => {
+      return useMutation(getImportPlaygroundMutationOptions(options));
     }
 
 export const getGetGithubRepositoryUrl = (params: GetGithubRepositoryParams,) => {

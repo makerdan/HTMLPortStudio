@@ -23,8 +23,9 @@ Import pasted, single-file, or public GitHub HTML apps as normalized source bund
 
 ## Where things live
 
-- `artifacts/html-port-studio/` — source-bundle import, analysis, safe-preview, and optional Poe-assistant UI
+- `artifacts/html-port-studio/` — source-bundle import, source picker, analysis, safe-preview, and optional Poe-assistant UI
 - `artifacts/api-server/src/routes/port.ts` — portability analysis and server-only Poe API bridge
+- `artifacts/api-server/src/routes/playground.ts` — allowlisted CodePen/JSFiddle adapters and normalized public bundles
 - `artifacts/api-server/src/routes/github.ts` — public GitHub metadata, pinned snapshot import, and repository limits
 - `artifacts/api-server/src/routes/github-utils.ts` — dependency-free GitHub URL, ref, path, and entrypoint validation
 - `lib/api-spec/openapi.yaml` — API contract for HTML analysis and Poe operations
@@ -40,7 +41,9 @@ Import pasted, single-file, or public GitHub HTML apps as normalized source bund
 ## Product
 
 - Select a single `.html`/`.htm` file or paste HTML source; both become a versioned source bundle.
+- Choose Paste HTML, Upload HTML, Upload ZIP, GitHub, hosted URL, or the CodePen/JSFiddle adapter flow from the landing source picker.
 - Inspect a public GitHub repository, choose a branch or immutable commit, review the resolved SHA and entrypoint, then confirm the read-only snapshot.
+- Import public CodePen exports or a JSFiddle rendered result through provider-specific server adapters; attribution and provider limitations stay on the normalized bundle.
 - Receive a compact readiness report for scripts, external assets, browser-side requests, and likely AI calls.
 - Preview the document in a sandbox, then follow a tailored migration checklist.
 - When `POE_API_KEY` is configured, choose a live Poe model and ask for targeted porting help.
@@ -60,6 +63,7 @@ Import pasted, single-file, or public GitHub HTML apps as normalized source bund
 - The project handoff is unavailable until the supported authorized Replit project-creation connection is attached. When it is missing, the Studio keeps the imported HTML in the current browser session and shows an owner-only setup screen with a secure Replit connection link and a refresh check.
 - HTML that appears to contain a credential is blocked before handoff. Move service keys to Replit Secrets and use a server route rather than embedding them in `index.html`.
 - GitHub import accepts only canonical public `https://github.com/owner/repository` URLs. It resolves the selected ref to a commit, fetches approved text files through GitHub's public API, skips generated/vendor content, enforces file/depth/size limits, and never executes repository code.
+- Playground import accepts only canonical HTTPS CodePen and JSFiddle URL forms. It fetches fixed provider-owned endpoints server-side, rejects credentials and unsafe redirects, bounds responses, and never accepts arbitrary browser-side third-party requests. CodePen settings/private assets are omitted; JSFiddle imports its public rendered result rather than editor-only source.
 
 ## Pointers
 

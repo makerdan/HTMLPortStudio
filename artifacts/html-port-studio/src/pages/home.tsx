@@ -13,6 +13,7 @@ import {
   useGetGithubRepository,
   useImportGithubRepository,
   useImportHostedUrl,
+  useImportPlayground,
 } from '@workspace/api-client-react';
 import type {
   HtmlAnalysis,
@@ -25,6 +26,7 @@ import type {
   GithubImport,
   GithubRef,
   HostedUrlImport,
+  PlaygroundImport,
 } from '@workspace/api-client-react';
 import { useAuth } from '@workspace/replit-auth-web';
 import {
@@ -53,6 +55,7 @@ import {
   FileArchive,
   Files,
   Globe2,
+  Code2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -84,6 +87,7 @@ import {
   getHtmlEntrypointTitle,
   makeZipSourceBundle,
 } from '@/lib/zip-source';
+import { validatePlaygroundUrl } from '@/lib/source-adapters';
 
 // ----------------------------------------------------------------------
 // Types and Helpers
@@ -1013,6 +1017,8 @@ function ReplitProjectHandoffPanel({
 // ----------------------------------------------------------------------
 
 export default function Home() {
+  type SourceChoice = 'paste' | 'html' | 'zip' | 'github' | 'hosted' | 'playground';
+  const [selectedSource, setSelectedSource] = useState<SourceChoice>('paste');
   const [htmlInput, setHtmlInput] = useState('');
   const [sourceBundle, setSourceBundle] = useState<SourceBundle | null>(null);
   const [analysisData, setAnalysisData] = useState<HtmlAnalysis | null>(null);
@@ -1031,6 +1037,9 @@ export default function Home() {
   const [hostedUrl, setHostedUrl] = useState('');
   const [hostedError, setHostedError] = useState<string | null>(null);
   const [hostedImportData, setHostedImportData] = useState<HostedUrlImport | null>(null);
+  const [playgroundUrl, setPlaygroundUrl] = useState('');
+  const [playgroundError, setPlaygroundError] = useState<string | null>(null);
+  const [playgroundImportData, setPlaygroundImportData] = useState<PlaygroundImport | null>(null);
   const [repairOpen, setRepairOpen] = useState(false);
   const [repairSource, setRepairSource] = useState<string | null>(null);
   const [zipLoading, setZipLoading] = useState(false);
@@ -1047,6 +1056,7 @@ export default function Home() {
   );
   const githubImportMutation = useImportGithubRepository();
   const hostedImportMutation = useImportHostedUrl();
+  const playgroundImportMutation = useImportPlayground();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const zipInputRef = useRef<HTMLInputElement>(null);
   const importSessionRef = useRef(0);
@@ -1089,13 +1099,20 @@ export default function Home() {
   }, [clearRecovery]);
 
   const handleAnalyze = () => {
-    if (!htmlInput.trim()) return;
+    const sourceMatchesSelection =
+      (selectedSource === 'paste' && Boolean(htmlInput.trim())) ||
+      (selectedSource === 'html' && sourceBundle?.sourceType === 'single_file') ||
+      (selectedSource === 'zip' && sourceBundle?.sourceType === 'zip_project') ||
+      (selectedSource === 'github' && sourceBundle?.sourceType === 'github_repository') ||
+      (selectedSource === 'hosted' && sourceBundle?.sourceType === 'hosted_page') ||
+      (selectedSource === 'playground' && sourceBundle?.sourceType === 'playground');
+    if (!htmlInput.trim() || !sourceMatchesSelection) return;
     const existingEntrypoint = sourceBundle?.files.find((file) => file.path === sourceBundle.entrypoint);
     if (!sourceBundle || existingEntrypoint?.content !== htmlInput) {
       clearRecovery();
     }
     const bundle: SourceBundle =
-      sourceBundle && existingEntrypoint?.content === htmlInput
+      selectedSource !== 'paste' && sourceBundle && existingEntrypoint?.content === htmlInput
         ? sourceBundle
         : {
             version: 1,
@@ -1117,6 +1134,24 @@ export default function Home() {
     });
   };
 
+  const handleSourceChange = (nextSource: SourceChoice) => {
+    if (nextSource === selectedSource) return;
+    importSessionRef.current += 1;
+    analyzeMutation.reset();
+    setAnalysisData(null);
+    setSelectedSource(nextSource);
+    setFileError(null);
+    setGithubError(null);
+    setGithubImportData(null);
+    setHostedError(null);
+    setHostedImportData(null);
+    setPlaygroundError(null);
+    setPlaygroundImportData(null);
+    githubImportMutation.reset();
+    hostedImportMutation.reset();
+    playgroundImportMutation.reset();
+  };
+
   const handleGithubInspect = () => {
     const nextUrl = githubUrl.trim();
     setGithubError(null);
@@ -1135,6 +1170,7 @@ export default function Home() {
   const handleGithubImport = () => {
     const ref = githubCommit.trim() || githubRef.trim();
     if (!githubLookupUrl || !ref || githubImportMutation.isPending) return;
+    const sessionId = ++importSessionRef.current;
     setGithubError(null);
     githubImportMutation.mutate(
       {
@@ -1146,11 +1182,13 @@ export default function Home() {
       },
       {
         onSuccess: (data: GithubImport) => {
+          if (sessionId !== importSessionRef.current) return;
           setGithubImportData(data);
           setGithubCandidates(data.entrypointCandidates);
           setGithubEntrypoint(data.bundle.entrypoint);
         },
         onError: (error: unknown) => {
+          if (sessionId !== importSessionRef.current) return;
           const candidates = apiErrorDetails(error).entrypointCandidates;
           setGithubCandidates(
             Array.isArray(candidates)
@@ -1191,11 +1229,13 @@ export default function Home() {
       return;
     }
     if (hostedImportMutation.isPending) return;
+    const sessionId = ++importSessionRef.current;
     setHostedError(null);
     hostedImportMutation.mutate(
       { data: { url: value } },
       {
         onSuccess: (data: HostedUrlImport) => {
+          if (sessionId !== importSessionRef.current) return;
           const bundle = data.bundle;
           if (bundle.sourceType !== 'hosted_page') {
             setHostedImportData(null);
@@ -1213,6 +1253,7 @@ export default function Home() {
           setHostedError(null);
         },
         onError: (error: unknown) => {
+          if (sessionId !== importSessionRef.current) return;
           setHostedImportData(null);
           setHostedError(
             getStudioErrorMessage(
@@ -1226,8 +1267,58 @@ export default function Home() {
   };
 
   const handleCancelHostedImport = () => {
+    importSessionRef.current += 1;
     hostedImportMutation.reset();
     setHostedError('Hosted import cancelled. You can retry the same URL.');
+  };
+
+  const handlePlaygroundImport = () => {
+    const value = playgroundUrl.trim();
+    const validationError = validatePlaygroundUrl(value);
+    if (validationError) {
+      setPlaygroundError(validationError);
+      return;
+    }
+    if (playgroundImportMutation.isPending) return;
+    const sessionId = ++importSessionRef.current;
+    setPlaygroundError(null);
+    setPlaygroundImportData(null);
+    playgroundImportMutation.mutate(
+      { data: { url: value } },
+      {
+        onSuccess: (data: PlaygroundImport) => {
+          if (sessionId !== importSessionRef.current) return;
+          if (data.bundle.sourceType !== 'playground') {
+            setPlaygroundError('The server returned an unexpected playground source. Retry the import.');
+            return;
+          }
+          const entrypointHtml =
+            data.bundle.files.find((file) => file.path === data.bundle.entrypoint)?.content ?? '';
+          clearRecovery();
+          setSourceBundle(data.bundle);
+          setHtmlInput(entrypointHtml);
+          setAnalysisData(null);
+          setPlaygroundImportData(data);
+          setPlaygroundError(null);
+        },
+        onError: (error: unknown) => {
+          if (sessionId !== importSessionRef.current) return;
+          setPlaygroundImportData(null);
+          setPlaygroundError(
+            getStudioErrorMessage(
+              error,
+              'The playground could not be imported. Your current source is still here.',
+            ),
+          );
+        },
+      },
+    );
+  };
+
+  const handleCancelPlaygroundImport = () => {
+    importSessionRef.current += 1;
+    playgroundImportMutation.reset();
+    setPlaygroundError('Playground import cancelled. You can retry the same URL.');
   };
 
   const handleReset = () => {
@@ -1253,6 +1344,11 @@ export default function Home() {
     setHostedUrl('');
     setHostedError(null);
     setHostedImportData(null);
+    setPlaygroundUrl('');
+    setPlaygroundError(null);
+    setPlaygroundImportData(null);
+    playgroundImportMutation.reset();
+    setSelectedSource('paste');
   };
 
   const handleFileSelect = async (
@@ -1268,7 +1364,9 @@ export default function Home() {
       return;
     }
 
+    const sessionId = importSessionRef.current;
     const html = await file.text();
+    if (sessionId !== importSessionRef.current) return;
     importSessionRef.current += 1;
     setHtmlInput(html);
     clearRecovery();
@@ -1360,6 +1458,14 @@ export default function Home() {
     setHtmlInput(html);
   };
 
+  const sourceMatchesSelection =
+    (selectedSource === 'paste' && Boolean(htmlInput.trim())) ||
+    (selectedSource === 'html' && sourceBundle?.sourceType === 'single_file') ||
+    (selectedSource === 'zip' && sourceBundle?.sourceType === 'zip_project') ||
+    (selectedSource === 'github' && sourceBundle?.sourceType === 'github_repository') ||
+    (selectedSource === 'hosted' && sourceBundle?.sourceType === 'hosted_page') ||
+    (selectedSource === 'playground' && sourceBundle?.sourceType === 'playground');
+
   if (!analysisData) {
     return (
       <div className="min-h-screen flex flex-col bg-background">
@@ -1384,6 +1490,35 @@ export default function Home() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
+                <div
+                  role="tablist"
+                  aria-label="Choose an import source"
+                  className="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-3"
+                >
+                  {([
+                    ['paste', 'Paste HTML', 'Fastest path'],
+                    ['html', 'Upload HTML', 'Single file'],
+                    ['zip', 'Upload ZIP', 'Project files'],
+                    ['github', 'Import GitHub repository', 'Public snapshot'],
+                    ['hosted', 'Import hosted URL', 'One public page'],
+                    ['playground', 'Import CodePen / JSFiddle', 'Provider adapter'],
+                  ] as const).map(([value, label, description]) => (
+                    <Button
+                      key={value}
+                      type="button"
+                      role="tab"
+                      aria-selected={selectedSource === value}
+                      variant={selectedSource === value ? 'default' : 'outline'}
+                      className="h-auto min-h-16 flex-col items-start justify-center gap-0.5 px-3 py-2 text-left"
+                      onClick={() => handleSourceChange(value)}
+                    >
+                      <span className="text-sm font-semibold">{label}</span>
+                      <span className={`text-xs ${selectedSource === value ? 'text-primary-foreground/75' : 'text-muted-foreground'}`}>
+                        {description}
+                      </span>
+                    </Button>
+                  ))}
+                </div>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -1398,12 +1533,16 @@ export default function Home() {
                    className="hidden"
                    onChange={handleZipSelect}
                  />
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <div className={selectedSource === 'paste' || selectedSource === 'html' || selectedSource === 'zip' ? 'mb-3 flex flex-wrap items-center justify-between gap-3' : 'hidden'}>
                   <p id="html-source-help" className="text-sm text-muted-foreground">
-                     Choose a standalone file or ZIP project, or paste its source below.
+                     {selectedSource === 'paste'
+                       ? 'Paste HTML directly for the fastest import.'
+                       : selectedSource === 'html'
+                         ? 'Choose one standalone .html or .htm file.'
+                         : 'Choose a ZIP project to unpack locally before analysis.'}
                   </p>
                    <div className="flex shrink-0 flex-wrap justify-end gap-2">
-                     <Button
+                     {selectedSource === 'html' && <Button
                        type="button"
                        variant="outline"
                        size="default"
@@ -1413,8 +1552,8 @@ export default function Home() {
                      >
                        <Upload className="h-3.5 w-3.5" />
                        Choose HTML file
-                     </Button>
-                     <Button
+                     </Button>}
+                     {selectedSource === 'zip' && <Button
                        type="button"
                        variant="outline"
                        size="default"
@@ -1428,20 +1567,44 @@ export default function Home() {
                          <FileArchive className="h-3.5 w-3.5" />
                        )}
                        {zipLoading ? 'Unpacking ZIP...' : 'Choose ZIP project'}
-                     </Button>
+                     </Button>}
                    </div>
                 </div>
-                <label htmlFor="html-source" className="mb-2 block text-sm font-medium text-foreground">
-                  HTML source
-                </label>
-                <Textarea
-                  id="html-source"
-                  value={htmlInput}
-                  onChange={(e) => handleHtmlInputChange(e.target.value)}
-                  placeholder="Paste your HTML code here..."
-                  aria-describedby="html-source-help"
-                  className="min-h-[300px] font-mono text-sm resize-y border border-black bg-muted/30 focus-visible:ring-primary/50"
-                />
+                {selectedSource === 'paste' && (
+                  <>
+                    <label htmlFor="html-source" className="mb-2 block text-sm font-medium text-foreground">
+                      HTML source
+                    </label>
+                    <Textarea
+                      id="html-source"
+                      value={htmlInput}
+                      onChange={(e) => handleHtmlInputChange(e.target.value)}
+                      placeholder="Paste your HTML code here..."
+                      aria-describedby="html-source-help"
+                      className="min-h-[300px] font-mono text-sm resize-y border border-black bg-muted/30 focus-visible:ring-primary/50"
+                    />
+                  </>
+                )}
+                {selectedSource === 'html' && (
+                  <div className="rounded-lg border border-dashed p-6 text-center">
+                    <Upload className="mx-auto mb-2 h-6 w-6 text-primary" />
+                    <p className="text-sm font-medium">Upload HTML</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Only public, local .html and .htm files are read.</p>
+                    <Button type="button" variant="outline" className="mt-3" onClick={() => fileInputRef.current?.click()}>
+                      Choose HTML file
+                    </Button>
+                  </div>
+                )}
+                {selectedSource === 'zip' && (
+                  <div className="rounded-lg border border-dashed p-6 text-center">
+                    <FileArchive className="mx-auto mb-2 h-6 w-6 text-primary" />
+                    <p className="text-sm font-medium">Upload ZIP</p>
+                    <p className="mt-1 text-xs text-muted-foreground">ZIP files are unpacked locally; nothing is sent until analysis.</p>
+                    <Button type="button" variant="outline" className="mt-3" onClick={() => zipInputRef.current?.click()} disabled={zipLoading}>
+                      {zipLoading ? 'Unpacking ZIP...' : 'Choose ZIP project'}
+                    </Button>
+                  </div>
+                )}
 
                  {sourceBundle && (
                    <Card className="mt-4 border-primary/20 bg-primary/[0.03]">
@@ -1492,7 +1655,7 @@ export default function Home() {
                    </Card>
                  )}
 
-                <div className="mt-6 border-t pt-5">
+                {selectedSource === 'github' && <div className="mt-6 border-t pt-5">
                   <div className="mb-3 flex items-start gap-3">
                     <Github className="mt-0.5 h-5 w-5 shrink-0 text-foreground" />
                     <div>
@@ -1659,9 +1822,9 @@ export default function Home() {
                       </Button>
                     </div>
                   )}
-                </div>
+                </div>}
 
-                <div className="mt-6 border-t pt-5">
+                {selectedSource === 'hosted' && <div className="mt-6 border-t pt-5">
                   <div className="mb-3 flex items-start gap-3">
                     <Globe2 className="mt-0.5 h-5 w-5 shrink-0 text-foreground" />
                     <div>
@@ -1753,7 +1916,103 @@ export default function Home() {
                       </p>
                     </div>
                   )}
-                </div>
+                </div>}
+
+                {selectedSource === 'playground' && (
+                  <div className="mt-6 border-t pt-5">
+                    <div className="mb-3 flex items-start gap-3">
+                      <Code2 className="mt-0.5 h-5 w-5 shrink-0 text-foreground" />
+                      <div>
+                        <h3 className="font-semibold">Import CodePen or JSFiddle</h3>
+                        <p className="text-sm text-muted-foreground">
+                          Public links are recognized and fetched through a provider-specific server adapter.
+                          Credentials and arbitrary browser-side requests are never accepted.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        value={playgroundUrl}
+                        onChange={(event) => {
+                          setPlaygroundUrl(event.target.value);
+                          setPlaygroundError(null);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            handlePlaygroundImport();
+                          }
+                        }}
+                        placeholder="https://codepen.io/user/pen/pen-id"
+                        aria-label="Public CodePen or JSFiddle URL"
+                        inputMode="url"
+                      />
+                      <Button
+                        type="button"
+                        className="shrink-0"
+                        onClick={handlePlaygroundImport}
+                        disabled={playgroundImportMutation.isPending}
+                      >
+                        {playgroundImportMutation.isPending ? (
+                          <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Importing...</>
+                        ) : (
+                          'Import playground'
+                        )}
+                      </Button>
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      CodePen imports public HTML/CSS/JavaScript exports. JSFiddle imports its public rendered result;
+                      editor-only settings and private resources are not portable.
+                    </p>
+                    {playgroundImportMutation.isPending && (
+                      <div className="mt-3 flex items-center justify-between rounded-lg border bg-muted/20 p-3 text-sm">
+                        <span className="flex items-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Fetching and normalizing the playground...
+                        </span>
+                        <Button type="button" size="sm" variant="outline" onClick={handleCancelPlaygroundImport}>
+                          Cancel
+                        </Button>
+                      </div>
+                    )}
+                    {playgroundError && (
+                      <Alert variant="destructive" className="mt-3">
+                        <XCircle className="h-4 w-4" />
+                        <AlertTitle>Playground could not be imported</AlertTitle>
+                        <AlertDescription>
+                          {playgroundError}
+                          {!playgroundImportMutation.isPending && (
+                            <Button type="button" size="sm" variant="outline" className="mt-3" onClick={handlePlaygroundImport}>
+                              Retry playground import
+                            </Button>
+                          )}
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                    {playgroundImportData && (
+                      <div className="mt-3 rounded-lg border border-primary/30 bg-primary/[0.03] p-4">
+                        <p className="font-medium">
+                          {playgroundImportData.provider === 'codepen' ? 'CodePen' : 'JSFiddle'} source normalized safely
+                        </p>
+                        <dl className="mt-2 space-y-1 text-sm">
+                          <div><dt className="inline font-medium">Attribution: </dt><dd className="inline break-all">{playgroundImportData.originalUrl}</dd></div>
+                          <div><dt className="inline font-medium">Resolved files: </dt><dd className="inline">{playgroundImportData.bundle.files.map((file) => file.path).join(', ')}</dd></div>
+                        </dl>
+                        {playgroundImportData.warnings.length > 0 && (
+                          <div className="mt-3">
+                            <p className="text-sm font-medium">Provider limitations</p>
+                            <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+                              {playgroundImportData.warnings.map((warning) => <li key={warning}>{warning}</li>)}
+                            </ul>
+                          </div>
+                        )}
+                        <p className="mt-3 text-xs text-muted-foreground">
+                          Review the normalized bundle before analysis, safe preview, optional assistant use, or Replit handoff.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {fileError && (
                   <Alert variant="destructive" className="mt-4">
@@ -1810,7 +2069,7 @@ export default function Home() {
 
                 <Button 
                   onClick={handleAnalyze}
-                  disabled={!htmlInput.trim() || analyzeMutation.isPending || entrypointSelectionRequired}
+                  disabled={!htmlInput.trim() || !sourceMatchesSelection || analyzeMutation.isPending || entrypointSelectionRequired}
                   className="w-full mt-6 h-12 text-base font-medium"
                 >
                   {analyzeMutation.isPending ? (
@@ -1863,6 +2122,19 @@ export default function Home() {
                       <div className="mt-1">
                         Entrypoint: <span className="font-mono">{sourceBundle.entrypoint}</span>
                       </div>
+                    </div>
+                  )}
+                  {sourceBundle?.metadata.sourceUrl && sourceBundle.sourceType !== 'github_repository' && (
+                    <div className="mb-4 rounded-md border border-primary/20 bg-primary/[0.03] px-3 py-2 text-xs text-muted-foreground">
+                      <div className="font-medium text-foreground">
+                        {sourceBundle.sourceType === 'playground' ? 'Playground source attribution' : 'Hosted source attribution'}
+                      </div>
+                      <div className="mt-1 break-all">{sourceBundle.metadata.sourceUrl}</div>
+                      {sourceBundle.metadata.warnings && sourceBundle.metadata.warnings.length > 0 && (
+                        <ul className="mt-2 list-disc space-y-1 pl-4">
+                          {sourceBundle.metadata.warnings.map((warning) => <li key={warning}>{warning}</li>)}
+                        </ul>
+                      )}
                     </div>
                   )}
                   <div className="grid grid-cols-2 gap-3">

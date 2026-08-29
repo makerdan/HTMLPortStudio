@@ -199,6 +199,71 @@ export const ImportHostedUrlResponse = zod.object({
 
 
 /**
+ * Recognizes supported public playground URLs and fetches only provider-owned export or rendered-result endpoints server-side.
+ * @summary Import a public CodePen or JSFiddle playground
+ */
+export const importPlaygroundBodyUrlMax = 512;
+
+
+
+export const ImportPlaygroundBody = zod.object({
+  "url": zod.string().min(1).max(importPlaygroundBodyUrlMax)
+})
+
+export const importPlaygroundResponseBundleFilesItemPathMax = 512;
+
+export const importPlaygroundResponseBundleFilesItemContentMax = 1000000;
+
+export const importPlaygroundResponseBundleFilesMax = 200;
+
+export const importPlaygroundResponseBundleEntrypointMax = 512;
+
+export const importPlaygroundResponseBundleMetadataDisplayNameMax = 120;
+
+export const importPlaygroundResponseBundleMetadataWarningsItemMax = 500;
+
+export const importPlaygroundResponseBundleMetadataWarningsMax = 20;
+
+export const importPlaygroundResponseBundleMetadataResolvedRefMax = 256;
+
+export const importPlaygroundResponseBundleMetadataResolvedCommitShaMax = 64;
+
+export const importPlaygroundResponseBundleMetadataEntrypointCandidatesMax = 20;
+
+export const importPlaygroundResponseWarningsItemMax = 500;
+
+export const importPlaygroundResponseWarningsMax = 20;
+
+
+
+export const ImportPlaygroundResponse = zod.object({
+  "provider": zod.enum(['codepen', 'jsfiddle']),
+  "originalUrl": zod.string(),
+  "status": zod.enum(['imported']),
+  "bundle": zod.object({
+  "version": zod.literal(1),
+  "sourceType": zod.enum(['pasted_html', 'single_file', 'zip_project', 'github_repository', 'hosted_page', 'playground']),
+  "files": zod.array(zod.object({
+  "path": zod.string().min(1).max(importPlaygroundResponseBundleFilesItemPathMax),
+  "content": zod.string().max(importPlaygroundResponseBundleFilesItemContentMax)
+})).min(1).max(importPlaygroundResponseBundleFilesMax),
+  "entrypoint": zod.string().min(1).max(importPlaygroundResponseBundleEntrypointMax),
+  "metadata": zod.object({
+  "displayName": zod.string().min(1).max(importPlaygroundResponseBundleMetadataDisplayNameMax),
+  "sourceUrl": zod.string().optional(),
+  "originalUrl": zod.string().optional(),
+  "finalUrl": zod.string().optional(),
+  "warnings": zod.array(zod.string().max(importPlaygroundResponseBundleMetadataWarningsItemMax)).max(importPlaygroundResponseBundleMetadataWarningsMax).optional(),
+  "resolvedRef": zod.string().max(importPlaygroundResponseBundleMetadataResolvedRefMax).optional(),
+  "resolvedCommitSha": zod.string().max(importPlaygroundResponseBundleMetadataResolvedCommitShaMax).optional(),
+  "entrypointCandidates": zod.array(zod.string()).max(importPlaygroundResponseBundleMetadataEntrypointCandidatesMax).optional()
+})
+}),
+  "warnings": zod.array(zod.string().max(importPlaygroundResponseWarningsItemMax)).max(importPlaygroundResponseWarningsMax)
+})
+
+
+/**
  * Resolves public repository metadata and branch choices without requesting GitHub credentials.
  * @summary Inspect a public GitHub repository and list selectable refs
  */

@@ -11,6 +11,7 @@ import {
 import { and, asc, eq, lt, or } from "drizzle-orm";
 import { requireTrustedCookieOrigin } from "../middlewares/csrfMiddleware";
 import { fetchHostedUrl, HostedUrlError } from "./hosted-url";
+import { importPlayground, PlaygroundError } from "./playground";
 import {
   AnalyzeHtmlBody,
   AnalyzeHtmlResponse,
@@ -26,6 +27,7 @@ import {
   RetryReplitProjectSetupParams,
   RetryReplitProjectSetupResponse,
   type PoeMessage,
+  ImportPlaygroundResponse,
 } from "@workspace/api-zod";
 
 type Finding = {
@@ -725,6 +727,9 @@ const router: IRouter = Router();
 const hostedImportAttempts = new Map<string, number[]>();
 const HOSTED_IMPORT_WINDOW_MS = 60_000;
 const HOSTED_IMPORT_LIMIT = 10;
+const playgroundImportAttempts = new Map<string, number[]>();
+const PLAYGROUND_IMPORT_WINDOW_MS = 60_000;
+const PLAYGROUND_IMPORT_LIMIT = 10;
 
 function hostedImportRateLimited(request: { ip?: string }): boolean {
   const key = request.ip || "unknown";
@@ -738,6 +743,21 @@ function hostedImportRateLimited(request: { ip?: string }): boolean {
   }
   recent.push(now);
   hostedImportAttempts.set(key, recent);
+  return false;
+}
+
+function playgroundImportRateLimited(request: { ip?: string }): boolean {
+  const key = request.ip || "unknown";
+  const now = Date.now();
+  const recent = (playgroundImportAttempts.get(key) ?? []).filter(
+    (timestamp) => now - timestamp < PLAYGROUND_IMPORT_WINDOW_MS,
+  );
+  if (recent.length >= PLAYGROUND_IMPORT_LIMIT) {
+    playgroundImportAttempts.set(key, recent);
+    return true;
+  }
+  recent.push(now);
+  playgroundImportAttempts.set(key, recent);
   return false;
 }
 
@@ -843,6 +863,51 @@ router.post("/port/hosted-url", async (req, res): Promise<void> => {
         status === 502
           ? "Check that the page is publicly reachable and serves HTML, then retry."
           : "Review the URL and remove credentials or private-network destinations before retrying.",
+    });
+  }
+});
+
+router.post("/port/playground/import", async (req, res): Promise<void> => {
+  if (playgroundImportRateLimited(req)) {
+    res.status(429).json({
+      error: "Playground imports are temporarily rate limited. Wait a minute and try again.",
+      code: "PLAYGROUND_RATE_LIMITED",
+      action: "Wait before retrying, or use paste, file, ZIP, GitHub, or hosted URL import.",
+    });
+    return;
+  }
+
+  const body =
+    typeof req.body === "object" && req.body !== null
+      ? (req.body as { url?: unknown })
+      : {};
+  if (typeof body.url !== "string" || !body.url.trim()) {
+    res.status(400).json({
+      error: "Provide one complete public CodePen or JSFiddle URL.",
+      code: "PLAYGROUND_URL_INVALID",
+      action: "Use a public HTTPS link from CodePen or JSFiddle.",
+    });
+    return;
+  }
+
+  try {
+    const result = await importPlayground(body.url);
+    res.json(ImportPlaygroundResponse.parse(result));
+  } catch (error) {
+    const code = error instanceof PlaygroundError ? error.code : "PLAYGROUND_PROVIDER_UNAVAILABLE";
+    const status =
+      code === "PLAYGROUND_RESPONSE_TOO_LARGE"
+        ? 413
+        : code === "PLAYGROUND_PROVIDER_UNAVAILABLE" || code === "PLAYGROUND_TIMEOUT"
+          ? 502
+          : 400;
+    res.status(status).json({
+      error:
+        error instanceof PlaygroundError
+          ? error.message
+          : "The playground provider could not be reached. Your current source is still safe.",
+      code,
+      action: "Retry the public link or use the hosted URL importer for a standalone HTML page.",
     });
   }
 });
