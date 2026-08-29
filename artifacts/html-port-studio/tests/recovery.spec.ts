@@ -106,6 +106,28 @@ test("keeps the import surface available when an auth callback URL is present", 
   await expect(page.getByText("Create a Replit Project")).toBeVisible();
 });
 
+test("keeps actionable analysis errors visible in the Studio home alert", async ({ page }) => {
+  await mockAuth(page);
+  await page.route("**/api/port/analyze", (route) =>
+    route.fulfill({
+      status: 400,
+      contentType: "application/json",
+      body: JSON.stringify({
+        code: "BUNDLE_ENTRYPOINT_MISSING",
+        error: "internal entrypoint details",
+      }),
+    }),
+  );
+
+  await page.goto("/");
+  await analyzeImportedHtml(page);
+  await expect(page.getByText("Analysis needs attention")).toBeVisible();
+  await expect(
+    page.getByText(/selected entrypoint isn't included in the bundle/i),
+  ).toBeVisible();
+  await expect(page.getByText("internal entrypoint details")).not.toBeVisible();
+});
+
 test("stops handoff polling after an error and only resumes on retry", async ({ page }) => {
   let statusChecks = 0;
   await mockAuthenticatedAuth(page);

@@ -94,6 +94,21 @@ test("maps structured analysis errors to safe, actionable guidance", () => {
   assert.equal(result.retryable, false);
 });
 
+test("renders actionable analysis failures in the visible alert", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+  const errorBlockStart = source.indexOf("{analyzeMutation.isError && (");
+  const errorBlockEnd = source.indexOf("{analyzeMutation.isError && repairSource", errorBlockStart);
+  const errorBlock = source.slice(errorBlockStart, errorBlockEnd);
+
+  assert.notEqual(errorBlockStart, -1);
+  assert.notEqual(errorBlockEnd, -1);
+  assert.match(errorBlock, /<Alert variant="destructive"/);
+  assert.match(errorBlock, /<AlertTitle>\{analysisError\?\.title/);
+  assert.match(errorBlock, /<AlertDescription>/);
+  assert.match(errorBlock, /\{analysisError\?\.message\}/);
+  assert.match(errorBlock, /Retry analysis/);
+});
+
 test("explains oversized bundles without exposing the API response", () => {
   const result = getAnalysisErrorPresentation({
     data: {

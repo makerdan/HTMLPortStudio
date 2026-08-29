@@ -764,6 +764,18 @@ function playgroundImportRateLimited(request: { ip?: string }): boolean {
 }
 
 router.post("/port/analyze", async (req, res): Promise<void> => {
+  const boundaryCode = getAnalysisBoundaryCode(req.body);
+  if (boundaryCode) {
+    const tooLarge =
+      boundaryCode === "BUNDLE_TOO_LARGE" ||
+      boundaryCode === "BUNDLE_FILE_TOO_LARGE";
+    res.status(tooLarge ? 413 : 400).json({
+      error: `Provide exactly one valid source bundle no larger than ${SOURCE_TEXT_LIMIT_LABEL}.`,
+      code: boundaryCode,
+    });
+    return;
+  }
+
   const parsed = AnalyzeHtmlBody.safeParse(req.body);
   if (!parsed.success) {
     req.log.warn({ errors: parsed.error.message }, "Invalid HTML analysis request");
@@ -1285,10 +1297,45 @@ router.post(
   },
 );
 
-const SAFE_PATH = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[a-zA-Z0-9._/-]+$/;
+const SAFE_PATH =
+  /^(?!\/)(?![a-zA-Z]:\/)(?!.*(?:^|\/)\.\.(?:\/|$))[a-zA-Z0-9._/-]+$/;
 
 const MAX_BUNDLE_FILES = 200;
 const SOURCE_TEXT_LIMIT_LABEL = `${SOURCE_TEXT_MAX_BYTES / 1024 ** 2} MB`;
+const MAX_BUNDLE_BYTES = SOURCE_TEXT_MAX_BYTES;
+const MAX_FILE_BYTES = SOURCE_TEXT_MAX_BYTES;
+
+function getAnalysisBoundaryCode(input: unknown): string | null {
+  if (typeof input !== "object" || input === null) return null;
+  const record = input as { html?: unknown; bundle?: unknown };
+  if (record.html !== undefined && record.bundle !== undefined) return null;
+
+  if (record.html !== undefined) {
+    if (typeof record.html !== "string") return null;
+    if (!record.html.trim()) return "BUNDLE_EMPTY";
+    if (new TextEncoder().encode(record.html).length > MAX_BUNDLE_BYTES) {
+      return "BUNDLE_TOO_LARGE";
+    }
+    return null;
+  }
+
+  if (typeof record.bundle !== "object" || record.bundle === null) return null;
+  const bundle = record.bundle as { files?: unknown };
+  if (!Array.isArray(bundle.files)) return null;
+  if (bundle.files.length === 0) return "BUNDLE_EMPTY";
+  if (bundle.files.length > MAX_BUNDLE_FILES) return "BUNDLE_TOO_MANY_FILES";
+
+  let totalBytes = 0;
+  for (const file of bundle.files) {
+    if (typeof file !== "object" || file === null) return null;
+    const content = (file as { content?: unknown }).content;
+    if (typeof content !== "string") return null;
+    const bytes = new TextEncoder().encode(content).length;
+    if (bytes > MAX_FILE_BYTES) return "BUNDLE_FILE_TOO_LARGE";
+    totalBytes += bytes;
+  }
+  return totalBytes > MAX_BUNDLE_BYTES ? "BUNDLE_TOO_LARGE" : null;
+}
 
 function normalizeBundle(input: { html?: string; bundle?: SourceBundle }): SourceBundle {
   if (input.html !== undefined && input.bundle !== undefined) {
@@ -1296,27 +1343,33 @@ function normalizeBundle(input: { html?: string; bundle?: SourceBundle }): Sourc
   }
   if (input.bundle) {
     const bundle = input.bundle;
+    const normalizedEntrypoint = bundle.entrypoint.replaceAll("\\", "/");
+    const normalizedFiles = bundle.files.map((file) => ({
+      ...file,
+      path: file.path.replaceAll("\\", "/"),
+    }));
     const seen = new Set<string>();
     let totalBytes = 0;
-    if (bundle.files.length > MAX_BUNDLE_FILES) throw new Error("BUNDLE_TOO_MANY_FILES");
-    for (const file of bundle.files) {
+    if (normalizedFiles.length > MAX_BUNDLE_FILES) throw new Error("BUNDLE_TOO_MANY_FILES");
+    for (const file of normalizedFiles) {
       if (!SAFE_PATH.test(file.path) || file.path.endsWith("/") || file.path.includes("//")) {
         throw new Error("BUNDLE_UNSAFE_PATH");
       }
       if (seen.has(file.path)) throw new Error("BUNDLE_DUPLICATE_PATH");
       seen.add(file.path);
       const bytes = new TextEncoder().encode(file.content).length;
-      if (bytes > SOURCE_TEXT_MAX_BYTES) throw new Error("BUNDLE_FILE_TOO_LARGE");
+      if (bytes > MAX_FILE_BYTES) throw new Error("BUNDLE_FILE_TOO_LARGE");
       totalBytes += bytes;
     }
-    if (totalBytes > SOURCE_TEXT_MAX_BYTES) throw new Error("BUNDLE_TOO_LARGE");
-    if (!seen.has(bundle.entrypoint)) throw new Error("BUNDLE_ENTRYPOINT_MISSING");
-    if (!bundle.files.find((file) => file.path === bundle.entrypoint)?.content.trim()) {
+    if (totalBytes > MAX_BUNDLE_BYTES) throw new Error("BUNDLE_TOO_LARGE");
+    if (!seen.has(normalizedEntrypoint)) throw new Error("BUNDLE_ENTRYPOINT_MISSING");
+    if (!normalizedFiles.find((file) => file.path === normalizedEntrypoint)?.content.trim()) {
       throw new Error("BUNDLE_ENTRYPOINT_EMPTY");
     }
     return {
       ...bundle,
-      files: bundle.files.map((file) => ({ ...file, path: file.path.replaceAll("\\", "/") })),
+      entrypoint: normalizedEntrypoint,
+      files: normalizedFiles,
     };
   }
   if (typeof input.html !== "string" || !input.html.trim()) throw new Error("BUNDLE_EMPTY");

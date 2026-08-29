@@ -92,7 +92,7 @@ app.use("/api", router);
 
 const jsonBodyErrorHandler: ErrorRequestHandler = (
   error: unknown,
-  _req: Request,
+  req: Request,
   res: Response,
   next: NextFunction,
 ) => {
@@ -102,10 +102,18 @@ const jsonBodyErrorHandler: ErrorRequestHandler = (
     "type" in error &&
     (error as { type?: unknown }).type === "entity.too.large"
   ) {
-    res.status(413).json({
-      error: `Provide a non-empty source bundle no larger than ${SOURCE_TEXT_LIMIT_LABEL}.`,
-      code: "PROJECT_HANDOFF_SOURCE_TOO_LARGE",
-    });
+    const isAnalysisRequest = req.path === "/api/port/analyze";
+    res.status(413).json(
+      isAnalysisRequest
+        ? {
+            error: `Provide exactly one valid source bundle no larger than ${SOURCE_TEXT_LIMIT_LABEL}.`,
+            code: "BUNDLE_TOO_LARGE",
+          }
+        : {
+            error: `Provide a non-empty source bundle no larger than ${SOURCE_TEXT_LIMIT_LABEL}.`,
+            code: "PROJECT_HANDOFF_SOURCE_TOO_LARGE",
+          },
+    );
     return;
   }
   next(error);

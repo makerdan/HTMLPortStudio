@@ -5,6 +5,9 @@ import http, { type IncomingMessage } from "node:http";
 import { createRequire } from "node:module";
 import test from "node:test";
 import { once } from "node:events";
+import {
+  analyzeHtmlBodyThreeHtmlMax as ANALYSIS_SOURCE_LIMIT,
+} from "../../../../lib/api-zod/src/generated/api.ts";
 
 const requireFromDb = createRequire(
   new URL("../../../../lib/db/package.json", import.meta.url),
@@ -88,6 +91,144 @@ const credentialRegressionMatrix = [
     source: "authorization: VALUE",
   },
 ] as const;
+
+test("covers the analysis boundary matrix and origin routing", async () => {
+  const apiPort = await unusedPort();
+  const splitOrigin = "https://studio.example.test";
+  const api = spawn(process.execPath, ["--enable-source-maps", "dist/index.mjs"], {
+    cwd: new URL("../../", import.meta.url).pathname,
+    env: {
+      ...process.env,
+      PORT: String(apiPort),
+      HTML_PORT_STUDIO_ORIGINS: splitOrigin,
+      NODE_ENV: "test",
+    },
+    stdio: "ignore",
+  });
+
+  const baseUrl = `http://127.0.0.1:${apiPort}/api`;
+  const html = "<!doctype html><title>Boundary fixture</title><main>ok</main>";
+  const metadata = { displayName: "Boundary fixture" };
+  const bundle = (files: Array<{ path: string; content: string }>, entrypoint = files[0]?.path) => ({
+    version: 1 as const,
+    sourceType: "zip_project" as const,
+    files,
+    entrypoint: entrypoint ?? "index.html",
+    metadata,
+  });
+  const analyze = (body: unknown, headers: Record<string, string> = {}) =>
+    jsonRequest(`${baseUrl}/port/analyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify(body),
+    });
+
+  try {
+    await waitFor(async () => {
+      try {
+        return (await fetch(`${baseUrl}/healthz`)).ok;
+      } catch {
+        return false;
+      }
+    }, "API server did not start");
+
+    const normal = await analyze({ html });
+    assert.equal(normal.status, 200);
+    assert.equal(normal.body.sourceType, "pasted_html");
+
+    const malformedButAccepted = await analyze({
+      html,
+      unexpected: "ignored by the accepted request shape",
+    });
+    assert.equal(malformedButAccepted.status, 200);
+
+    const exactLimit = await analyze({ html: "x".repeat(ANALYSIS_SOURCE_LIMIT) });
+    assert.equal(exactLimit.status, 200);
+    assert.equal(exactLimit.body.totalBytes, ANALYSIS_SOURCE_LIMIT);
+
+    const overLimit = await analyze({ html: "x".repeat(ANALYSIS_SOURCE_LIMIT + 1) });
+    assert.equal(overLimit.status, 413);
+    assert.equal(overLimit.body.code, "BUNDLE_TOO_LARGE");
+
+    const ambiguous = await analyze({
+      html,
+      bundle: bundle([{ path: "index.html", content: html }]),
+    });
+    assert.equal(ambiguous.status, 400);
+    assert.equal(ambiguous.body.code, "BUNDLE_AMBIGUOUS");
+
+    const empty = await analyze({ html: " \n\t" });
+    assert.equal(empty.status, 400);
+    assert.equal(empty.body.code, "BUNDLE_EMPTY");
+
+    const unsafePath = await analyze(
+      { bundle: bundle([{ path: "../private.html", content: html }]) },
+    );
+    assert.equal(unsafePath.status, 400);
+    assert.equal(unsafePath.body.code, "BUNDLE_UNSAFE_PATH");
+
+    const duplicatePath = await analyze({
+      bundle: bundle([
+        { path: "index.html", content: html },
+        { path: "index.html", content: "<!doctype html>" },
+      ]),
+    });
+    assert.equal(duplicatePath.status, 400);
+    assert.equal(duplicatePath.body.code, "BUNDLE_DUPLICATE_PATH");
+
+    const missingEntrypoint = await analyze({
+      bundle: bundle([{ path: "index.html", content: html }], "missing.html"),
+    });
+    assert.equal(missingEntrypoint.status, 400);
+    assert.equal(missingEntrypoint.body.code, "BUNDLE_ENTRYPOINT_MISSING");
+
+    const windowsSeparators = await analyze({
+      bundle: bundle(
+        [
+          { path: "pages\\index.html", content: html },
+          { path: "pages\\styles.css", content: "body { color: black; }" },
+        ],
+        "pages\\index.html",
+      ),
+    });
+    assert.equal(windowsSeparators.status, 200);
+    assert.equal(windowsSeparators.body.entrypoint, "pages/index.html");
+    assert.deepEqual(windowsSeparators.body.files, ["pages/index.html", "pages/styles.css"]);
+
+    const parserOverflow = await analyze({ html: "x".repeat(8 * 1024 * 1024) });
+    assert.equal(parserOverflow.status, 413);
+    assert.equal(parserOverflow.body.code, "BUNDLE_TOO_LARGE");
+
+    const sameOrigin = await fetch(`${baseUrl}/port/analyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ html }),
+    });
+    assert.equal(sameOrigin.status, 200);
+    assert.equal(sameOrigin.headers.get("access-control-allow-origin"), null);
+    await sameOrigin.json();
+
+    const splitOriginResponse = await fetch(`${baseUrl}/port/analyze`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: splitOrigin,
+      },
+      body: JSON.stringify({ html }),
+    });
+    assert.equal(splitOriginResponse.status, 200);
+    assert.equal(
+      splitOriginResponse.headers.get("access-control-allow-origin"),
+      splitOrigin,
+    );
+    await splitOriginResponse.json();
+  } finally {
+    if (!api.killed) {
+      api.kill("SIGTERM");
+      await once(api, "exit").catch(() => undefined);
+    }
+  }
+});
 
 test("forwards source unchanged and resumes only the failed setup skill", async () => {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
