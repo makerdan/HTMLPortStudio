@@ -1,3 +1,5 @@
+import { SOURCE_TEXT_LIMIT_LABEL } from '../lib/source-limits.ts';
+
 type ErrorData = {
   code?: unknown;
 };
@@ -15,9 +17,9 @@ export const STUDIO_ERROR_MESSAGES = {
   BUNDLE_ENTRYPOINT_MISSING:
     "The selected entrypoint isn't included in the bundle. Choose an existing HTML entrypoint, then try again.",
   BUNDLE_FILE_TOO_LARGE:
-    'One file in this bundle is too large. Reduce it to 1 MB or less, then try again.',
+    `One file in this bundle is too large. Reduce it to ${SOURCE_TEXT_LIMIT_LABEL} or less, then try again.`,
   BUNDLE_TOO_LARGE:
-    'This source bundle is too large. Reduce it to 2 MB or less, then try again.',
+    `This source bundle is too large. Reduce it to ${SOURCE_TEXT_LIMIT_LABEL} or less, then try again.`,
   BUNDLE_TOO_MANY_FILES:
     'This source bundle has too many files. Remove unused files and try again (200 files maximum).',
   BUNDLE_UNSAFE_PATH:
@@ -34,7 +36,7 @@ export const STUDIO_ERROR_MESSAGES = {
   PROJECT_HANDOFF_NOT_RETRYABLE:
     'Only a failed project setup can be retried. Start project creation again if needed.',
   PROJECT_HANDOFF_SOURCE_TOO_LARGE:
-    'The imported source is too large for project creation. Reduce it to 2 MB or less, then try again.',
+    `The imported source is too large for project creation. Reduce it to ${SOURCE_TEXT_LIMIT_LABEL} or less, then try again.`,
   SOURCE_CONTAINS_CREDENTIAL:
     'This source appears to contain a service credential. Remove it before creating a project, then try again.',
   INVALID_SOURCE_BUNDLE:

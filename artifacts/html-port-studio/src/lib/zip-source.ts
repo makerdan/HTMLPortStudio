@@ -1,12 +1,16 @@
 import { unzipSync } from 'fflate';
 import type { SourceBundle, SourceBundleFile } from '@workspace/api-client-react';
+import {
+  SOURCE_TEXT_LIMIT_LABEL,
+  SOURCE_TEXT_MAX_BYTES,
+} from './source-limits.ts';
 
 export const ZIP_LIMITS = {
   archiveBytes: 25 * 1024 * 1024,
   expandedBytes: 8 * 1024 * 1024,
-  normalizedBytes: 2 * 1024 * 1024,
+  normalizedBytes: SOURCE_TEXT_MAX_BYTES,
   fileCount: 200,
-  fileBytes: 1 * 1024 * 1024,
+  fileBytes: SOURCE_TEXT_MAX_BYTES,
 } as const;
 
 const HTML_EXTENSIONS = ['.html', '.htm'];
@@ -408,7 +412,7 @@ export function makeZipSourceBundle(
     if (entry.expandedSize > ZIP_LIMITS.fileBytes) {
       throw zipError(
         'ZIP_FILE_TOO_LARGE',
-        `The file "${entry.path}" is larger than 1 MB after extraction.`,
+        `The file "${entry.path}" is larger than ${SOURCE_TEXT_LIMIT_LABEL} after extraction.`,
       );
     }
     if (
@@ -445,14 +449,14 @@ export function makeZipSourceBundle(
     if (normalizedFileBytes > ZIP_LIMITS.fileBytes) {
       throw zipError(
         'ZIP_FILE_TOO_LARGE',
-        `The normalized file "${entry.path}" is larger than 1 MB. Remove or resize this asset and try again.`,
+        `The normalized file "${entry.path}" is larger than ${SOURCE_TEXT_LIMIT_LABEL}. Remove or resize this asset and try again.`,
       );
     }
     normalizedBytes += normalizedFileBytes;
     if (normalizedBytes > ZIP_LIMITS.normalizedBytes) {
       throw zipError(
         'ZIP_TOO_LARGE',
-        'The imported source is larger than 2 MB after normalization. Remove unused assets and try again.',
+        `The imported source is larger than ${SOURCE_TEXT_LIMIT_LABEL} after normalization. Remove unused assets and try again.`,
       );
     }
     files.push({ path: entry.path, content });

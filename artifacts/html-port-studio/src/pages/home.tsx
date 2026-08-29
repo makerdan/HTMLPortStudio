@@ -28,6 +28,10 @@ import type {
   HostedUrlImport,
   PlaygroundImport,
 } from '@workspace/api-client-react';
+import {
+  SOURCE_TEXT_LIMIT_LABEL,
+  SOURCE_TEXT_MAX_BYTES,
+} from '../lib/source-limits.ts';
 import { useStudioAuth } from '../auth';
 import {
   ResizableHandle as PanelResizeHandle,
@@ -129,8 +133,25 @@ function formatBytes(bytes: number, decimals = 2) {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 }
 
-const MAX_HTML_FILE_BYTES = 2 * 1024 * 1024;
 const HTML_FILE_EXTENSIONS = ['.html', '.htm'];
+function utf8ByteLength(value: string): number {
+  return new TextEncoder().encode(value).length;
+}
+
+function validateSourceBundleBytes(bundle: SourceBundle): string | null {
+  let totalBytes = 0;
+  for (const file of bundle.files) {
+    const bytes = utf8ByteLength(file.content);
+    if (bytes > SOURCE_TEXT_MAX_BYTES) {
+      return `The file "${file.path}" is ${formatBytes(bytes)}. Keep each file within ${SOURCE_TEXT_LIMIT_LABEL}.`;
+    }
+    totalBytes += bytes;
+  }
+  if (totalBytes > SOURCE_TEXT_MAX_BYTES) {
+    return `This source bundle is ${formatBytes(totalBytes)}. Keep the complete bundle within ${SOURCE_TEXT_LIMIT_LABEL}.`;
+  }
+  return null;
+}
 
 function validateHtmlFile(file: File): string | null {
   const fileName = file.name.toLowerCase();
@@ -140,8 +161,8 @@ function validateHtmlFile(file: File): string | null {
   if (!hasHtmlExtension && !hasHtmlType) {
     return 'Choose an HTML file ending in .html or .htm, then try again.';
   }
-  if (file.size > MAX_HTML_FILE_BYTES) {
-    return `This HTML file is ${formatBytes(file.size)}. Choose a file no larger than 2 MB.`;
+  if (file.size > SOURCE_TEXT_MAX_BYTES) {
+    return `This HTML file is ${formatBytes(file.size)}. Choose a file no larger than ${SOURCE_TEXT_LIMIT_LABEL}.`;
   }
   return null;
 }
@@ -1156,6 +1177,12 @@ export default function Home() {
             entrypoint: 'index.html',
             metadata: { displayName: 'Untitled HTML app' },
           };
+    const sizeError = validateSourceBundleBytes(bundle);
+    if (sizeError) {
+      setFileError(sizeError);
+      return;
+    }
+    setFileError(null);
     const sessionId = ++importSessionRef.current;
     analyzeMutation.mutate({ data: { bundle } }, {
       onSuccess: (data: HtmlAnalysis) => {

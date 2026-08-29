@@ -16,6 +16,7 @@ import { importPlayground, PlaygroundError } from "./playground";
 import {
   AnalyzeHtmlBody,
   AnalyzeHtmlResponse,
+  analyzeHtmlBodyThreeHtmlMax as SOURCE_TEXT_MAX_BYTES,
   ChatWithPoeBody,
   ChatWithPoeResponse,
   CreateReplitProjectBody,
@@ -784,7 +785,7 @@ router.post("/port/analyze", async (req, res): Promise<void> => {
     const tooLarge =
       code === "BUNDLE_TOO_LARGE" || code === "BUNDLE_FILE_TOO_LARGE";
     res.status(tooLarge ? 413 : 400).json({
-      error: "Provide exactly one valid source bundle no larger than 2 MB.",
+      error: `Provide exactly one valid source bundle no larger than ${SOURCE_TEXT_LIMIT_LABEL}.`,
       code,
     });
   }
@@ -1094,7 +1095,7 @@ router.post(
       (issue: { code: string }) => issue.code === "too_big",
     );
     res.status(tooLarge ? 413 : 400).json({
-      error: "Provide exactly one valid source bundle no larger than 2 MB.",
+      error: `Provide exactly one valid source bundle no larger than ${SOURCE_TEXT_LIMIT_LABEL}.`,
       code: tooLarge
         ? "PROJECT_HANDOFF_SOURCE_TOO_LARGE"
         : "INVALID_PROJECT_HANDOFF",
@@ -1113,7 +1114,7 @@ router.post(
     const tooLarge =
       code === "BUNDLE_TOO_LARGE" || code === "BUNDLE_FILE_TOO_LARGE";
     res.status(tooLarge ? 413 : 400).json({
-      error: "Provide exactly one valid source bundle no larger than 2 MB.",
+      error: `Provide exactly one valid source bundle no larger than ${SOURCE_TEXT_LIMIT_LABEL}.`,
       code: tooLarge ? "PROJECT_HANDOFF_SOURCE_TOO_LARGE" : code,
     });
     return;
@@ -1284,13 +1285,10 @@ router.post(
   },
 );
 
-const MAX_BUNDLE_BYTES = 2_000_000;
-
 const SAFE_PATH = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[a-zA-Z0-9._/-]+$/;
 
 const MAX_BUNDLE_FILES = 200;
-
-const MAX_FILE_BYTES = 1_000_000;
+const SOURCE_TEXT_LIMIT_LABEL = `${SOURCE_TEXT_MAX_BYTES / 1024 ** 2} MB`;
 
 function normalizeBundle(input: { html?: string; bundle?: SourceBundle }): SourceBundle {
   if (input.html !== undefined && input.bundle !== undefined) {
@@ -1308,10 +1306,10 @@ function normalizeBundle(input: { html?: string; bundle?: SourceBundle }): Sourc
       if (seen.has(file.path)) throw new Error("BUNDLE_DUPLICATE_PATH");
       seen.add(file.path);
       const bytes = new TextEncoder().encode(file.content).length;
-      if (bytes > MAX_FILE_BYTES) throw new Error("BUNDLE_FILE_TOO_LARGE");
+      if (bytes > SOURCE_TEXT_MAX_BYTES) throw new Error("BUNDLE_FILE_TOO_LARGE");
       totalBytes += bytes;
     }
-    if (totalBytes > MAX_BUNDLE_BYTES) throw new Error("BUNDLE_TOO_LARGE");
+    if (totalBytes > SOURCE_TEXT_MAX_BYTES) throw new Error("BUNDLE_TOO_LARGE");
     if (!seen.has(bundle.entrypoint)) throw new Error("BUNDLE_ENTRYPOINT_MISSING");
     if (!bundle.files.find((file) => file.path === bundle.entrypoint)?.content.trim()) {
       throw new Error("BUNDLE_ENTRYPOINT_EMPTY");
@@ -1322,7 +1320,7 @@ function normalizeBundle(input: { html?: string; bundle?: SourceBundle }): Sourc
     };
   }
   if (typeof input.html !== "string" || !input.html.trim()) throw new Error("BUNDLE_EMPTY");
-  if (new TextEncoder().encode(input.html).length > MAX_BUNDLE_BYTES) throw new Error("BUNDLE_TOO_LARGE");
+  if (new TextEncoder().encode(input.html).length > SOURCE_TEXT_MAX_BYTES) throw new Error("BUNDLE_TOO_LARGE");
   return {
     version: 1,
     sourceType: "pasted_html",

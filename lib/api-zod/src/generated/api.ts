@@ -21,11 +21,11 @@ export const HealthCheckResponse = zod.object({
  * Inspects a normalized source bundle (or a legacy single HTML document) for portability.
  * @summary Analyze imported HTML for Replit portability
  */
-export const analyzeHtmlBodyThreeHtmlMax = 2000000;
+export const analyzeHtmlBodyThreeHtmlMax = 2097152;
 
 export const analyzeHtmlBodyThreeBundleFilesItemPathMax = 512;
 
-export const analyzeHtmlBodyThreeBundleFilesItemContentMax = 1000000;
+export const analyzeHtmlBodyThreeBundleFilesItemContentMax = 2097152;
 
 export const analyzeHtmlBodyThreeBundleFilesMax = 200;
 
@@ -107,7 +107,7 @@ export const ImportHostedUrlBody = zod.object({
 
 export const importHostedUrlResponseBundleFilesItemPathMax = 512;
 
-export const importHostedUrlResponseBundleFilesItemContentMax = 1000000;
+export const importHostedUrlResponseBundleFilesItemContentMax = 2097152;
 
 export const importHostedUrlResponseBundleFilesMax = 200;
 
@@ -172,7 +172,7 @@ export const ImportPlaygroundBody = zod.object({
 
 export const importPlaygroundResponseBundleFilesItemPathMax = 512;
 
-export const importPlaygroundResponseBundleFilesItemContentMax = 1000000;
+export const importPlaygroundResponseBundleFilesItemContentMax = 2097152;
 
 export const importPlaygroundResponseBundleFilesMax = 200;
 
@@ -276,7 +276,7 @@ export const ImportGithubRepositoryBody = zod.object({
 
 export const importGithubRepositoryResponseBundleFilesItemPathMax = 512;
 
-export const importGithubRepositoryResponseBundleFilesItemContentMax = 1000000;
+export const importGithubRepositoryResponseBundleFilesItemContentMax = 2097152;
 
 export const importGithubRepositoryResponseBundleFilesMax = 200;
 
@@ -427,11 +427,11 @@ export const GetReplitProjectConnectionSetupResponse = zod.object({
  * Sends the imported HTML unchanged through the server-only authorized Replit project connection and starts the ordered setup workflow.
  * @summary Create a Replit project from the analyzed HTML
  */
-export const createReplitProjectBodyThreeHtmlMax = 2000000;
+export const createReplitProjectBodyThreeHtmlMax = 2097152;
 
 export const createReplitProjectBodyThreeBundleFilesItemPathMax = 512;
 
-export const createReplitProjectBodyThreeBundleFilesItemContentMax = 1000000;
+export const createReplitProjectBodyThreeBundleFilesItemContentMax = 2097152;
 
 export const createReplitProjectBodyThreeBundleFilesMax = 200;
 

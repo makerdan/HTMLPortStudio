@@ -33,7 +33,7 @@ export interface SourceBundleFile {
      * @maxLength 512
      */
   path: string;
-  /** @maxLength 1000000 */
+  /** @maxLength 2097152 */
   content: string;
 }
 
@@ -85,7 +85,7 @@ export interface SourceBundle {
 export type HtmlInput = (unknown & {
   /**
      * @minLength 1
-     * @maxLength 2000000
+     * @maxLength 2097152
      */
   html?: string;
   bundle?: SourceBundle;
@@ -320,7 +320,7 @@ export interface ReplitProjectConnectionSetup {
 export type ReplitProjectInput = (unknown & {
   /**
      * @minLength 1
-     * @maxLength 2000000
+     * @maxLength 2097152
      */
   html?: string;
   bundle?: SourceBundle;

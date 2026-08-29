@@ -49,9 +49,10 @@ test("validates HTML files before reading their contents", async () => {
   assert.notEqual(validationIndex, -1);
   assert.notEqual(readIndex, -1);
   assert.ok(validationIndex < readIndex);
-  assert.match(source, /MAX_HTML_FILE_BYTES = 2 \* 1024 \* 1024/);
+  assert.match(source, /SOURCE_TEXT_MAX_BYTES/);
+  assert.match(source, /new TextEncoder\(\)\.encode\(value\)\.length/);
   assert.match(source, /Choose an HTML file ending in \.html or \.htm/);
-  assert.match(source, /no larger than 2 MB/);
+  assert.match(source, /no larger than \$\{SOURCE_TEXT_LIMIT_LABEL\}/);
   assert.match(source, /if \(validationError\) \{\s*setFileError\(validationError\);\s*return;/s);
   assert.match(source, /event\.target\.value = ''/);
 });
@@ -180,7 +181,7 @@ test("keeps every assistant and handoff API code mapped to safe Studio copy", as
     "utf8",
   );
   const routeStart = portSource.indexOf('router.post("/port/poe/chat"');
-  const routeEnd = portSource.indexOf("const MAX_BUNDLE_BYTES", routeStart);
+  const routeEnd = portSource.indexOf("const SAFE_PATH", routeStart);
   assert.notEqual(routeStart, -1);
   assert.notEqual(routeEnd, -1);
 

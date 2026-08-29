@@ -9,6 +9,7 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import { clerkMiddleware } from "@clerk/express";
 import { publishableKeyFromHost } from "@clerk/shared/keys";
+import { analyzeHtmlBodyThreeHtmlMax as SOURCE_TEXT_MAX_BYTES } from "@workspace/api-zod";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import {
@@ -18,6 +19,7 @@ import {
 } from "./middlewares/clerkProxyMiddleware";
 
 const app: Express = express();
+const SOURCE_TEXT_LIMIT_LABEL = `${SOURCE_TEXT_MAX_BYTES / 1024 ** 2} MB`;
 
 function allowedStudioOrigins(): Set<string> {
   const configured = process.env.HTML_PORT_STUDIO_ORIGINS
@@ -101,7 +103,7 @@ const jsonBodyErrorHandler: ErrorRequestHandler = (
     (error as { type?: unknown }).type === "entity.too.large"
   ) {
     res.status(413).json({
-      error: "Provide a non-empty source bundle no larger than 2 MB.",
+      error: `Provide a non-empty source bundle no larger than ${SOURCE_TEXT_LIMIT_LABEL}.`,
       code: "PROJECT_HANDOFF_SOURCE_TOO_LARGE",
     });
     return;
