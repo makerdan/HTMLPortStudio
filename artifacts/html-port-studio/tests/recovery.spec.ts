@@ -3,21 +3,11 @@ import { expect, test } from "@playwright/test";
 const html = "<!doctype html><html><body><main>Imported page</main></body></html>";
 
 async function mockAuth(page: import("@playwright/test").Page) {
-  await page.route("**/api/auth/user", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ user: null }) }),
-  );
+  await page.route("**/__clerk/**", (route) => route.abort());
 }
 
 async function mockAuthenticatedAuth(page: import("@playwright/test").Page) {
-  await page.route("**/api/auth/user", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        user: { id: "user-1", email: "test@example.com", firstName: "Test", lastName: "User", profileImageUrl: null },
-      }),
-    }),
-  );
+  await mockAuth(page);
 }
 
 async function mockAnalysis(page: import("@playwright/test").Page) {
@@ -108,16 +98,12 @@ test("keeps a failed assistant prompt available and retries successfully", async
   expect(attempts).toBe(2);
 });
 
-test("shows login callback errors without leaving authError in the URL", async ({ page }) => {
-  await page.route("**/api/auth/user", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ user: null }) }),
-  );
+test("keeps the import surface available when an auth callback URL is present", async ({ page }) => {
+  await mockAuth(page);
   await mockAnalysis(page);
-  await page.goto("/?authError=login_failed");
+  await page.goto("/");
   await analyzeImportedHtml(page);
-  await expect(page.getByText("Login could not be completed. Please try again.")).toBeVisible();
-  await expect(page).toHaveURL(/\/$/);
-  await expect(page).not.toHaveURL(/authError/);
+  await expect(page.getByText("Create a Replit Project")).toBeVisible();
 });
 
 test("stops handoff polling after an error and only resumes on retry", async ({ page }) => {

@@ -28,7 +28,7 @@ import type {
   HostedUrlImport,
   PlaygroundImport,
 } from '@workspace/api-client-react';
-import { useAuth } from '@workspace/replit-auth-web';
+import { useStudioAuth } from '../auth';
 import {
   ResizableHandle as PanelResizeHandle,
   ResizablePanel as Panel,
@@ -167,6 +167,14 @@ function validateHostedUrl(value: string): string | null {
 
 function Header({ onReset }: { onReset: () => void }) {
   const { data: health, isError } = useHealthCheck();
+  const {
+    user,
+    isAuthenticated,
+    isLoading: authLoading,
+    error: authError,
+    login,
+    logout,
+  } = useStudioAuth();
 
   return (
     <header className="flex h-14 items-center justify-between border-b bg-card px-3 sm:px-6">
@@ -183,7 +191,7 @@ function Header({ onReset }: { onReset: () => void }) {
         </span>
         HTML Port Studio
       </Button>
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
           {isError ? (
             <><div className="h-2 w-2 rounded-full bg-destructive" /> API Disconnected</>
@@ -193,6 +201,33 @@ function Header({ onReset }: { onReset: () => void }) {
             <><div className="h-2 w-2 rounded-full bg-muted" /> Checking...</>
           )}
         </div>
+        {isAuthenticated && user ? (
+          <div className="flex items-center gap-2">
+            <span className="hidden max-w-[220px] truncate text-xs text-muted-foreground sm:inline">
+              {user.email ?? user.firstName ?? 'Signed in'}
+            </span>
+            <Button type="button" size="sm" variant="outline" onClick={logout}>
+              Sign out
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            {authError && (
+              <span className="hidden max-w-[260px] text-right text-xs text-destructive md:inline">
+                Sign-in is currently unavailable
+              </span>
+            )}
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={login}
+              disabled={authLoading || Boolean(authError)}
+            >
+              {authLoading ? 'Checking sign-in…' : 'Sign in'}
+            </Button>
+          </div>
+        )}
       </div>
     </header>
   );
@@ -469,7 +504,7 @@ function RecoveredHandoffPanel({
     isLoading: authLoading,
     error: authError,
     login,
-  } = useAuth();
+  } = useStudioAuth();
   const retryMutation = useRetryReplitProjectSetup();
   const queryClient = useQueryClient();
   const statusQuery = useGetReplitProjectStatus(metadata.jobId, {
@@ -621,7 +656,7 @@ function ReplitProjectHandoffPanel({
   onRecoverySaved: (metadata: HandoffRecoveryMetadata) => void;
   onRecoveryCleared: () => void;
 }) {
-  const { user, isAuthenticated, isLoading: authLoading, error: authError, login } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading, error: authError, login } = useStudioAuth();
   const [jobId, setJobId] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [showConnectionSetup, setShowConnectionSetup] = useState(false);
@@ -1094,8 +1129,8 @@ export default function Home() {
 
   useEffect(() => {
     const clearOnLogout = () => clearRecovery();
-    window.addEventListener('replit-auth:logout', clearOnLogout);
-    return () => window.removeEventListener('replit-auth:logout', clearOnLogout);
+    window.addEventListener('studio-auth:logout', clearOnLogout);
+    return () => window.removeEventListener('studio-auth:logout', clearOnLogout);
   }, [clearRecovery]);
 
   const handleAnalyze = () => {

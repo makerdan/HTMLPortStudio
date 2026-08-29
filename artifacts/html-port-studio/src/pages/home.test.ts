@@ -193,7 +193,6 @@ test("keeps every assistant and handoff API code mapped to safe Studio copy", as
     .filter((code, index, codes) => codes.indexOf(code) === index)
     .sort();
   const expectedCodes = [
-    "AUTHENTICATION_REQUIRED",
     "CHAT_CONTAINS_CREDENTIAL",
     "INVALID_PROJECT_HANDOFF",
     "INVALID_SOURCE_BUNDLE",
@@ -325,10 +324,7 @@ test("discards invalid and stale recovery records instead of restoring them", ()
 
 test("exposes the reload boundary, owner reconciliation, and lifecycle cleanup", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
-  const authSource = await readFile(
-    new URL("../../../../lib/replit-auth-web/src/use-auth.ts", import.meta.url),
-    "utf8",
-  );
+  const authSource = await readFile(new URL("../auth.tsx", import.meta.url), "utf8");
 
   assert.match(source, /A reload does not restore imported HTML or analysis/);
   assert.match(source, /Only this signed-in handoff status can be recovered/);
@@ -336,8 +332,25 @@ test("exposes the reload boundary, owner reconciliation, and lifecycle cleanup",
   assert.match(source, /metadata\.browserSessionId === browserSessionId/);
   assert.match(source, /clearHandoffRecovery\(\)/);
   assert.match(source, /Starting a new source clears this recovery record/);
-  assert.match(source, /replit-auth:logout/);
-  assert.match(authSource, /dispatchEvent\(new Event\("replit-auth:logout"\)\)/);
+  assert.match(source, /studio-auth:logout/);
+  assert.match(authSource, /dispatchEvent\(new Event\("studio-auth:logout"\)\)/);
+  assert.match(authSource, /ClerkProvider/);
+  assert.match(authSource, /SignIn/);
+  assert.match(authSource, /SignUp/);
+});
+
+test("exposes both Clerk sign-in entry points without coupling import state to auth", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+  const authSource = await readFile(new URL("../auth.tsx", import.meta.url), "utf8");
+  const appSource = await readFile(new URL("../App.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /Sign in/);
+  assert.match(source, /Log in to create/);
+  assert.match(source, /onClick=\{login\}/);
+  assert.match(authSource, /setLocation\("\/sign-in"\)/);
+  assert.match(authSource, /fallbackRedirectUrl/);
+  assert.match(authSource, /AUTHENTICATION_NOT_CONFIGURED|configured for this app/);
+  assert.match(appSource, /location === '\/' \|\| isAuthRoute \? <Home \/>/);
 });
 
 test("offers a pinned, review-before-confirming public GitHub import", async () => {

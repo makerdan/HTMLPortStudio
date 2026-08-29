@@ -5,6 +5,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import Home from '@/pages/home';
+import { AuthProvider, SignInPage, SignUpPage } from './auth';
 import {
   Route,
   Switch,
@@ -21,12 +22,20 @@ const queryClient = new QueryClient({
 });
 
 function Router() {
+  const [location] = useLocation();
+  const isAuthRoute = location.startsWith('/sign-in') || location.startsWith('/sign-up');
+
   return (
     <RoutedErrorBoundary>
-      <Switch>
-        <Route path="/" component={Home} />
-        <Route component={NotFound} />
-      </Switch>
+      <div className={isAuthRoute ? 'hidden' : undefined}>
+        {location === '/' || isAuthRoute ? <Home /> : <NotFound />}
+      </div>
+      {isAuthRoute && (
+        <Switch>
+          <Route path="/sign-in/*?" component={SignInPage} />
+          <Route path="/sign-up/*?" component={SignUpPage} />
+        </Switch>
+      )}
     </RoutedErrorBoundary>
   );
 }
@@ -41,7 +50,9 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-          <Router />
+          <AuthProvider>
+            <Router />
+          </AuthProvider>
         </WouterRouter>
         <Toaster />
       </TooltipProvider>

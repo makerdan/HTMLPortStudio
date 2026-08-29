@@ -6,11 +6,16 @@ import express, {
   type Response,
 } from "express";
 import cors from "cors";
-import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
+import { clerkMiddleware } from "@clerk/express";
+import { publishableKeyFromHost } from "@clerk/shared/keys";
 import router from "./routes";
 import { logger } from "./lib/logger";
-import { authMiddleware } from "./middlewares/authMiddleware";
+import {
+  CLERK_PROXY_PATH,
+  clerkProxyMiddleware,
+  getClerkProxyHost,
+} from "./middlewares/clerkProxyMiddleware";
 
 const app: Express = express();
 
@@ -54,6 +59,7 @@ app.use(
     },
   }),
 );
+app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 app.use(
   cors({
     credentials: true,
@@ -64,13 +70,21 @@ app.use(
     },
   }),
 );
-app.use(cookieParser());
+if (process.env.CLERK_SECRET_KEY && process.env.CLERK_PUBLISHABLE_KEY) {
+  app.use(
+    clerkMiddleware((req) => ({
+      publishableKey: publishableKeyFromHost(
+        getClerkProxyHost(req) ?? "",
+        process.env.CLERK_PUBLISHABLE_KEY,
+      ),
+    })),
+  );
+}
 // Repair prompts include the complete imported document plus a small
 // instruction envelope. Keep the analyzer and handoff limits at 2 MB while
 // allowing a valid near-limit document to reach the existing Poe bridge.
 app.use(express.json({ limit: "8mb" }));
 app.use(express.urlencoded({ extended: true }));
-app.use(authMiddleware);
 
 app.use("/api", router);
 

@@ -93,9 +93,6 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   const ownerId = `port-test-owner-${randomUUID()}`;
   const otherOwnerId = `port-test-other-${randomUUID()}`;
-  const ownerSession = randomUUID().replaceAll("-", "");
-  const otherSession = randomUUID().replaceAll("-", "");
-  const sessionExpiry = new Date(Date.now() + 60_000);
   await pool.query(
     `INSERT INTO users (id, email) VALUES ($1, $2), ($3, $4)`,
     [
@@ -105,35 +102,6 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
       `${otherOwnerId}@example.test`,
     ],
   );
-  await pool.query(
-    `INSERT INTO sessions (sid, sess, expire) VALUES ($1, $2::jsonb, $3), ($4, $5::jsonb, $3)`,
-    [
-      ownerSession,
-      JSON.stringify({
-        user: {
-          id: ownerId,
-          email: `${ownerId}@example.test`,
-          firstName: null,
-          lastName: null,
-          profileImageUrl: null,
-        },
-        access_token: "test-access-token",
-      }),
-      sessionExpiry,
-      otherSession,
-      JSON.stringify({
-        user: {
-          id: otherOwnerId,
-          email: `${otherOwnerId}@example.test`,
-          firstName: null,
-          lastName: null,
-          profileImageUrl: null,
-        },
-        access_token: "test-access-token",
-      }),
-    ],
-  );
-
   const source = `<!doctype html>
 <html><head><title>Byte exact Poe app</title></head>
 <body><script>fetch("/ai")</script></body></html>`;
@@ -196,6 +164,7 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
       REPLIT_CONNECTORS_HOSTNAME: `http://127.0.0.1:${connectionPort}`,
       REPLIT_CLI: "/bin/false",
       REPL_IDENTITY: "test-repl-identity",
+      NODE_ENV: "test",
     },
     stdio: "ignore",
   });
@@ -203,8 +172,8 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
   try {
     const baseUrl = `http://127.0.0.1:${apiPort}/api`;
     const browserOrigin = `http://127.0.0.1:${apiPort}`;
-    const ownerHeaders = { Cookie: `sid=${ownerSession}` };
-    const otherOwnerHeaders = { Cookie: `sid=${otherSession}` };
+    const ownerHeaders = { "x-test-clerk-user-id": ownerId };
+    const otherOwnerHeaders = { "x-test-clerk-user-id": otherOwnerId };
     await waitFor(async () => {
       try {
         return (await fetch(`${baseUrl}/healthz`)).ok;
@@ -381,9 +350,6 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
       await once(api, "exit").catch(() => undefined);
     }
     await new Promise<void>((resolve) => connection.close(() => resolve()));
-    await pool.query(`DELETE FROM sessions WHERE sid = ANY($1::varchar[])`, [
-      [ownerSession, otherSession],
-    ]);
     await pool.query(`DELETE FROM users WHERE id = ANY($1::varchar[])`, [
       [ownerId, otherOwnerId],
     ]);

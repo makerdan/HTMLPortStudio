@@ -6,9 +6,6 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export * from './authUser';
-export * from './authUserEnvelope';
-export * from './beginBrowserLoginParams';
 export * from './errorResponse';
 export * from './getGithubRepositoryParams';
 export * from './githubEntrypointChoice';
@@ -22,7 +19,6 @@ export * from './hostedUrlImportStatus';
 export * from './hostedUrlInput';
 export * from './htmlAnalysis';
 export * from './htmlInput';
-export * from './logoutBrowserSessionParams';
 export * from './playgroundImport';
 export * from './playgroundImportInput';
 export * from './playgroundImportStatus';

@@ -136,20 +136,6 @@ runStep("Typechecking the API server against refreshed declarations", "pnpm", [
 ]);
 
 runStep(
-  "Typechecking Replit auth against refreshed React API declarations",
-  "pnpm",
-  [
-    "--filter",
-    "@workspace/replit-auth-web",
-    "exec",
-    "tsc",
-    "-p",
-    "tsconfig.validation.json",
-    "--noEmit",
-  ],
-);
-
-runStep(
   "Typechecking HTML Port Studio against refreshed React API declarations",
   "pnpm",
   [

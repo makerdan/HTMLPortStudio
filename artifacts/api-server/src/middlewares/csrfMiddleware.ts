@@ -1,5 +1,4 @@
 import type { NextFunction, Request, Response } from "express";
-import { SESSION_COOKIE } from "../lib/auth";
 
 function requestOrigin(req: Request): string {
   const protocol = req.headers["x-forwarded-proto"] || req.protocol;
@@ -17,21 +16,14 @@ function configuredStudioOrigins(): Set<string> {
 }
 
 /**
- * Browser cookie sessions need an Origin check on state-changing handoff calls.
- * Bearer sessions are not CSRFable, and same-origin proxy requests are accepted.
+ * Clerk browser sessions need an Origin check on state-changing handoff calls.
+ * Same-origin proxy requests are accepted.
  */
 export function requireTrustedCookieOrigin(
   req: Request,
   res: Response,
   next: NextFunction,
 ): void {
-  const hasCookieSession = Boolean(req.cookies?.[SESSION_COOKIE]);
-  const usesBearer = req.headers.authorization?.startsWith("Bearer ");
-  if (!hasCookieSession || usesBearer) {
-    next();
-    return;
-  }
-
   const origin = req.headers.origin;
   const allowed = configuredStudioOrigins();
   if (

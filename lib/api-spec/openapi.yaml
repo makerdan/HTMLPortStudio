@@ -12,57 +12,7 @@ tags:
     description: Health operations
   - name: porting
     description: HTML portability analysis and Poe bridge operations
-  - name: Auth
-    description: Browser authentication endpoints
 paths:
-  /auth/user:
-    get:
-      operationId: getCurrentAuthUser
-      tags: [Auth]
-      summary: Get the currently authenticated user
-      responses:
-        "200":
-          description: Current authentication state
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AuthUserEnvelope"
-  /login:
-    get:
-      operationId: beginBrowserLogin
-      tags: [Auth]
-      summary: Start the browser OIDC login flow
-      parameters:
-        - name: returnTo
-          in: query
-          required: false
-          schema:
-            type: string
-      responses:
-        "302":
-          description: Redirect to the OIDC provider
-  /callback:
-    get:
-      operationId: handleBrowserLoginCallback
-      tags: [Auth]
-      summary: Complete the browser OIDC login flow
-      responses:
-        "302":
-          description: Redirect after login
-  /logout:
-    get:
-      operationId: logoutBrowserSession
-      tags: [Auth]
-      summary: Clear the browser session
-      parameters:
-        - name: returnTo
-          in: query
-          required: false
-          schema:
-            type: string
-      responses:
-        "302":
-          description: Redirect after logout
   /healthz:
     get:
       operationId: healthCheck
@@ -487,28 +437,6 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
-    AuthUser:
-      type: object
-      required: [id, email, firstName, lastName, profileImageUrl]
-      properties:
-        id:
-          type: string
-        email:
-          type: ["string", "null"]
-        firstName:
-          type: ["string", "null"]
-        lastName:
-          type: ["string", "null"]
-        profileImageUrl:
-          type: ["string", "null"]
-    AuthUserEnvelope:
-      type: object
-      required: [user]
-      properties:
-        user:
-          oneOf:
-            - $ref: "#/components/schemas/AuthUser"
-            - type: "null"
     HealthStatus:
       type: object
       properties:

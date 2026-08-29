@@ -10,6 +10,7 @@ import {
 } from "@workspace/db";
 import { and, asc, eq, lt, or } from "drizzle-orm";
 import { requireTrustedCookieOrigin } from "../middlewares/csrfMiddleware";
+import { requireAuth } from "../middlewares/clerkAuthMiddleware";
 import { fetchHostedUrl, HostedUrlError } from "./hosted-url";
 import { importPlayground, PlaygroundError } from "./playground";
 import {
@@ -1062,15 +1063,7 @@ router.post("/port/poe/chat", async (req, res): Promise<void> => {
   }
 });
 
-router.get("/port/replit-project-connection", async (req, res): Promise<void> => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({
-      error: "Log in to check Replit project creation.",
-      code: "AUTHENTICATION_REQUIRED",
-    });
-    return;
-  }
-
+router.get("/port/replit-project-connection", requireAuth, async (req, res): Promise<void> => {
   const connected = await hasProjectCreationConnection();
   res.json(
     GetReplitProjectConnectionResponse.parse({
@@ -1079,14 +1072,7 @@ router.get("/port/replit-project-connection", async (req, res): Promise<void> =>
   );
 });
 
-router.get("/port/replit-project-connection/setup", async (req, res): Promise<void> => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({
-      error: "Log in before configuring Replit project creation.",
-      code: "AUTHENTICATION_REQUIRED",
-    });
-    return;
-  }
+router.get("/port/replit-project-connection/setup", requireAuth, async (req, res): Promise<void> => {
   const connected = await hasProjectCreationConnection();
   res.json(
     GetReplitProjectConnectionSetupResponse.parse({
@@ -1096,14 +1082,11 @@ router.get("/port/replit-project-connection/setup", async (req, res): Promise<vo
   );
 });
 
-router.post("/port/replit-projects", requireTrustedCookieOrigin, async (req, res): Promise<void> => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({
-      error: "Log in before creating a project.",
-      code: "AUTHENTICATION_REQUIRED",
-    });
-    return;
-  }
+router.post(
+  "/port/replit-projects",
+  requireTrustedCookieOrigin,
+  requireAuth,
+  async (req, res): Promise<void> => {
   const parsed = CreateReplitProjectBody.safeParse(req.body);
   if (!parsed.success) {
     req.log.warn({ errors: parsed.error.message }, "Invalid Replit project handoff request");
@@ -1178,7 +1161,7 @@ router.post("/port/replit-projects", requireTrustedCookieOrigin, async (req, res
   await db.transaction(async (tx) => {
     await tx.insert(handoffJobsTable).values({
       id: job.id,
-      ownerId: req.user.id,
+      ownerId: req.dbUser!.id,
       sourceHtml: job.sourceHtml,
       sourceBundle: job.sourceBundle,
       projectName: job.projectName,
@@ -1197,19 +1180,13 @@ router.post("/port/replit-projects", requireTrustedCookieOrigin, async (req, res
   });
   res.status(202).json(CreateReplitProjectResponse.parse(publicJob(job)));
   void runHandoffJob(job.id);
-});
+  },
+);
 
-router.get("/port/replit-projects/:jobId", async (req, res): Promise<void> => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({
-      error: "Log in to view this project handoff.",
-      code: "AUTHENTICATION_REQUIRED",
-    });
-    return;
-  }
+router.get("/port/replit-projects/:jobId", requireAuth, async (req, res): Promise<void> => {
   const parsed = GetReplitProjectStatusParams.safeParse(req.params);
   const job = parsed.success
-    ? await loadJob(parsed.data.jobId, req.user.id)
+    ? await loadJob(parsed.data.jobId, req.dbUser!.id)
     : null;
   if (!job) {
     res.status(404).json({
@@ -1224,14 +1201,8 @@ router.get("/port/replit-projects/:jobId", async (req, res): Promise<void> => {
 router.post(
   "/port/replit-projects/:jobId/retry",
   requireTrustedCookieOrigin,
+  requireAuth,
   async (req, res): Promise<void> => {
-    if (!req.isAuthenticated()) {
-      res.status(401).json({
-        error: "Log in to retry this project handoff.",
-        code: "AUTHENTICATION_REQUIRED",
-      });
-      return;
-    }
     const parsed = RetryReplitProjectSetupParams.safeParse(req.params);
 
     if (!parsed.success) {
@@ -1265,7 +1236,7 @@ router.post(
         .where(
           and(
             eq(handoffJobsTable.id, parsed.data.jobId),
-            eq(handoffJobsTable.ownerId, req.user.id),
+            eq(handoffJobsTable.ownerId, req.dbUser!.id),
             eq(handoffJobsTable.status, "failed"),
           ),
         )
@@ -1285,7 +1256,7 @@ router.post(
     });
 
     if (!wonRetry) {
-      const existing = await loadJob(parsed.data.jobId, req.user.id);
+      const existing = await loadJob(parsed.data.jobId, req.dbUser!.id);
       res.status(existing ? 400 : 404).json(
         existing
           ? {
@@ -1300,7 +1271,7 @@ router.post(
       return;
     }
 
-    const job = await loadJob(parsed.data.jobId, req.user.id);
+    const job = await loadJob(parsed.data.jobId, req.dbUser!.id);
     if (!job) {
       res.status(404).json({
         error: "That Replit project creation job was not found or has expired.",

@@ -11,6 +11,7 @@ Import pasted, single-file, or public GitHub HTML apps as normalized source bund
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run migrate` — apply committed Drizzle migrations; this is required before deploying or starting a new API release
 - Optional env: `POE_API_KEY` — enables live Poe model discovery and the server-side chat bridge
+- Clerk account authentication uses `CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, and `VITE_CLERK_PUBLISHABLE_KEY`. Set these through Replit’s environment/secrets tools; never put the secret key in browser code, imported HTML, source bundles, or logs.
 - Required for project handoff: an attached authorized Replit project-creation connection. From the Studio’s **Set up project creation** screen, Replit’s secure connection console verifies workspace-owner eligibility before authorization; no project-creation URL or token is configured in the browser or source.
 
 ## Stack
@@ -37,6 +38,7 @@ Import pasted, single-file, or public GitHub HTML apps as normalized source bund
 - Poe requests run only on the API server so `POE_API_KEY` never reaches a browser or imported page.
 - Previewed documents run in a sandbox without same-origin access to the Studio itself.
 - Project handoff sends every normalized bundle file byte-for-byte with its explicit entrypoint through the attached server-side Replit connection, then waits for each required setup skill to confirm before starting the next one.
+- Clerk authentication and Replit project authorization are separate boundaries: Clerk identifies the user and scopes handoff ownership, while the Replit connector independently verifies workspace-owner eligibility and authorizes project creation.
 
 ## Product
 
@@ -59,6 +61,9 @@ Import pasted, single-file, or public GitHub HTML apps as normalized source bund
 - After changing `lib/api-spec/openapi.yaml`, run `pnpm --filter @workspace/api-spec run codegen` before using generated client or Zod types.
 - Poe model IDs are case-sensitive. Use the exact PascalCase ID returned by Poe, such as `Claude-Sonnet-4.6`.
 - Set `POE_API_KEY` through Replit Secrets and restart the API server after changing it.
+- The landing header provides **Sign in** before import. The handoff panel keeps **Log in to create** for users who defer sign-in; both open the same Clerk `/sign-in` flow without clearing the in-memory import, analysis, or preview.
+- Configure the Clerk instance’s allowed origins with the Studio’s development and published HTTPS origins. Configure redirect URLs for the Studio base path plus `/sign-in/*` and `/sign-up/*`; the app uses `/sign-in` and `/sign-up` as its browser routes. The production server-side Clerk proxy is available at `/api/__clerk`.
+- If Clerk configuration is missing, import, analysis, preview, and assistant features remain usable and the UI shows a safe sign-in-unavailable state. Protected API operations return an actionable configuration error instead of attempting legacy OIDC redirects.
 - The project handoff requires sign-in and an attached authorized Replit project-creation connection. The API server resolves the connection through Replit’s server SDK; it never passes a credential to the Studio, imported HTML, or generated project. Each handoff job is accessible only to the authenticated owner; unauthenticated or cross-user status/retry requests are rejected.
 - The project handoff is unavailable until the supported authorized Replit project-creation connection is attached. When it is missing, the Studio keeps the imported HTML in the current browser session and shows an owner-only setup screen with a secure Replit connection link and a refresh check.
 - HTML that appears to contain a credential is blocked before handoff. Move service keys to Replit Secrets and use a server route rather than embedding them in `index.html`.

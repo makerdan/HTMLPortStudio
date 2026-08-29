@@ -12,9 +12,16 @@
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
   },
   "private": true,
+  "pnpm": {
+    "peerDependencyRules": {
+      "allowedVersions": {
+        "react": "19.1.0",
+        "react-dom": "19.1.0"
+      }
+    }
+  },
   "dependencies": {
-    "@replit/connectors-sdk": "^0.4.1",
-    "openid-client": "^6.8.7"
+    "@replit/connectors-sdk": "^0.4.1"
   },
   "devDependencies": {
     "prettier": "^3.9.6",
