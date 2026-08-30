@@ -4,5 +4,6 @@
 - [Rebase validation](rebase-validation.md) — After conflict resolution, test files can be malformed without conflict markers; run syntax/tests on every touched file before continuing.
 - [API handoff timing flake](api-handoff-timing-flake.md) — A polling assertion can briefly observe “running” instead of “failed”; isolate and retry before changing backend code.
 - [Public GitHub import boundaries](github-import-boundaries.md) — Resolve refs to commits and fetch bounded text-only source server-side without executing repository code.
+- [Importer limit boundary](importer-limit-boundary.md) — Keep explicit source caps compatible with API rootDir validation and native TypeScript tests.
 - [Monorepo package installation](package-install-monorepo.md) — Scope artifact dependencies to their package instead of the workspace root.
 - [Clerk workspace constraints](clerk-workspace-constraints.md) — Check explicit publishable-key presence; preserve the Expo React pin with a scoped peer allowance.

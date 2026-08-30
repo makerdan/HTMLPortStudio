@@ -8,6 +8,8 @@ import {
 import { analyzeBundle, type SourceBundle } from "./port";
 import {
   entrypointCandidates,
+  addGithubSourceBytes,
+  assertGithubFileBytes,
   GithubError,
   isIgnoredPath,
   isSafeGithubPath,
@@ -22,10 +24,10 @@ const router: IRouter = Router();
 const GITHUB_API = "https://api.github.com";
 const MAX_GITHUB_FILES = 80;
 const MAX_GITHUB_DEPTH = 6;
-const MAX_GITHUB_FILE_BYTES = 800_000;
-const MAX_GITHUB_TOTAL_BYTES = 1_800_000;
 const MAX_GITHUB_TREE_RESPONSE_BYTES = 6_000_000;
-const MAX_GITHUB_BLOB_RESPONSE_BYTES = 1_200_000;
+// A source file is base64-encoded inside the GitHub blob JSON response, so
+// this provider-response cap must be larger than the normalized source cap.
+const MAX_GITHUB_BLOB_RESPONSE_BYTES = 3_000_000;
 const MAX_GITHUB_REFS = 100;
 
 type GithubRepository = {
@@ -367,14 +369,7 @@ router.post("/port/github/import", async (req, res): Promise<void> => {
     const files: Array<{ path: string; content: string }> = [];
     let totalBytes = 0;
     for (const entry of supportedEntries) {
-      if (entry.size !== null && entry.size > MAX_GITHUB_FILE_BYTES) {
-        throw new GithubError(
-          413,
-          "GITHUB_SNAPSHOT_TOO_LARGE",
-          `The repository file ${entry.path} exceeds the importer file-size limit.`,
-          "Choose a smaller repository snapshot or remove the oversized file.",
-        );
-      }
+      if (entry.size !== null) assertGithubFileBytes(entry.path, entry.size);
       const blob = objectValue(
         await githubRequest(
           `${repoPath}/git/blobs/${encodeURIComponent(
@@ -393,23 +388,7 @@ router.post("/port/github/import", async (req, res): Promise<void> => {
       }
       const content = Buffer.from(blob.content.replace(/\s/g, ""), "base64").toString("utf8");
       const bytes = new TextEncoder().encode(content).byteLength;
-      if (bytes > MAX_GITHUB_FILE_BYTES) {
-        throw new GithubError(
-          413,
-          "GITHUB_SNAPSHOT_TOO_LARGE",
-          `The repository file ${entry.path} exceeds the importer file-size limit.`,
-          "Choose a smaller repository snapshot or remove the oversized file.",
-        );
-      }
-      totalBytes += bytes;
-      if (totalBytes > MAX_GITHUB_TOTAL_BYTES) {
-        throw new GithubError(
-          413,
-          "GITHUB_SNAPSHOT_TOO_LARGE",
-          "The approved repository source exceeds the total importer size limit.",
-          "Choose a smaller repository or remove generated/vendor content before importing.",
-        );
-      }
+      totalBytes = addGithubSourceBytes(entry.path, totalBytes, bytes);
       files.push({ path: entry.path, content });
     }
 

@@ -8,6 +8,7 @@ import {
   makeZipSourceBundle,
   normalizeArchivePath,
 } from './zip-source.ts';
+import { SOURCE_TEXT_MAX_BYTES } from './source-limits.ts';
 
 const text = (value: string) => new TextEncoder().encode(value);
 const zip = (files: Record<string, string | Uint8Array>) =>
@@ -119,5 +120,16 @@ test('rejects archives whose expanded contents exceed the bundle limit', () => {
   assertZipError(
     () => makeZipSourceBundle(zip({ 'index.html': '<title>App</title>', ...files }), 'large.zip'),
     'ZIP_EXPANSION_TOO_LARGE',
+  );
+});
+test('preserves an HTML file through the shared source limit and rejects larger files', () => {
+  const prefix = '<!doctype html><title>Near limit</title>';
+  const nearLimitHtml = prefix + 'x'.repeat(SOURCE_TEXT_MAX_BYTES - text(prefix).length);
+  const bundle = makeZipSourceBundle(zip({ 'index.html': nearLimitHtml }), 'near-limit.zip');
+  assert.equal(text(bundle.files[0].content).length, SOURCE_TEXT_MAX_BYTES);
+
+  assertZipError(
+    () => makeZipSourceBundle(zip({ 'index.html': `${nearLimitHtml}x` }), 'over-limit.zip'),
+    'ZIP_FILE_TOO_LARGE',
   );
 });

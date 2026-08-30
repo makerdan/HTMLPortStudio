@@ -1,3 +1,5 @@
+import { SOURCE_TEXT_LIMIT_LABEL, SOURCE_TEXT_MAX_BYTES } from "./source-limits.ts";
+
 type PlaygroundProvider = "codepen" | "jsfiddle";
 
 export type PlaygroundSource = {
@@ -36,7 +38,7 @@ type PlaygroundDependencies = {
 
 const CODEPEN_HOSTS = new Set(["codepen.io", "www.codepen.io"]);
 const JSFIDDLE_HOSTS = new Set(["jsfiddle.net", "www.jsfiddle.net"]);
-export const PLAYGROUND_MAX_BYTES = 1_000_000;
+export const PLAYGROUND_MAX_BYTES = SOURCE_TEXT_MAX_BYTES;
 export const PLAYGROUND_TIMEOUT_MS = 10_000;
 
 export class PlaygroundError extends Error {
@@ -151,7 +153,7 @@ async function readLimitedBody(
     if (new TextEncoder().encode(text).length > maxBytes) {
       throw new PlaygroundError(
         "PLAYGROUND_RESPONSE_TOO_LARGE",
-        "The playground export is larger than the 1 MB import limit.",
+        `The playground export is larger than the ${SOURCE_TEXT_LIMIT_LABEL} import limit.`,
       );
     }
     return text;
@@ -170,7 +172,7 @@ async function readLimitedBody(
         await reader.cancel();
         throw new PlaygroundError(
           "PLAYGROUND_RESPONSE_TOO_LARGE",
-          "The playground export is larger than the 1 MB import limit.",
+          `The playground export is larger than the ${SOURCE_TEXT_LIMIT_LABEL} import limit.`,
         );
       }
       text += decoder.decode(value, { stream: true });

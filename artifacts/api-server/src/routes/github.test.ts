@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  addGithubSourceBytes,
+  assertGithubFileBytes,
   entrypointCandidates,
   isIgnoredPath,
   isSafeGithubPath,
@@ -8,6 +10,7 @@ import {
   isSupportedTextPath,
   parseGithubUrl,
   pathDepth,
+  MAX_GITHUB_FILE_BYTES,
 } from "./github-utils.ts";
 
 test("accepts only canonical public GitHub repository URLs", () => {
@@ -61,5 +64,33 @@ test("prefers a root HTML entrypoint and surfaces ambiguity", () => {
       "README.md",
     ]),
     ["index.html", "index.htm", "about.html", "src/app.html"],
+  );
+});
+
+test("accepts a GitHub HTML file through the shared source limit", () => {
+  const prefix = "<!doctype html><title>Near limit</title>";
+  const nearLimitHtml = prefix + "x".repeat(MAX_GITHUB_FILE_BYTES - new TextEncoder().encode(prefix).length);
+  const bytes = new TextEncoder().encode(nearLimitHtml).byteLength;
+  assert.doesNotThrow(() => assertGithubFileBytes("index.html", bytes));
+  assert.equal(addGithubSourceBytes("index.html", 0, bytes), MAX_GITHUB_FILE_BYTES);
+});
+
+test("rejects a GitHub HTML file over the shared source limit", () => {
+  assert.throws(
+    () => assertGithubFileBytes("index.html", MAX_GITHUB_FILE_BYTES + 1),
+    (error: unknown) =>
+      error instanceof Error &&
+      "code" in error &&
+      error.code === "GITHUB_SNAPSHOT_TOO_LARGE",
+  );
+});
+
+test("rejects a GitHub repository whose combined source exceeds the shared limit", () => {
+  assert.throws(
+    () => addGithubSourceBytes("styles.css", MAX_GITHUB_FILE_BYTES, 1),
+    (error: unknown) =>
+      error instanceof Error &&
+      "code" in error &&
+      error.code === "GITHUB_SNAPSHOT_TOO_LARGE",
   );
 });

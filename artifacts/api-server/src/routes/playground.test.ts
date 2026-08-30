@@ -4,6 +4,7 @@ import {
   importPlayground,
   parsePlaygroundUrl,
   PlaygroundError,
+  PLAYGROUND_MAX_BYTES,
 } from "./playground.ts";
 
 function response(body: string, url: string, status = 200): Response {
@@ -89,5 +90,28 @@ test("does not pass empty or unavailable provider results into a bundle", async 
       fetch: async (input) => response("not found", String(input), 404),
     }),
     (error: unknown) => error instanceof PlaygroundError && error.code === "PLAYGROUND_EMPTY",
+  );
+});
+
+test("preserves JSFiddle HTML through the shared source limit and rejects larger exports", async () => {
+  const prefix = "<!doctype html><html><head><title>Near limit</title></head><body>";
+  const suffix = "</body></html>";
+  const prefixBytes = new TextEncoder().encode(prefix).byteLength;
+  const suffixBytes = new TextEncoder().encode(suffix).byteLength;
+  const nearLimitHtml = prefix + "x".repeat(PLAYGROUND_MAX_BYTES - prefixBytes - suffixBytes) + suffix;
+  const result = await importPlayground("https://jsfiddle.net/alice/large/", {
+    fetch: async (input) => response(nearLimitHtml, String(input)),
+  });
+  assert.equal(
+    new TextEncoder().encode(result.bundle.files[0].content).byteLength,
+    PLAYGROUND_MAX_BYTES,
+  );
+
+  await assert.rejects(
+    () =>
+      importPlayground("https://jsfiddle.net/alice/too-large/", {
+        fetch: async (input) => response(`${nearLimitHtml}x`, String(input)),
+      }),
+    (error: unknown) => error instanceof PlaygroundError && error.code === "PLAYGROUND_RESPONSE_TOO_LARGE",
   );
 });

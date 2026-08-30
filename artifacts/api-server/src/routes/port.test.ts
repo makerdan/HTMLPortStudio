@@ -6,9 +6,7 @@ import { createRequire } from "node:module";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { once } from "node:events";
-import {
-  analyzeHtmlBodyThreeHtmlMax as ANALYSIS_SOURCE_LIMIT,
-} from "../../../../lib/api-zod/src/generated/api.ts";
+import { SOURCE_TEXT_MAX_BYTES as ANALYSIS_SOURCE_LIMIT } from "./source-limits.ts";
 
 const requireFromDb = createRequire(
   new URL("../../../../lib/db/package.json", import.meta.url),

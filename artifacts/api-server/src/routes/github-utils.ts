@@ -1,3 +1,5 @@
+import { SOURCE_TEXT_MAX_BYTES } from "./source-limits.ts";
+
 const SAFE_PATH = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[a-zA-Z0-9._/-]+$/;
 const SAFE_REF = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[a-zA-Z0-9._/-]+$/;
 const TEXT_EXTENSIONS = new Set([
@@ -23,6 +25,8 @@ const IGNORED_DIRECTORIES = new Set([
   "vendor",
 ]);
 const MAX_ENTRYPOINT_CANDIDATES = 20;
+export const MAX_GITHUB_FILE_BYTES = SOURCE_TEXT_MAX_BYTES;
+export const MAX_GITHUB_TOTAL_BYTES = SOURCE_TEXT_MAX_BYTES;
 
 export type GithubRepoCoordinates = {
   owner: string;
@@ -119,6 +123,31 @@ export function isSupportedTextPath(path: string): boolean {
 
 export function isIgnoredPath(path: string): boolean {
   return path.split("/").some((part) => IGNORED_DIRECTORIES.has(part));
+}
+
+export function assertGithubFileBytes(path: string, bytes: number): void {
+  if (bytes > MAX_GITHUB_FILE_BYTES) {
+    throw new GithubError(
+      413,
+      "GITHUB_SNAPSHOT_TOO_LARGE",
+      `The repository file ${path} exceeds the importer file-size limit.`,
+      "Choose a smaller repository snapshot or remove the oversized file.",
+    );
+  }
+}
+
+export function addGithubSourceBytes(path: string, totalBytes: number, bytes: number): number {
+  assertGithubFileBytes(path, bytes);
+  const nextTotalBytes = totalBytes + bytes;
+  if (nextTotalBytes > MAX_GITHUB_TOTAL_BYTES) {
+    throw new GithubError(
+      413,
+      "GITHUB_SNAPSHOT_TOO_LARGE",
+      "The approved repository source exceeds the total importer size limit.",
+      "Choose a smaller repository or remove generated/vendor content before importing.",
+    );
+  }
+  return nextTotalBytes;
 }
 
 export function entrypointCandidates(paths: string[]): string[] {

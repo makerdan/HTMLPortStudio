@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { fetchHostedUrl, HostedUrlError } from "./hosted-url.ts";
+import { fetchHostedUrl, HostedUrlError, HOSTED_URL_MAX_BYTES } from "./hosted-url.ts";
 
 const publicLookup = async () => [
   { address: "93.184.216.34", family: 4 },
@@ -145,8 +145,26 @@ test("rejects credentials, non-HTML responses, and oversized bodies", async () =
       fetch: async () =>
         response("<!doctype html>", {
           "content-type": "text/html",
-          "content-length": String(2_000_001),
+          "content-length": String(HOSTED_URL_MAX_BYTES + 1),
         }),
+    }),
+    "HOSTED_URL_TOO_LARGE",
+  );
+});
+
+test("preserves hosted HTML through the shared source limit and rejects larger bodies", async () => {
+  const prefix = "<!doctype html><title>Near limit</title>";
+  const nearLimitHtml = prefix + "x".repeat(HOSTED_URL_MAX_BYTES - new TextEncoder().encode(prefix).length);
+  const result = await fetchHostedUrl("https://example.com/near-limit", {
+    lookup: publicLookup,
+    fetch: async () => response(nearLimitHtml),
+  });
+  assert.equal(new TextEncoder().encode(result.html).byteLength, HOSTED_URL_MAX_BYTES);
+
+  await rejectsWith(
+    fetchHostedUrl("https://example.com/over-limit", {
+      lookup: publicLookup,
+      fetch: async () => response(`${nearLimitHtml}x`),
     }),
     "HOSTED_URL_TOO_LARGE",
   );
