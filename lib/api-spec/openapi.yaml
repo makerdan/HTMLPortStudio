@@ -464,6 +464,8 @@ components:
       type: string
       enum: [pasted_html, single_file, zip_project, github_repository, hosted_page, playground]
     SourceBundleFile:
+      # Shared import compatibility boundary for hosted, GitHub, playground,
+      # ZIP, direct analysis, and project handoff source content.
       type: object
       required: [path, content]
       properties:

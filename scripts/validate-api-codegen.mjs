@@ -58,6 +58,171 @@ function compareGeneratedSource(label, committedPath, generatedPath) {
   }
 }
 
+function readOpenApiPropertyMaxLength(spec, schemaName, propertyName) {
+  const lines = spec.split("\n");
+  const schemaLine = lines.findIndex((line) => line === `    ${schemaName}:`);
+  if (schemaLine === -1) {
+    fail(
+      `Source limit validation could not find OpenAPI schema ${schemaName}.`,
+    );
+  }
+
+  const schemaEnd = lines.findIndex(
+    (line, index) =>
+      index > schemaLine && /^    [A-Za-z][A-Za-z0-9_-]*:\s*$/.test(line),
+  );
+  const end = schemaEnd === -1 ? lines.length : schemaEnd;
+  const propertyLine = lines.findIndex(
+    (line, index) => index > schemaLine && index < end && line === `        ${propertyName}:`,
+  );
+  if (propertyLine === -1) {
+    fail(
+      `Source limit validation could not find OpenAPI property ${schemaName}.${propertyName}.`,
+    );
+  }
+
+  const propertyEnd = lines.findIndex(
+    (line, index) =>
+      index > propertyLine && index < end && /^        [A-Za-z][A-Za-z0-9_-]*:\s*$/.test(line),
+  );
+  const propertyLimitEnd = propertyEnd === -1 ? end : propertyEnd;
+  const maxLengthLine = lines
+    .slice(propertyLine + 1, propertyLimitEnd)
+    .find((line) => /^\s+maxLength:\s*\d+\s*$/.test(line));
+  const maxLength = maxLengthLine?.match(/maxLength:\s*(\d+)/)?.[1];
+  if (!maxLength) {
+    fail(
+      `Source limit validation could not find maxLength for OpenAPI property ${schemaName}.${propertyName}.`,
+    );
+  }
+  return Number(maxLength);
+}
+
+function readGeneratedLimit(source, exportName) {
+  const escapedName = exportName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const value = source.match(
+    new RegExp(`export const ${escapedName} = (\\d+);`),
+  )?.[1];
+  if (!value) {
+    fail(
+      `Source limit validation could not find generated API export ${exportName}.`,
+    );
+  }
+  return Number(value);
+}
+
+function readAdapterSourceLimit(source) {
+  const value = source.match(
+    /export const SOURCE_TEXT_MAX_BYTES\s*=\s*([\d_]+)\s*;/,
+  )?.[1];
+  if (!value) {
+    fail(
+      "Source limit validation could not find a numeric SOURCE_TEXT_MAX_BYTES in artifacts/api-server/src/routes/source-limits.ts.",
+    );
+  }
+  return Number(value.replaceAll("_", ""));
+}
+
+function validateSourceLimitBoundary(generatedZodPath) {
+  const sourceLimitPath = resolve(
+    root,
+    "artifacts",
+    "api-server",
+    "src",
+    "routes",
+    "source-limits.ts",
+  );
+  const openApiPath = resolve(root, "lib", "api-spec", "openapi.yaml");
+  const adapterLimit = readAdapterSourceLimit(
+    readFileSync(sourceLimitPath, "utf8"),
+  );
+  const openApi = readFileSync(openApiPath, "utf8");
+  const openApiLimits = [
+    [
+      "SourceBundleFile.content (hosted, GitHub, playground, and ZIP bundles)",
+      readOpenApiPropertyMaxLength(openApi, "SourceBundleFile", "content"),
+    ],
+    [
+      "HtmlInput.html (direct analysis)",
+      readOpenApiPropertyMaxLength(openApi, "HtmlInput", "html"),
+    ],
+    [
+      "ReplitProjectInput.html (project handoff)",
+      readOpenApiPropertyMaxLength(openApi, "ReplitProjectInput", "html"),
+    ],
+  ];
+  const contractLimit = openApiLimits[0][1];
+  for (const [label, limit] of openApiLimits) {
+    if (limit !== contractLimit) {
+      fail(
+        `Source limit drift in the OpenAPI contract: ${label} is ${limit} bytes, but the shared import compatibility boundary is ${contractLimit} bytes. Update SourceBundleFile.content, HtmlInput.html, and ReplitProjectInput.html together.`,
+      );
+    }
+  }
+
+  const generated = readFileSync(generatedZodPath, "utf8");
+  const generatedLimits = [
+    [
+      "analyzeHtmlBodyThreeHtmlMax",
+      readGeneratedLimit(generated, "analyzeHtmlBodyThreeHtmlMax"),
+    ],
+    [
+      "analyzeHtmlBodyThreeBundleFilesItemContentMax",
+      readGeneratedLimit(
+        generated,
+        "analyzeHtmlBodyThreeBundleFilesItemContentMax",
+      ),
+    ],
+    [
+      "importHostedUrlResponseBundleFilesItemContentMax",
+      readGeneratedLimit(
+        generated,
+        "importHostedUrlResponseBundleFilesItemContentMax",
+      ),
+    ],
+    [
+      "importPlaygroundResponseBundleFilesItemContentMax",
+      readGeneratedLimit(
+        generated,
+        "importPlaygroundResponseBundleFilesItemContentMax",
+      ),
+    ],
+    [
+      "importGithubRepositoryResponseBundleFilesItemContentMax",
+      readGeneratedLimit(
+        generated,
+        "importGithubRepositoryResponseBundleFilesItemContentMax",
+      ),
+    ],
+    [
+      "createReplitProjectBodyThreeHtmlMax",
+      readGeneratedLimit(generated, "createReplitProjectBodyThreeHtmlMax"),
+    ],
+    [
+      "createReplitProjectBodyThreeBundleFilesItemContentMax",
+      readGeneratedLimit(
+        generated,
+        "createReplitProjectBodyThreeBundleFilesItemContentMax",
+      ),
+    ],
+  ];
+  for (const [exportName, limit] of generatedLimits) {
+    if (limit !== contractLimit) {
+      fail(
+        `Source limit drift between OpenAPI and generated API: ${exportName} is ${limit} bytes, but the contract boundary is ${contractLimit} bytes. Regenerate API sources and update the contract or adapter together.`,
+      );
+    }
+  }
+  if (adapterLimit !== contractLimit) {
+    fail(
+      `Source limit drift: artifacts/api-server/src/routes/source-limits.ts uses ${adapterLimit} bytes, but the OpenAPI/generated API compatibility boundary uses ${contractLimit} bytes. Update the adapter and contract together, then regenerate with pnpm --filter @workspace/api-spec run codegen.`,
+    );
+  }
+  console.log(
+    `[api-validation] Source import compatibility boundary is synchronized at ${contractLimit} bytes across the adapter, OpenAPI, and generated API.`,
+  );
+}
+
 cleanValidationOutput();
 mkdirSync(validationRoot, { recursive: true });
 copyFileSync(
@@ -107,6 +272,10 @@ writeFileSync(
 writeFileSync(
   resolve(validationRoot, "api-zod", "index.ts"),
   'export * from "./generated/api";\nexport * from "./generated/types";\n',
+);
+
+validateSourceLimitBoundary(
+  resolve(validationRoot, "api-zod", "generated", "api.ts"),
 );
 
 runStep("Force-refreshing API Zod declarations", "pnpm", [
