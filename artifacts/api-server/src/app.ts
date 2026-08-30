@@ -96,13 +96,25 @@ const jsonBodyErrorHandler: ErrorRequestHandler = (
   res: Response,
   next: NextFunction,
 ) => {
-  if (
+  const isAnalysisRequest = req.path === "/api/port/analyze";
+  const errorType =
     typeof error === "object" &&
     error !== null &&
-    "type" in error &&
-    (error as { type?: unknown }).type === "entity.too.large"
+    "type" in error
+      ? (error as { type?: unknown }).type
+      : undefined;
+
+  if (isAnalysisRequest && errorType === "entity.parse.failed") {
+    res.status(400).json({
+      error: "Provide a valid JSON request body.",
+      code: "INVALID_JSON",
+    });
+    return;
+  }
+
+  if (
+    errorType === "entity.too.large"
   ) {
-    const isAnalysisRequest = req.path === "/api/port/analyze";
     res.status(413).json(
       isAnalysisRequest
         ? {

@@ -194,6 +194,18 @@ test("covers the analysis boundary matrix and origin routing", async () => {
     assert.equal(windowsSeparators.body.entrypoint, "pages/index.html");
     assert.deepEqual(windowsSeparators.body.files, ["pages/index.html", "pages/styles.css"]);
 
+    const malformedJson = await fetch(`${baseUrl}/port/analyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: '{"html":"unterminated"',
+    });
+    const malformedJsonBody = (await malformedJson.json()) as Json;
+    assert.equal(malformedJson.status, 400);
+    assert.deepEqual(malformedJsonBody, {
+      error: "Provide a valid JSON request body.",
+      code: "INVALID_JSON",
+    });
+
     const parserOverflow = await analyze({ html: "x".repeat(8 * 1024 * 1024) });
     assert.equal(parserOverflow.status, 413);
     assert.equal(parserOverflow.body.code, "BUNDLE_TOO_LARGE");
