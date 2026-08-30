@@ -312,6 +312,7 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
     body: Json | null;
   }> = [];
   let returnFailure = false;
+  let returnMalformedCompletion = false;
   const poe = http.createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
     const body =
@@ -342,6 +343,20 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
               message: "provider-internal diagnostic with sensitive details",
               request_id: "provider-secret-request-id",
             },
+          }),
+        );
+        return;
+      }
+
+      if (returnMalformedCompletion) {
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(
+          JSON.stringify({
+            error: {
+              message: "provider-internal malformed completion diagnostic",
+              request_id: "provider-malformed-secret-request-id",
+            },
+            choices: [],
           }),
         );
         return;
@@ -433,6 +448,25 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
     assert.doesNotMatch(
       JSON.stringify(failedChat.body),
       /provider-internal diagnostic|provider-secret-request-id/,
+    );
+
+    returnFailure = false;
+    returnMalformedCompletion = true;
+    const malformedChat = await jsonRequest(`${baseUrl}/port/poe/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: confirmedModel,
+        messages: redactedMessages,
+      }),
+    });
+    assert.equal(malformedChat.status, 503);
+    assert.deepEqual(malformedChat.body, {
+      error: "Poe returned a completion without text content.",
+    });
+    assert.doesNotMatch(
+      JSON.stringify(malformedChat.body),
+      /provider-internal malformed completion diagnostic|provider-malformed-secret-request-id/,
     );
   } finally {
     if (!api.killed) {
