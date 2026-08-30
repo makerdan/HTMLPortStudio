@@ -355,7 +355,8 @@ test("uses opaque file IDs when a bundle path contains a credential pattern", ()
 test("requires redacted consent, review, confirmation, re-scan, and undo in Fix Code", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
 
-  assert.match(source, /const CLAUDE_REPAIR_MODEL = 'Claude-Sonnet-4\.5'/);
+  assert.match(source, /const CLAUDE_REPAIR_MODEL = 'Claude-Sonnet-4\.6'/);
+  assert.doesNotMatch(source, /Claude-Sonnet-4\.5/);
   assert.match(source, /model === CLAUDE_REPAIR_MODEL/);
   assert.match(source, /credentialRedaction\.safe &&\s*shareConfirmed/s);
   assert.match(source, /only the complete redacted copy will be shared with Claude/i);

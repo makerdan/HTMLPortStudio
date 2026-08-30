@@ -497,7 +497,7 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
 const GEMINI_REPAIR_MODEL = 'gemini-3.1-pro';
 // This is an exact Poe model identifier, not a display label. It is still
 // accepted only when the server's live catalogue returns the same string.
-const CLAUDE_REPAIR_MODEL = 'Claude-Sonnet-4.5';
+const CLAUDE_REPAIR_MODEL = 'Claude-Sonnet-4.6';
 
 type RepairProposal = {
   explanation: string;
