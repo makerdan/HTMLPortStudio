@@ -10,7 +10,15 @@ async function mockAuthenticatedAuth(page: import("@playwright/test").Page) {
   await mockAuth(page);
 }
 
-async function mockAnalysis(page: import("@playwright/test").Page) {
+async function mockAnalysis(
+  page: import("@playwright/test").Page,
+  findings: Array<{
+    severity: "info" | "warning" | "error";
+    title: string;
+    detail: string;
+    action: string;
+  }> = [],
+) {
   await page.route("**/api/port/analyze", (route) =>
     route.fulfill({
       status: 200,
@@ -23,15 +31,18 @@ async function mockAnalysis(page: import("@playwright/test").Page) {
         inlineScriptCount: 0,
         externalAssetCount: 0,
         aiSignalCount: 0,
-        findings: [],
+        findings,
         steps: [],
       }),
     }),
   );
 }
 
-async function analyzeImportedHtml(page: import("@playwright/test").Page) {
-  await page.getByPlaceholder(/paste your html/i).fill(html);
+async function analyzeImportedHtml(
+  page: import("@playwright/test").Page,
+  source = html,
+) {
+  await page.getByPlaceholder(/paste your html/i).fill(source);
   await page.getByRole("button", { name: /analyze/i }).click();
 }
 
@@ -237,7 +248,7 @@ test("keeps credential recovery analytics coarse across every browser outcome", 
       contentType: "application/json",
       body: JSON.stringify({
         configured: true,
-        models: ["Claude-Sonnet-4.5"],
+        models: ["Claude-Sonnet-4.6"],
         message: "model-output-private-catalogue-detail",
       }),
     }),
@@ -248,7 +259,7 @@ test("keeps credential recovery analytics coarse across every browser outcome", 
       contentType: "application/json",
       body: JSON.stringify({
         content: safeProposal,
-        model: "Claude-Sonnet-4.5",
+        model: "Claude-Sonnet-4.6",
         usage: { promptTokens: 12, completionTokens: 34 },
       }),
     }),
@@ -305,4 +316,275 @@ test("keeps credential recovery analytics coarse across every browser outcome", 
     { name: "credential_recovery_action", data: { action: "apply" } },
     { name: "credential_recovery_rescan", data: { result: "failed" } },
   ]);
+});
+
+async function openEditor(
+  page: import("@playwright/test").Page,
+  source = "<main>Alpha</main>\n<p>Alpha</p>",
+  findings: Array<{
+    severity: "info" | "warning" | "error";
+    title: string;
+    detail: string;
+    action: string;
+  }> = [],
+) {
+  await mockAuth(page);
+  await mockAnalysis(page, findings);
+  await page.goto("/");
+  await analyzeImportedHtml(page, source);
+  await page.getByRole("tab", { name: "Source Editor" }).click();
+  await expect(page.locator('[aria-label="Source Editor"]')).toBeVisible();
+}
+
+test("updates the sandbox preview from an edited entrypoint only after the editor change boundary", async ({ page }) => {
+  const source = "<main id=\"preview-marker\">Before</main>";
+  await openEditor(page, source);
+
+  const preview = page.frameLocator('iframe[title="Preview"]');
+  await page.getByRole("tab", { name: "Safe Preview" }).click();
+  await expect(preview.locator("#preview-marker")).toHaveText("Before");
+
+  await page.getByRole("tab", { name: "Source Editor" }).click();
+  const editor = page.getByRole("textbox", { name: "Edit source file index.html" });
+  await editor.fill("<main id=\"preview-marker\">After</main>");
+  await expect(page.getByText("Analysis is out of date")).toBeVisible();
+  await page.getByRole("tab", { name: "Safe Preview" }).click();
+  await expect(preview.locator("#preview-marker")).toHaveText("After");
+});
+
+async function exerciseFindReplace(page: import("@playwright/test").Page) {
+  await openEditor(page);
+  const editor = page.getByRole("textbox", { name: "Edit source file index.html" });
+  const find = page.getByPlaceholder(/find \(ctrl\/cmd\+f\)/i);
+  const replace = page.getByPlaceholder("Replace with");
+
+  await editor.click();
+  await editor.press(process.platform === "darwin" ? "Meta+f" : "Control+f");
+  await expect(find).toBeFocused();
+  await find.fill("Alpha");
+  await expect(page.getByRole("status")).toContainText("1 of 2");
+  await find.press("Enter");
+  await expect(editor).toHaveJSProperty("selectionStart", 22);
+
+  await editor.press(process.platform === "darwin" ? "Meta+h" : "Control+h");
+  await expect(find).toBeFocused();
+  await replace.fill("Omega");
+  await page.getByRole("button", { name: "Replace all" }).click();
+  await expect(page.getByRole("alertdialog", { name: "Confirm replace all" })).toContainText("Replace 2 matches");
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(editor).toHaveValue("<main>Alpha</main>\n<p>Alpha</p>");
+
+  await page.getByRole("button", { name: "Replace all" }).click();
+  await page.getByRole("button", { name: "Confirm replace all" }).click();
+  await expect(editor).toHaveValue("<main>Omega</main>\n<p>Omega</p>");
+
+  await find.fill("Not present");
+  await expect(page.getByRole("status")).toHaveText("No matches");
+}
+
+test("supports find and replace keyboard, confirmation, cancellation, and no-match states on desktop", async ({ page }) => {
+  await exerciseFindReplace(page);
+});
+
+test.describe("source editor on mobile", () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test("keeps find and replace controls usable at a mobile width", async ({ page }) => {
+    await exerciseFindReplace(page);
+    await expect(page.getByRole("tab", { name: "Source Editor" })).toBeVisible();
+  });
+});
+
+test("downloads a single source file and ZIP locally, warning before credential-bearing exports", async ({ page }) => {
+  const credentialHtml =
+    "<!doctype html><html><body><main>Local export</main><script>const apiKey = \"sk-proj-browser-download-secret\";</script></body></html>";
+  await openEditor(page, credentialHtml);
+
+  const apiRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/")) apiRequests.push(request.url());
+  });
+
+  await page.getByRole("button", { name: "Save file" }).click();
+  await expect(page.getByText("Safety check before local download")).toBeVisible();
+  await expect(page.getByText(/keep it local and rotate any real credential/i)).toBeVisible();
+  const fileDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download anyway" }).click();
+  const fileDownload = await fileDownloadPromise;
+  expect(fileDownload.suggestedFilename()).toBe("index.html");
+
+  await page.getByRole("button", { name: "Save bundle" }).click();
+  await expect(page.getByText("Safety check before local download")).toBeVisible();
+  const zipDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download anyway" }).click();
+  const zipDownload = await zipDownloadPromise;
+  expect(zipDownload.suggestedFilename()).toMatch(/\.zip$/);
+  const zipBytes = await zipDownload.createReadStream();
+  expect(zipBytes).not.toBeNull();
+  const chunks: Buffer[] = [];
+  for await (const chunk of zipBytes!) chunks.push(Buffer.from(chunk));
+  expect(Buffer.concat(chunks).subarray(0, 2).toString()).toBe("PK");
+  expect(apiRequests.filter((url) => /analyze|poe|download/i.test(url))).toEqual([]);
+});
+
+const claudeFinding = [{
+  severity: "warning" as const,
+  title: "Legacy markup",
+  detail: "Replace the legacy markup with the current structure.",
+  action: "Update the main element.",
+}];
+
+function claudePatch(content: string, replacement: string) {
+  return JSON.stringify({
+    coveredFindingIndices: [0],
+    edits: [{
+      fileId: "file-1",
+      findingIndex: 0,
+      startLine: 1,
+      endLine: 1,
+      oldText: content,
+      newText: replacement,
+    }],
+  });
+}
+
+async function openClaudeReview(
+  page: import("@playwright/test").Page,
+  source = "<main>Alpha</main>",
+) {
+  await mockAuth(page);
+  await mockAnalysis(page, claudeFinding);
+  await page.route("**/api/port/poe/models", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ configured: true, models: ["Claude-Sonnet-4.6"] }),
+    }),
+  );
+  await page.goto("/");
+  await analyzeImportedHtml(page, source);
+  await page.getByRole("button", { name: "Fix with Claude" }).click();
+  await expect(page.locator('[aria-label="Claude source repair review"]')).toBeVisible();
+}
+
+test("gates Claude on the exact live model and exhausts bounded attempts", async ({ page }) => {
+  let chatAttempts = 0;
+  await mockAuth(page);
+  await mockAnalysis(page, claudeFinding);
+  await page.route("**/api/port/poe/models", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ configured: true, models: ["Claude-Sonnet-4.5"] }),
+    }),
+  );
+  await page.route("**/api/port/poe/chat", (route) => {
+    chatAttempts += 1;
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ content: "{malformed" }),
+    });
+  });
+  await page.goto("/");
+  await analyzeImportedHtml(page, "<main>Alpha</main>");
+  await page.getByRole("button", { name: "Fix with Claude" }).click();
+  await expect(page.getByText("Exact Claude model unavailable")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Request Claude patch" })).toBeDisabled();
+  expect(chatAttempts).toBe(0);
+
+  await page.unroute("**/api/port/poe/models");
+  await page.route("**/api/port/poe/models", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ configured: true, models: ["Claude-Sonnet-4.6"] }),
+    }),
+  );
+  await page.getByRole("button", { name: "Refresh model catalogue" }).click();
+  await expect(page.getByText("0 of 3 attempts remaining")).not.toBeVisible();
+  const requestButton = page.getByRole("button", { name: "Request Claude patch" });
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await requestButton.click();
+    await expect.poll(() => chatAttempts).toBe(attempt + 1);
+    await expect(page.getByText("Proposal withheld")).toBeVisible();
+    if (attempt < 2) {
+      await expect(page.getByText(`${2 - attempt} of 3 attempts remaining`)).toBeVisible();
+    }
+  }
+  await expect(page.getByText("0 of 3 attempts remaining")).toBeVisible();
+  await expect(requestButton).toBeDisabled();
+  expect(chatAttempts).toBe(3);
+});
+
+test("withholds malformed Claude patches and rejects a response that becomes stale", async ({ page }) => {
+  let resolveChat: (() => void) | null = null;
+  await openClaudeReview(page);
+  await page.route("**/api/port/poe/chat", (route) => {
+    return new Promise<void>((resolve) => {
+      resolveChat = () => {
+        void route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ content: claudePatch("<main>Alpha</main>", "<main>Patched</main>") }),
+        }).then(resolve);
+      };
+    });
+  });
+  await page.getByRole("button", { name: "Request Claude patch" }).click();
+  await expect.poll(() => Boolean(resolveChat)).toBe(true);
+  await page.getByRole("tab", { name: "Source Editor" }).click();
+  const editor = page.getByRole("textbox", { name: "Edit source file index.html" });
+  await editor.fill("<main>Changed while Claude worked</main>");
+  resolveChat?.();
+  await expect(editor).toHaveValue("<main>Changed while Claude worked</main>");
+  await expect(page.getByText("Reviewed patch applied in memory")).not.toBeVisible();
+
+  await page.getByRole("button", { name: "Re-analyze source" }).click();
+  await expect(page.getByRole("button", { name: "Fix with Claude" })).toBeVisible();
+  await page.getByRole("button", { name: "Fix with Claude" }).click();
+  await expect(page.getByRole("button", { name: "Request Claude patch" })).toBeVisible();
+  await page.unroute("**/api/port/poe/chat");
+  await page.route("**/api/port/poe/chat", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ content: "{malformed" }),
+    }),
+  );
+  await page.getByRole("button", { name: "Request Claude patch" }).click();
+  await expect(page.getByText("Proposal withheld")).toBeVisible();
+  await expect(editor).toHaveValue("<main>Changed while Claude worked</main>");
+});
+
+test("requires Claude review and explicit apply, then supports undo", async ({ page }) => {
+  const original = "<main>Alpha</main>";
+  await openClaudeReview(page, original);
+  await page.route("**/api/port/poe/chat", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ content: claudePatch(original, "<main>Patched</main>") }),
+    }),
+  );
+  await page.getByRole("button", { name: "Request Claude patch" }).click();
+  await expect(page.getByRole("heading", { name: "Review Claude's untrusted patch" })).toBeVisible();
+  const editor = page.getByRole("textbox", { name: "Edit source file index.html" });
+  await page.getByRole("tab", { name: "Source Editor" }).click();
+  await expect(editor).toHaveValue(original);
+  await page.getByRole("tab", { name: "Safe Preview" }).click();
+  await page.getByRole("tab", { name: "Source Editor" }).click();
+  await page.getByRole("button", { name: "Fix with Claude" }).click();
+  await page.getByRole("button", { name: "Review and apply patch" }).click();
+  await expect(page.getByRole("alertdialog", { name: "Confirm Claude patch" })).toBeVisible();
+  await page.getByRole("button", { name: "Keep reviewing" }).click();
+  await expect(editor).toHaveValue(original);
+  await page.getByRole("button", { name: "Review and apply patch" }).click();
+  await page.getByRole("button", { name: "Confirm apply" }).click();
+  await expect(page.getByText("Analysis is out of date")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Edit source file index.html" })).toHaveValue("<main>Patched</main>");
+  await page.getByRole("button", { name: "Undo and restore original" }).click();
+  await expect(page.getByRole("tab", { name: "Source Editor" })).toBeVisible();
+  await page.getByRole("tab", { name: "Source Editor" }).click();
+  await expect(page.getByRole("textbox", { name: "Edit source file index.html" })).toHaveValue(original);
 });

@@ -9,9 +9,9 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
-    command: "BASE_PATH=/ PORT=5173 pnpm run dev",
+    command: "BASE_PATH=/ PORT=5173 VITE_CLERK_PUBLISHABLE_KEY= VITE_STUDIO_E2E_AUTH=true pnpm run dev",
     url: "http://127.0.0.1:5173/",
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
   },
   projects: [
     {

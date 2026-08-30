@@ -42,6 +42,8 @@ const clerkPubKey = configuredPublishableKey
   ? publishableKeyFromHost(window.location.hostname, configuredPublishableKey)
   : "";
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
+const e2eAuthEnabled =
+  import.meta.env.DEV && import.meta.env.VITE_STUDIO_E2E_AUTH === "true";
 
 const AuthContext = createContext<StudioAuthState>({
   user: null,
@@ -139,6 +141,28 @@ export function useStudioAuth(): StudioAuthState {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   if (!clerkPubKey) {
+    if (e2eAuthEnabled) {
+      return (
+        <AuthContext.Provider
+          value={{
+            user: {
+              id: "e2e-user",
+              email: "e2e@example.test",
+              firstName: "Browser",
+              lastName: "Test",
+              profileImageUrl: null,
+            },
+            isLoading: false,
+            isAuthenticated: true,
+            error: null,
+            login: () => undefined,
+            logout: () => undefined,
+          }}
+        >
+          {children}
+        </AuthContext.Provider>
+      );
+    }
     return <AuthContext.Provider value={fallbackAuthState}>{children}</AuthContext.Provider>;
   }
   return <ConfiguredAuthProvider>{children}</ConfiguredAuthProvider>;

@@ -8,3 +8,4 @@
 - [Monorepo package installation](package-install-monorepo.md) — Scope artifact dependencies to their package instead of the workspace root.
 - [Clerk workspace constraints](clerk-workspace-constraints.md) — Check explicit publishable-key presence; preserve the Expo React pin with a scoped peer allowance.
 - [Credential repair bundle identity](credential-repair-bundle-identity.md) — Redact paths and contents; expose opaque file IDs to repair models and keep path mapping local.
+- [Async revision boundaries](async-revision-boundaries.md) — Compare delayed analysis and repair responses against a synchronously tracked revision, not a stale render closure.

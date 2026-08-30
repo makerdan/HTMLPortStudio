@@ -1697,6 +1697,7 @@ export default function Home() {
   const [zipLoading, setZipLoading] = useState(false);
   const [previewHtml, setPreviewHtml] = useState('');
   const [sourceRevision, setSourceRevision] = useState(0);
+  const sourceRevisionRef = useRef(0);
   const [analyzedRevision, setAnalyzedRevision] = useState<number | null>(null);
   const [analysisStale, setAnalysisStale] = useState(false);
   const [claudeRepairOpen, setClaudeRepairOpen] = useState(false);
@@ -1723,6 +1724,12 @@ export default function Home() {
   const zipInputRef = useRef<HTMLInputElement>(null);
   const importSessionRef = useRef(0);
   const isMobile = useIsMobile();
+  const bumpSourceRevision = () => {
+    const nextRevision = sourceRevisionRef.current + 1;
+    sourceRevisionRef.current = nextRevision;
+    setSourceRevision(nextRevision);
+    return nextRevision;
+  };
   const analysisError = analyzeMutation.isError
     ? getAnalysisErrorPresentation(analyzeMutation.error)
     : null;
@@ -1775,10 +1782,10 @@ export default function Home() {
     }
     setFileError(null);
     const sessionId = ++importSessionRef.current;
-    const requestRevision = options?.requestRevision ?? sourceRevision;
+    const requestRevision = options?.requestRevision ?? sourceRevisionRef.current;
     analyzeMutation.mutate({ data: { bundle } }, {
       onSuccess: (data: HtmlAnalysis) => {
-        if (sessionId !== importSessionRef.current || requestRevision !== sourceRevision) return;
+        if (sessionId !== importSessionRef.current || requestRevision !== sourceRevisionRef.current) return;
         setAnalysisData(data);
         setSourceBundle(bundle);
         setAnalyzedRevision(requestRevision);
@@ -1788,7 +1795,7 @@ export default function Home() {
         }
       },
       onError: () => {
-        if (sessionId !== importSessionRef.current || requestRevision !== sourceRevision) return;
+        if (sessionId !== importSessionRef.current || requestRevision !== sourceRevisionRef.current) return;
         if (isRepairRescan) {
           trackEvent('credential_recovery_rescan', { result: 'failed' });
         }
@@ -1865,7 +1872,7 @@ export default function Home() {
     setLastAppliedRepair({ originalBundle, patchedBundle: nextBundle });
     setHtmlInput(patchedEntrypoint);
     setSourceBundle(nextBundle);
-    setSourceRevision((revision) => revision + 1);
+    const nextRevision = bumpSourceRevision();
     setAnalyzedRevision(null);
     setAnalysisStale(true);
     setAnalysisData(null);
@@ -1874,7 +1881,7 @@ export default function Home() {
     // submitBundleForAnalysis(nextBundle) remains the recovery rescan boundary.
     submitBundleForAnalysis(nextBundle, {
       isRepairRescan: true,
-      requestRevision: sourceRevision + 1,
+      requestRevision: nextRevision,
     });
   };
 
@@ -1888,13 +1895,13 @@ export default function Home() {
     setLastAppliedRepair(null);
     setHtmlInput(original);
     setSourceBundle(nextBundle);
-    setSourceRevision((revision) => revision + 1);
+    const nextRevision = bumpSourceRevision();
     setAnalyzedRevision(null);
     setAnalysisStale(true);
     setAnalysisData(null);
     setRepairSource(original);
     setRepairOpen(containsCredential(original));
-    submitBundleForAnalysis(nextBundle, { requestRevision: sourceRevision + 1 });
+    submitBundleForAnalysis(nextBundle, { requestRevision: nextRevision });
   };
 
   const handleSourceChange = (nextSource: SourceChoice) => {
@@ -1979,8 +1986,8 @@ export default function Home() {
     setSourceBundle(bundle);
     setHtmlInput(entrypointHtml);
     setAnalysisData(githubImportData.analysis);
-    setSourceRevision((revision) => revision + 1);
-    setAnalyzedRevision(sourceRevision + 1);
+    const nextRevision = bumpSourceRevision();
+    setAnalyzedRevision(nextRevision);
     setAnalysisStale(false);
     setGithubImportData(null);
     setGithubCandidates([]);
@@ -2015,7 +2022,7 @@ export default function Home() {
           setSourceBundle(bundle);
           setHtmlInput(entrypointHtml);
           setAnalysisData(null);
-          setSourceRevision((revision) => revision + 1);
+          bumpSourceRevision();
           setAnalyzedRevision(null);
           setAnalysisStale(false);
           setHostedImportData(data);
@@ -2067,7 +2074,7 @@ export default function Home() {
           setSourceBundle(data.bundle);
           setHtmlInput(entrypointHtml);
           setAnalysisData(null);
-          setSourceRevision((revision) => revision + 1);
+          bumpSourceRevision();
           setAnalyzedRevision(null);
           setAnalysisStale(false);
           setPlaygroundImportData(data);
@@ -2100,6 +2107,7 @@ export default function Home() {
     setAnalysisData(null);
     setHtmlInput('');
     setSourceBundle(null);
+    sourceRevisionRef.current = 0;
     setSourceRevision(0);
     setAnalyzedRevision(null);
     setAnalysisStale(false);
@@ -2158,7 +2166,7 @@ export default function Home() {
       metadata: { displayName: file.name.replace(/\.(html?|HTML?)$/, '') || 'HTML app' },
     });
     setAnalysisData(null);
-    setSourceRevision((revision) => revision + 1);
+    bumpSourceRevision();
     setAnalyzedRevision(null);
     setAnalysisStale(false);
     setFileError(null);
@@ -2199,7 +2207,7 @@ export default function Home() {
       setSourceBundle(bundle);
       setHtmlInput(entrypointFile.content);
       setAnalysisData(null);
-      setSourceRevision((revision) => revision + 1);
+      bumpSourceRevision();
       setAnalyzedRevision(null);
       setAnalysisStale(false);
     } catch (error) {
@@ -2230,7 +2238,7 @@ export default function Home() {
     });
     setHtmlInput(entrypointFile.content);
     setAnalysisData(null);
-    setSourceRevision((revision) => revision + 1);
+    bumpSourceRevision();
     setAnalyzedRevision(null);
     setAnalysisStale(false);
     setFileError(null);
@@ -2264,7 +2272,7 @@ export default function Home() {
     clearRecovery();
     setSourceBundle(nextBundle);
     if (path === nextBundle.entrypoint) setHtmlInput(content);
-    setSourceRevision((revision) => revision + 1);
+    bumpSourceRevision();
     setAnalysisStale(true);
     setClaudeRepairOpen(false);
     setClaudeApplyError(null);
@@ -2338,7 +2346,7 @@ export default function Home() {
     clearRecovery();
     setSourceBundle(nextBundle);
     setHtmlInput(entrypointContent);
-    setSourceRevision((revision) => revision + 1);
+    bumpSourceRevision();
     setAnalysisStale(true);
     setClaudeRepairOpen(false);
     setClaudeApplyError(null);
