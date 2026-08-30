@@ -36,6 +36,8 @@ const STRUCTURED_ANALYSIS_ERRORS: Record<string, string> = {
     "The selected entrypoint isn't included in the bundle. Choose an existing HTML entrypoint, then try again.",
   BUNDLE_ENTRYPOINT_EMPTY:
     'The selected entrypoint is empty. Choose a non-empty HTML file, then try again.',
+  SOURCE_CONTAINS_CREDENTIAL:
+    'This source contains a service credential. Inspect the redacted finding and move the secret to a server-side environment before continuing.',
   INVALID_SOURCE_BUNDLE:
     'The source bundle is not valid. Check that it contains a non-empty HTML entrypoint, then try again.',
 };

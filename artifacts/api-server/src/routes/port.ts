@@ -514,11 +514,18 @@ function safeProjectName(bundle: SourceBundle): string {
 }
 
 function containsPrivilegedCredential(bundle: SourceBundle): boolean {
-  const html = bundle.files.map((file) => file.content).join("\n");
+  const html = bundle.files
+    .flatMap((file) => [file.path, file.content])
+    .join("\n");
   const configuredSecrets = [process.env.POE_API_KEY].filter(
     (secret): secret is string => Boolean(secret && secret.length > 4),
   );
   if (configuredSecrets.some((secret) => html.includes(secret))) return true;
+
+  // The Studio may send a complete source snapshot after replacing every
+  // detected value with this literal marker. It is deliberately removed only
+  // for the detector; any other credential-like value remains blocked.
+  const redactedHtml = html.split("[REDACTED CREDENTIAL]").join("");
 
   // Keep provider formats here deliberately explicit and bounded. This is the
   // server-side safety net for imported source and chat content, so additions
@@ -536,7 +543,7 @@ function containsPrivilegedCredential(bundle: SourceBundle): boolean {
     /\bAKIA[0-9A-Z]{16}\b/,
     /\beyJ[a-z0-9_-]{10,}\.[a-z0-9_-]{10,}\.[a-z0-9_-]{10,}\b/i,
     /\bBearer\s+[a-z0-9._-]{8,}\b/i,
-  ].some((pattern) => pattern.test(html));
+  ].some((pattern) => pattern.test(redactedHtml));
 }
 
 function toHandoffJob(job: HandoffJobRow, steps: HandoffStepRow[]): HandoffJob {

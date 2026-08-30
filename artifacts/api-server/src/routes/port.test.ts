@@ -522,3 +522,13 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
     await pool.end();
   }
 });
+
+test("scans bundle paths as well as contents for credential-like values", async () => {
+  const source = await readFile(new URL("./port.ts", import.meta.url), "utf8");
+  const detectorStart = source.indexOf("function containsPrivilegedCredential");
+  const detectorEnd = source.indexOf("function toHandoffJob", detectorStart);
+  const detectorSource = source.slice(detectorStart, detectorEnd);
+
+  assert.match(detectorSource, /flatMap\(\(file\) => \[file\.path, file\.content\]\)/);
+  assert.match(detectorSource, /configuredSecrets\.some\(\(secret\) => html\.includes\(secret\)\)/);
+});
