@@ -27,6 +27,8 @@ export const STUDIO_ERROR_MESSAGES = {
   CHAT_CONTAINS_CREDENTIAL:
     'This request contains a service credential. Remove it before sending content to the assistant, then try again.',
   CSRF_ORIGIN_REJECTED: 'Refresh the Studio and try the request again.',
+  POE_MODEL_UNAVAILABLE:
+    'The requested Poe model is no longer available. Refresh model availability, then try again.',
   INVALID_PROJECT_HANDOFF:
     'The project handoff input is invalid. Check the imported HTML and try again.',
   PROJECT_CREATION_CONNECTION_UNAVAILABLE:

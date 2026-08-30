@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { spawn, type ChildProcess } from "node:child_process";
 import http, { type IncomingMessage } from "node:http";
 import { createRequire } from "node:module";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { once } from "node:events";
 import {
@@ -228,6 +229,32 @@ test("covers the analysis boundary matrix and origin routing", async () => {
       await once(api, "exit").catch(() => undefined);
     }
   }
+});
+
+test("requires an exact live Poe model confirmation before chat forwarding", async () => {
+  const source = await readFile(
+    new URL("./port.ts", import.meta.url),
+    "utf8",
+  );
+  const chatStart = source.indexOf('router.post("/port/poe/chat"');
+  const chatEnd = source.indexOf('router.get("/port/replit-project-connection"', chatStart);
+  const chatSource = source.slice(chatStart, chatEnd);
+  const catalogueIndex = chatSource.indexOf("await loadPoeModelCatalogue()");
+  const completionIndex = chatSource.indexOf('poeRequest("/chat/completions"');
+
+  assert.notEqual(chatStart, -1);
+  assert.notEqual(chatEnd, -1);
+  assert.ok(catalogueIndex >= 0);
+  assert.ok(completionIndex > catalogueIndex);
+  assert.match(chatSource, /isPoeModelConfirmed\(catalogue\.models, parsed\.data\.model\)/);
+  assert.match(source, /models\.some\(\(model\) => model === requestedModel\)/);
+  assert.match(chatSource, /code: "POE_MODEL_UNAVAILABLE"/);
+  assert.match(
+    chatSource,
+    /The requested Poe model is not currently available\. Refresh model availability and try again\./,
+  );
+  assert.match(source, /model: parsed\.data\.model/);
+  assert.doesNotMatch(chatSource, /toLowerCase|toUpperCase|PascalCase/);
 });
 
 test("forwards source unchanged and resumes only the failed setup skill", async () => {

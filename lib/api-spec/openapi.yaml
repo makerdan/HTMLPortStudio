@@ -249,6 +249,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PoeModels"
+        "503":
+          description: Poe model availability could not be loaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /port/poe/chat:
     post:
       operationId: chatWithPoe

@@ -553,7 +553,7 @@ export const getListPoeModelsQueryKey = () => {
     }
 
 
-export const getListPoeModelsQueryOptions = <TData = Awaited<ReturnType<typeof listPoeModels>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPoeModels>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getListPoeModelsQueryOptions = <TData = Awaited<ReturnType<typeof listPoeModels>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPoeModels>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -572,14 +572,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type ListPoeModelsQueryResult = NonNullable<Awaited<ReturnType<typeof listPoeModels>>>
-export type ListPoeModelsQueryError = ErrorType<unknown>
+export type ListPoeModelsQueryError = ErrorType<ErrorResponse>
 
 
 /**
  * @summary List Poe models available to the configured server key
  */
 
-export function useListPoeModels<TData = Awaited<ReturnType<typeof listPoeModels>>, TError = ErrorType<unknown>>(
+export function useListPoeModels<TData = Awaited<ReturnType<typeof listPoeModels>>, TError = ErrorType<ErrorResponse>>(
   options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPoeModels>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {

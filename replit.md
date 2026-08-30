@@ -59,7 +59,7 @@ Import pasted, single-file, or public GitHub HTML apps as normalized source bund
 
 - Run `pnpm --filter @workspace/db run migrate` against the target database before every API deployment. Migrations are intentionally controlled and are never run automatically at API startup.
 - After changing `lib/api-spec/openapi.yaml`, run `pnpm --filter @workspace/api-spec run codegen` before using generated client or Zod types.
-- Poe model IDs are case-sensitive. Use the exact PascalCase ID returned by Poe, such as `Claude-Sonnet-4.6`.
+- Poe model IDs are case-sensitive. Use the exact identifier returned by Poe's live model catalogue.
 - Set `POE_API_KEY` through Replit Secrets and restart the API server after changing it.
 - The landing header provides **Sign in** before import. The handoff panel keeps **Log in to create** for users who defer sign-in; both open the same Clerk `/sign-in` flow without clearing the in-memory import, analysis, or preview.
 - Configure the Clerk instance’s allowed origins with the Studio’s development and published HTTPS origins. Configure redirect URLs for the Studio base path plus `/sign-in/*` and `/sign-up/*`; the app uses `/sign-in` and `/sign-up` as its browser routes. The production server-side Clerk proxy is available at `/api/__clerk`.

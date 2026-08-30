@@ -232,6 +232,7 @@ test("keeps every assistant and handoff API code mapped to safe Studio copy", as
     "CHAT_CONTAINS_CREDENTIAL",
     "INVALID_PROJECT_HANDOFF",
     "INVALID_SOURCE_BUNDLE",
+    "POE_MODEL_UNAVAILABLE",
     "PROJECT_CREATION_CONNECTION_UNAVAILABLE",
     "PROJECT_HANDOFF_NOT_FOUND",
     "PROJECT_HANDOFF_NOT_RETRYABLE",
@@ -244,6 +245,25 @@ test("keeps every assistant and handoff API code mapped to safe Studio copy", as
     assert.equal(typeof STUDIO_ERROR_MESSAGES[code as keyof typeof STUDIO_ERROR_MESSAGES], "string");
     assert.ok(STUDIO_ERROR_MESSAGES[code as keyof typeof STUDIO_ERROR_MESSAGES].length > 0);
   }
+});
+
+test("uses exact live Poe identifiers and preserves retryable assistant state", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+  const assistantStart = source.indexOf("function PoeAssistantPanel");
+  const repairStart = source.indexOf("function PoeRepairPanel");
+  const assistantSource = source.slice(assistantStart, repairStart);
+  const repairSource = source.slice(repairStart);
+
+  assert.match(source, /const GEMINI_REPAIR_MODEL = 'gemini-3\.1-pro'/);
+  assert.match(repairSource, /poeData\.models\.find\(\(model(?:: string)?\) => model === GEMINI_REPAIR_MODEL\)/);
+  assert.match(repairSource, /model: confirmedGeminiModel/);
+  assert.doesNotMatch(repairSource, /Gemini-3\.1-Pro/);
+  assert.match(assistantSource, /availableModels\.includes\(selectedModel\)/);
+  assert.match(assistantSource, /setSelectedModel\(''\)/);
+  assert.match(assistantSource, /Refresh Poe models/);
+  assert.match(repairSource, /Retry loading models/);
+  assert.match(repairSource, /setPrompt\(message\)/);
+  assert.match(repairSource, /setPendingPrompt\(message\)/);
 });
 
 test("uses concise fallbacks for unknown, transport, and non-JSON errors", () => {

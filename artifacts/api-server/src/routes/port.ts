@@ -182,7 +182,7 @@ export function analyzeBundle(bundle: SourceBundle) {
       ? [
           "Add POE_API_KEY in Replit Secrets.",
           "Replace browser-side AI requests with the server-only Poe bridge.",
-          "Use a PascalCase Poe model ID such as Claude-Sonnet-4.6.",
+          "Use a Poe model ID exactly as returned by the live model catalogue.",
         ]
       : ["If a browser request fails, move that request to a server route."]),
     "Re-run this check after each compatibility change.",
@@ -221,6 +221,72 @@ async function poeRequest(path: string, init?: RequestInit): Promise<Response> {
       ...init?.headers,
     },
   });
+}
+
+type PoeModelCatalogue = {
+  configured: boolean;
+  models: string[];
+  message: string;
+  available: boolean;
+  failed: boolean;
+};
+
+async function loadPoeModelCatalogue(): Promise<PoeModelCatalogue> {
+  if (!process.env.POE_API_KEY) {
+    return {
+      configured: false,
+      models: [],
+      message: "Add POE_API_KEY in Replit Secrets to enable Poe.",
+      available: false,
+      failed: false,
+    };
+  }
+
+  try {
+    const response = await poeRequest("/models");
+    if (!response.ok) {
+      return {
+        configured: true,
+        models: [],
+        message: "Poe model availability could not be loaded. Retry the request.",
+        available: false,
+        failed: true,
+      };
+    }
+
+    const body: unknown = await response.json();
+    const models =
+      typeof body === "object" &&
+      body !== null &&
+      "data" in body &&
+      Array.isArray((body as { data?: unknown }).data)
+        ? (body as { data: Array<{ id?: unknown }> }).data
+            .map((model) => (typeof model.id === "string" ? model.id : null))
+            .filter((model): model is string => model !== null)
+        : [];
+
+    return {
+      configured: true,
+      models,
+      message: models.length
+        ? "Live models loaded from Poe."
+        : "Poe is configured, but returned no models.",
+      available: models.length > 0,
+      failed: false,
+    };
+  } catch {
+    return {
+      configured: true,
+      models: [],
+      message: "Poe could not be reached. Your key was not changed.",
+      available: false,
+      failed: true,
+    };
+  }
+}
+
+export function isPoeModelConfirmed(models: readonly string[], requestedModel: string): boolean {
+  return models.some((model) => model === requestedModel);
 }
 
 const SETUP_STEPS = [
@@ -926,59 +992,16 @@ router.post("/port/playground/import", async (req, res): Promise<void> => {
   }
 });
 
-router.get("/port/poe/models", async (req, res): Promise<void> => {
-  if (!process.env.POE_API_KEY) {
-    res.json(
-      ListPoeModelsResponse.parse({
-        configured: false,
-        models: [],
-        message: "Add POE_API_KEY in Replit Secrets to enable Poe.",
-      }),
-    );
+router.get("/port/poe/models", async (_req, res): Promise<void> => {
+  const catalogue = await loadPoeModelCatalogue();
+  if (catalogue.failed) {
+    res.status(503).json({
+      error: "Poe model availability could not be loaded. Retry model loading.",
+      code: "POE_MODEL_UNAVAILABLE",
+    });
     return;
   }
-
-  try {
-    const response = await poeRequest("/models");
-
-    if (!response.ok) {
-      req.log.warn({ status: response.status }, "Poe chat request failed");
-      res.status(503).json({
-        error: `Poe returned ${response.status}. Check POE_API_KEY, account access, and the exact PascalCase model ID.`,
-      });
-      return;
-    }
-
-    const body: unknown = await response.json();
-    const models =
-      typeof body === "object" &&
-      body !== null &&
-      "data" in body &&
-      Array.isArray((body as { data?: unknown }).data)
-        ? (body as { data: Array<{ id?: unknown }> }).data
-            .map((model) => (typeof model.id === "string" ? model.id : null))
-            .filter((model): model is string => model !== null)
-        : [];
-
-    res.json(
-      ListPoeModelsResponse.parse({
-        configured: true,
-        models,
-        message: models.length
-          ? "Live models loaded from Poe."
-          : "Poe is configured, but returned no models.",
-      }),
-    );
-  } catch (error) {
-    req.log.error({ error }, "Poe model lookup crashed");
-    res.json(
-      ListPoeModelsResponse.parse({
-        configured: true,
-        models: [],
-        message: "Poe could not be reached. Your key was not changed.",
-      }),
-    );
-  }
+  res.json(ListPoeModelsResponse.parse(catalogue));
 });
 
 router.post("/port/poe/chat", async (req, res): Promise<void> => {
@@ -1009,6 +1032,23 @@ router.post("/port/poe/chat", async (req, res): Promise<void> => {
   }
 
   try {
+    const catalogue = await loadPoeModelCatalogue();
+    if (
+      !catalogue.configured ||
+      !catalogue.available ||
+      !isPoeModelConfirmed(catalogue.models, parsed.data.model)
+    ) {
+      req.log.warn(
+        { configured: catalogue.configured, available: catalogue.available },
+        "Poe model was not confirmed by the live catalogue",
+      );
+      res.status(503).json({
+        error: "The requested Poe model is not currently available. Refresh model availability and try again.",
+        code: "POE_MODEL_UNAVAILABLE",
+      });
+      return;
+    }
+
     const response = await poeRequest("/chat/completions", {
       method: "POST",
       body: JSON.stringify({
@@ -1021,7 +1061,7 @@ router.post("/port/poe/chat", async (req, res): Promise<void> => {
     if (!response.ok) {
       req.log.warn({ status: response.status }, "Poe chat request failed");
       res.status(503).json({
-        error: `Poe returned ${response.status}. Check POE_API_KEY, account access, and the exact PascalCase model ID.`,
+        error: `Poe returned ${response.status}. Check POE_API_KEY, account access, and the exact model identifier.`,
       });
       return;
     }

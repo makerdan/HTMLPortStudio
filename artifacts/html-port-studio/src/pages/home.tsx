@@ -55,6 +55,7 @@ import {
   Upload,
   Copy,
   Check,
+  RefreshCw,
   Github,
   FileArchive,
   Files,
@@ -258,6 +259,7 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
   const {
     data: poeData,
     isLoading: modelsLoading,
+    isFetching: modelsFetching,
     isError: modelsError,
     error: modelsQueryError,
     refetch: refetchModels,
@@ -271,12 +273,16 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
   ]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const documentContainsCredential = containsCredential(html);
+  const availableModels = poeData?.configured ? poeData.models : [];
+  const selectedModelConfirmed = availableModels.includes(selectedModel);
 
   useEffect(() => {
-    if (poeData?.models?.length && !selectedModel) {
-      setSelectedModel(poeData.models[0]);
+    if (selectedModel && !availableModels.includes(selectedModel)) {
+      setSelectedModel('');
+    } else if (availableModels.length && !selectedModel) {
+      setSelectedModel(availableModels[0]);
     }
-  }, [poeData, selectedModel]);
+  }, [availableModels, selectedModel]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -286,7 +292,12 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
 
   const handleSend = (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!prompt.trim() || !selectedModel || chatMutation.isPending || documentContainsCredential) return;
+    if (
+      !prompt.trim() ||
+      !selectedModelConfirmed ||
+      chatMutation.isPending ||
+      documentContainsCredential
+    ) return;
 
     const submittedPrompt = prompt.trim();
     const newMessage: PoeMessage = { role: 'user', content: submittedPrompt };
@@ -395,6 +406,17 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
                 ))}
               </SelectContent>
             </Select>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              aria-label="Refresh Poe models"
+              title="Refresh Poe models"
+              onClick={() => void refetchModels()}
+              disabled={modelsFetching}
+            >
+              <RefreshCw className={`h-4 w-4 ${modelsFetching ? 'animate-spin' : ''}`} aria-hidden="true" />
+            </Button>
           </div>
         ) : null}
       </div>
@@ -461,7 +483,7 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder="Ask Poe how to fix a blocker..."
-            disabled={chatMutation.isPending || !selectedModel}
+            disabled={chatMutation.isPending || !selectedModelConfirmed}
             className="flex-1"
           />
           <Button
@@ -469,7 +491,7 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
             size="icon"
             aria-label="Send prompt to Poe Assistant"
             title="Send prompt to Poe Assistant"
-            disabled={!prompt.trim() || chatMutation.isPending || !selectedModel}
+            disabled={!prompt.trim() || chatMutation.isPending || !selectedModelConfirmed}
           >
             <Send aria-hidden="true" className="h-4 w-4" />
           </Button>
@@ -479,7 +501,7 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
   );
 }
 
-const GEMINI_REPAIR_MODEL = 'Gemini-3.1-Pro';
+const GEMINI_REPAIR_MODEL = 'gemini-3.1-pro';
 function apiErrorCode(error: unknown): string | null {
   if (typeof error !== 'object' || error === null || !('data' in error)) return null;
   const data = (error as { data?: unknown }).data;
@@ -2391,6 +2413,9 @@ function PoeRepairPanel({
   const startedSourceRef = useRef<string | null>(null);
   const documentContainsCredential = containsCredential(html);
   const initialPrompt = buildRepairPrompt(html);
+  const confirmedGeminiModel = poeData?.configured
+    ? poeData.models.find((model: string) => model === GEMINI_REPAIR_MODEL)
+    : undefined;
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -2404,7 +2429,7 @@ function PoeRepairPanel({
       chatMutation.isPending ||
       documentContainsCredential ||
       !poeData?.configured ||
-      !poeData.models.includes(GEMINI_REPAIR_MODEL)
+      !confirmedGeminiModel
     ) {
       return;
     }
@@ -2424,7 +2449,7 @@ function PoeRepairPanel({
     chatMutation.mutate(
       {
         data: {
-          model: GEMINI_REPAIR_MODEL,
+          model: confirmedGeminiModel,
           messages: [
             { role: 'system', content: context },
             ...historyForRequest.slice(-39),
@@ -2456,7 +2481,7 @@ function PoeRepairPanel({
       modelsError ||
       !poeData ||
       !poeData.configured ||
-      !poeData.models.includes(GEMINI_REPAIR_MODEL) ||
+      !confirmedGeminiModel ||
       documentContainsCredential ||
       startedSourceRef.current === html
     ) {
@@ -2472,6 +2497,7 @@ function PoeRepairPanel({
     modelsLoading,
     modelsError,
     poeData,
+    confirmedGeminiModel,
     documentContainsCredential,
     initialPrompt,
   ]);
@@ -2515,7 +2541,7 @@ function PoeRepairPanel({
           <Info className="h-4 w-4" />
           <AlertTitle>Source-sharing notice</AlertTitle>
           <AlertDescription>
-            The complete HTML snapshot is sent to Poe&apos;s server-only bridge for Gemini-3.1-Pro review.
+            The complete HTML snapshot is sent to Poe&apos;s server-only bridge for gemini-3.1-pro review.
             The original source remains in the editor. Documents containing credentials are blocked before sending.
           </AlertDescription>
         </Alert>
@@ -2555,12 +2581,12 @@ function PoeRepairPanel({
         {!modelsLoading &&
           !modelsError &&
           poeData?.configured &&
-          !poeData.models.includes(GEMINI_REPAIR_MODEL) && (
+          !confirmedGeminiModel && (
             <Alert variant="destructive">
               <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>Gemini-3.1-Pro is unavailable</AlertTitle>
+              <AlertTitle>gemini-3.1-pro is unavailable</AlertTitle>
               <AlertDescription>
-                Poe did not return the required Gemini-3.1-Pro model for this key. Check Poe access and retry model loading.
+                Poe did not return the required exact model identifier, gemini-3.1-pro, for this key. Check Poe access and retry model loading.
                 <br />
                 <Button type="button" size="sm" variant="outline" className="mt-3" onClick={() => void refetchModels()}>
                   Retry loading models
@@ -2680,7 +2706,7 @@ function PoeRepairPanel({
               chatMutation.isPending ||
               documentContainsCredential ||
               !poeData?.configured ||
-              !poeData.models.includes(GEMINI_REPAIR_MODEL)
+              !confirmedGeminiModel
             }
             className="flex-1"
           />
@@ -2694,7 +2720,7 @@ function PoeRepairPanel({
               chatMutation.isPending ||
               documentContainsCredential ||
               !poeData?.configured ||
-              !poeData.models.includes(GEMINI_REPAIR_MODEL)
+              !confirmedGeminiModel
             }
           >
             <Send aria-hidden="true" className="h-4 w-4" />
