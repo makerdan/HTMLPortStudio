@@ -101,6 +101,7 @@ import {
   sanitizeUntrustedRepairText,
   type CredentialBundleRedaction,
 } from '@/lib/credential-safety';
+import { trackEvent } from '@/lib/analytics';
 
 // ----------------------------------------------------------------------
 // Types and Helpers
@@ -1256,9 +1257,16 @@ export default function Home() {
     return () => window.removeEventListener('studio-auth:logout', clearOnLogout);
   }, [clearRecovery]);
 
-  const submitBundleForAnalysis = (bundle: SourceBundle) => {
+  const submitBundleForAnalysis = (
+    bundle: SourceBundle,
+    options?: { isRepairRescan?: boolean },
+  ) => {
+    const isRepairRescan = options?.isRepairRescan === true;
     const sizeError = validateSourceBundleBytes(bundle);
     if (sizeError) {
+      if (isRepairRescan) {
+        trackEvent('credential_recovery_rescan', { result: 'failed' });
+      }
       setFileError(sizeError);
       return;
     }
@@ -1269,9 +1277,15 @@ export default function Home() {
         if (sessionId !== importSessionRef.current) return;
         setAnalysisData(data);
         setSourceBundle(bundle);
+        if (isRepairRescan) {
+          trackEvent('credential_recovery_rescan', { result: 'passed' });
+        }
       },
       onError: () => {
         if (sessionId !== importSessionRef.current) return;
+        if (isRepairRescan) {
+          trackEvent('credential_recovery_rescan', { result: 'failed' });
+        }
       }
     });
   };
@@ -1341,13 +1355,14 @@ export default function Home() {
     const patchedEntrypoint =
       nextBundle.files.find((file) => file.path === nextBundle.entrypoint)?.content ?? '';
     clearRecovery();
+    trackEvent('credential_recovery_action', { action: 'apply' });
     setLastAppliedRepair({ originalBundle, patchedBundle: nextBundle });
     setHtmlInput(patchedEntrypoint);
     setSourceBundle(nextBundle);
     setAnalysisData(null);
     setRepairSource(patchedEntrypoint);
     setRepairOpen(false);
-    submitBundleForAnalysis(nextBundle);
+    submitBundleForAnalysis(nextBundle, { isRepairRescan: true });
   };
 
   const handleUndoRepair = () => {
@@ -1356,6 +1371,7 @@ export default function Home() {
     const original =
       nextBundle.files.find((file) => file.path === nextBundle.entrypoint)?.content ?? '';
     clearRecovery();
+    trackEvent('credential_recovery_action', { action: 'undo' });
     setLastAppliedRepair(null);
     setHtmlInput(original);
     setSourceBundle(nextBundle);
@@ -2637,6 +2653,7 @@ function PoeRepairPanel({
   const [applyConfirmationOpen, setApplyConfirmationOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const startedSourceRef = useRef<string | null>(null);
+  const recoveryWasOpenRef = useRef(false);
   const credentialRedaction: CredentialBundleRedaction = redactCredentialBundle(bundle.files);
   const documentContainsCredential = credentialRedaction.hadCredential;
   const safeRepairSource = documentContainsCredential
@@ -2657,6 +2674,13 @@ function PoeRepairPanel({
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [chatHistory, chatError, chatMutation.isPending]);
+
+  useEffect(() => {
+    if (open && !recoveryWasOpenRef.current && documentContainsCredential) {
+      trackEvent('credential_recovery_opened');
+    }
+    recoveryWasOpenRef.current = open;
+  }, [open, documentContainsCredential]);
 
   const submitRepairPrompt = (submittedPrompt: string, isInitial = false) => {
     if (
@@ -2681,6 +2705,9 @@ function PoeRepairPanel({
       : confirmedGeminiModel;
     if (!confirmedRepairModel) return;
 
+    if (!isInitial && documentContainsCredential) {
+      trackEvent('credential_recovery_proposal_requested');
+    }
     setChatHistory(newHistory);
     setPendingPrompt(message);
     setChatError(null);
@@ -2881,7 +2908,12 @@ function PoeRepairPanel({
               <input
                 type="checkbox"
                 checked={shareConfirmed}
-                onChange={(event) => setShareConfirmed(event.target.checked)}
+                onChange={(event) => {
+                  if (event.target.checked) {
+                    trackEvent('credential_recovery_consent');
+                  }
+                  setShareConfirmed(event.target.checked);
+                }}
                 className="mt-1 h-4 w-4"
               />
               <span>
@@ -3059,6 +3091,7 @@ function PoeRepairPanel({
                   type="button"
                   variant="outline"
                   onClick={() => {
+                    trackEvent('credential_recovery_action', { action: 'reject' });
                     setProposal(null);
                     setApplyConfirmationOpen(false);
                   }}
