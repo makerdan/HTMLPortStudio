@@ -7,6 +7,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const root = resolve(import.meta.dirname, "..");
 const validationRoot = resolve(root, ".cache", "api-validation");
@@ -62,7 +63,7 @@ function readOpenApiPropertyMaxLength(spec, schemaName, propertyName) {
   const lines = spec.split("\n");
   const schemaLine = lines.findIndex((line) => line === `    ${schemaName}:`);
   if (schemaLine === -1) {
-    fail(
+    throw new Error(
       `Source limit validation could not find OpenAPI schema ${schemaName}.`,
     );
   }
@@ -73,17 +74,20 @@ function readOpenApiPropertyMaxLength(spec, schemaName, propertyName) {
   );
   const end = schemaEnd === -1 ? lines.length : schemaEnd;
   const propertyLine = lines.findIndex(
-    (line, index) => index > schemaLine && index < end && line === `        ${propertyName}:`,
+    (line, index) =>
+      index > schemaLine && index < end && line === `        ${propertyName}:`,
   );
   if (propertyLine === -1) {
-    fail(
+    throw new Error(
       `Source limit validation could not find OpenAPI property ${schemaName}.${propertyName}.`,
     );
   }
 
   const propertyEnd = lines.findIndex(
     (line, index) =>
-      index > propertyLine && index < end && /^        [A-Za-z][A-Za-z0-9_-]*:\s*$/.test(line),
+      index > propertyLine &&
+      index < end &&
+      /^        [A-Za-z][A-Za-z0-9_-]*:\s*$/.test(line),
   );
   const propertyLimitEnd = propertyEnd === -1 ? end : propertyEnd;
   const maxLengthLine = lines
@@ -91,7 +95,7 @@ function readOpenApiPropertyMaxLength(spec, schemaName, propertyName) {
     .find((line) => /^\s+maxLength:\s*\d+\s*$/.test(line));
   const maxLength = maxLengthLine?.match(/maxLength:\s*(\d+)/)?.[1];
   if (!maxLength) {
-    fail(
+    throw new Error(
       `Source limit validation could not find maxLength for OpenAPI property ${schemaName}.${propertyName}.`,
     );
   }
@@ -104,7 +108,7 @@ function readGeneratedLimit(source, exportName) {
     new RegExp(`export const ${escapedName} = (\\d+);`),
   )?.[1];
   if (!value) {
-    fail(
+    throw new Error(
       `Source limit validation could not find generated API export ${exportName}.`,
     );
   }
@@ -116,11 +120,107 @@ function readAdapterSourceLimit(source) {
     /export const SOURCE_TEXT_MAX_BYTES\s*=\s*([\d_]+)\s*;/,
   )?.[1];
   if (!value) {
-    fail(
+    throw new Error(
       "Source limit validation could not find a numeric SOURCE_TEXT_MAX_BYTES in artifacts/api-server/src/routes/source-limits.ts.",
     );
   }
   return Number(value.replaceAll("_", ""));
+}
+
+export function assertSourceLimitBoundary({
+  adapterSource,
+  openApiSource,
+  generatedSource,
+}) {
+  const adapterLimit = readAdapterSourceLimit(adapterSource);
+  const openApiLimits = [
+    [
+      "SourceBundleFile.content (hosted, GitHub, playground, and ZIP bundles)",
+      readOpenApiPropertyMaxLength(
+        openApiSource,
+        "SourceBundleFile",
+        "content",
+      ),
+    ],
+    [
+      "HtmlInput.html (direct analysis)",
+      readOpenApiPropertyMaxLength(openApiSource, "HtmlInput", "html"),
+    ],
+    [
+      "ReplitProjectInput.html (project handoff)",
+      readOpenApiPropertyMaxLength(openApiSource, "ReplitProjectInput", "html"),
+    ],
+  ];
+  const contractLimit = openApiLimits[0][1];
+  for (const [label, limit] of openApiLimits) {
+    if (limit !== contractLimit) {
+      throw new Error(
+        `Source limit drift in the OpenAPI contract: ${label} is ${limit} bytes, but the shared import compatibility boundary is ${contractLimit} bytes. Update SourceBundleFile.content, HtmlInput.html, and ReplitProjectInput.html together.`,
+      );
+    }
+  }
+
+  const generatedLimits = [
+    [
+      "analyzeHtmlBodyThreeHtmlMax",
+      readGeneratedLimit(generatedSource, "analyzeHtmlBodyThreeHtmlMax"),
+    ],
+    [
+      "analyzeHtmlBodyThreeBundleFilesItemContentMax",
+      readGeneratedLimit(
+        generatedSource,
+        "analyzeHtmlBodyThreeBundleFilesItemContentMax",
+      ),
+    ],
+    [
+      "importHostedUrlResponseBundleFilesItemContentMax",
+      readGeneratedLimit(
+        generatedSource,
+        "importHostedUrlResponseBundleFilesItemContentMax",
+      ),
+    ],
+    [
+      "importPlaygroundResponseBundleFilesItemContentMax",
+      readGeneratedLimit(
+        generatedSource,
+        "importPlaygroundResponseBundleFilesItemContentMax",
+      ),
+    ],
+    [
+      "importGithubRepositoryResponseBundleFilesItemContentMax",
+      readGeneratedLimit(
+        generatedSource,
+        "importGithubRepositoryResponseBundleFilesItemContentMax",
+      ),
+    ],
+    [
+      "createReplitProjectBodyThreeHtmlMax",
+      readGeneratedLimit(
+        generatedSource,
+        "createReplitProjectBodyThreeHtmlMax",
+      ),
+    ],
+    [
+      "createReplitProjectBodyThreeBundleFilesItemContentMax",
+      readGeneratedLimit(
+        generatedSource,
+        "createReplitProjectBodyThreeBundleFilesItemContentMax",
+      ),
+    ],
+  ];
+  for (const [exportName, limit] of generatedLimits) {
+    if (limit !== contractLimit) {
+      throw new Error(
+        `Source limit drift between OpenAPI and generated API: ${exportName} is ${limit} bytes, but the contract boundary is ${contractLimit} bytes. Regenerate API sources and update the contract or adapter together.`,
+      );
+    }
+  }
+  if (adapterLimit !== contractLimit) {
+    throw new Error(
+      `Source limit drift: artifacts/api-server/src/routes/source-limits.ts uses ${adapterLimit} bytes, but the OpenAPI/generated API compatibility boundary uses ${contractLimit} bytes. Update the adapter and contract together, then regenerate with pnpm --filter @workspace/api-spec run codegen.`,
+    );
+  }
+  return contractLimit;
 }
 
 function validateSourceLimitBoundary(generatedZodPath) {
@@ -133,204 +233,141 @@ function validateSourceLimitBoundary(generatedZodPath) {
     "source-limits.ts",
   );
   const openApiPath = resolve(root, "lib", "api-spec", "openapi.yaml");
-  const adapterLimit = readAdapterSourceLimit(
-    readFileSync(sourceLimitPath, "utf8"),
-  );
-  const openApi = readFileSync(openApiPath, "utf8");
-  const openApiLimits = [
-    [
-      "SourceBundleFile.content (hosted, GitHub, playground, and ZIP bundles)",
-      readOpenApiPropertyMaxLength(openApi, "SourceBundleFile", "content"),
-    ],
-    [
-      "HtmlInput.html (direct analysis)",
-      readOpenApiPropertyMaxLength(openApi, "HtmlInput", "html"),
-    ],
-    [
-      "ReplitProjectInput.html (project handoff)",
-      readOpenApiPropertyMaxLength(openApi, "ReplitProjectInput", "html"),
-    ],
-  ];
-  const contractLimit = openApiLimits[0][1];
-  for (const [label, limit] of openApiLimits) {
-    if (limit !== contractLimit) {
-      fail(
-        `Source limit drift in the OpenAPI contract: ${label} is ${limit} bytes, but the shared import compatibility boundary is ${contractLimit} bytes. Update SourceBundleFile.content, HtmlInput.html, and ReplitProjectInput.html together.`,
-      );
-    }
-  }
-
-  const generated = readFileSync(generatedZodPath, "utf8");
-  const generatedLimits = [
-    [
-      "analyzeHtmlBodyThreeHtmlMax",
-      readGeneratedLimit(generated, "analyzeHtmlBodyThreeHtmlMax"),
-    ],
-    [
-      "analyzeHtmlBodyThreeBundleFilesItemContentMax",
-      readGeneratedLimit(
-        generated,
-        "analyzeHtmlBodyThreeBundleFilesItemContentMax",
-      ),
-    ],
-    [
-      "importHostedUrlResponseBundleFilesItemContentMax",
-      readGeneratedLimit(
-        generated,
-        "importHostedUrlResponseBundleFilesItemContentMax",
-      ),
-    ],
-    [
-      "importPlaygroundResponseBundleFilesItemContentMax",
-      readGeneratedLimit(
-        generated,
-        "importPlaygroundResponseBundleFilesItemContentMax",
-      ),
-    ],
-    [
-      "importGithubRepositoryResponseBundleFilesItemContentMax",
-      readGeneratedLimit(
-        generated,
-        "importGithubRepositoryResponseBundleFilesItemContentMax",
-      ),
-    ],
-    [
-      "createReplitProjectBodyThreeHtmlMax",
-      readGeneratedLimit(generated, "createReplitProjectBodyThreeHtmlMax"),
-    ],
-    [
-      "createReplitProjectBodyThreeBundleFilesItemContentMax",
-      readGeneratedLimit(
-        generated,
-        "createReplitProjectBodyThreeBundleFilesItemContentMax",
-      ),
-    ],
-  ];
-  for (const [exportName, limit] of generatedLimits) {
-    if (limit !== contractLimit) {
-      fail(
-        `Source limit drift between OpenAPI and generated API: ${exportName} is ${limit} bytes, but the contract boundary is ${contractLimit} bytes. Regenerate API sources and update the contract or adapter together.`,
-      );
-    }
-  }
-  if (adapterLimit !== contractLimit) {
-    fail(
-      `Source limit drift: artifacts/api-server/src/routes/source-limits.ts uses ${adapterLimit} bytes, but the OpenAPI/generated API compatibility boundary uses ${contractLimit} bytes. Update the adapter and contract together, then regenerate with pnpm --filter @workspace/api-spec run codegen.`,
+  try {
+    const contractLimit = assertSourceLimitBoundary({
+      adapterSource: readFileSync(sourceLimitPath, "utf8"),
+      openApiSource: readFileSync(openApiPath, "utf8"),
+      generatedSource: readFileSync(generatedZodPath, "utf8"),
+    });
+    console.log(
+      `[api-validation] Source import compatibility boundary is synchronized at ${contractLimit} bytes across the adapter, OpenAPI, and generated API.`,
     );
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
   }
+}
+
+function main() {
+  cleanValidationOutput();
+  mkdirSync(validationRoot, { recursive: true });
+  copyFileSync(
+    resolve(root, "lib", "api-client-react", "src", "custom-fetch.ts"),
+    resolve(validationRoot, "custom-fetch.ts"),
+  );
+
+  runStep(
+    "Regenerating API sources from the OpenAPI contract",
+    "pnpm",
+    [
+      "--filter",
+      "@workspace/api-spec",
+      "exec",
+      "orval",
+      "--config",
+      "./orval.config.ts",
+    ],
+    {
+      API_CODEGEN_OUTPUT_ROOT: validationRoot,
+    },
+  );
+
+  mkdirSync(resolve(validationRoot, "api-client-react"), { recursive: true });
+  copyFileSync(
+    resolve(validationRoot, "custom-fetch.ts"),
+    resolve(validationRoot, "api-client-react", "custom-fetch.ts"),
+  );
+  const generatedClientPath = resolve(
+    validationRoot,
+    "api-client-react",
+    "generated",
+    "api.ts",
+  );
+  writeFileSync(
+    generatedClientPath,
+    readFileSync(generatedClientPath, "utf8").replaceAll(
+      "../../custom-fetch",
+      "../custom-fetch",
+    ),
+  );
+  writeFileSync(
+    resolve(validationRoot, "api-client-react", "index.ts"),
+    'export * from "./generated/api";\nexport * from "./generated/api.schemas";\n',
+  );
+
+  writeFileSync(
+    resolve(validationRoot, "api-zod", "index.ts"),
+    'export * from "./generated/api";\nexport * from "./generated/types";\n',
+  );
+
+  validateSourceLimitBoundary(
+    resolve(validationRoot, "api-zod", "generated", "api.ts"),
+  );
+
+  runStep("Force-refreshing API Zod declarations", "pnpm", [
+    "exec",
+    "tsc",
+    "--build",
+    "--force",
+    "lib/api-zod/tsconfig.validation.json",
+  ]);
+
+  runStep("Force-refreshing React API client declarations", "pnpm", [
+    "exec",
+    "tsc",
+    "--build",
+    "--force",
+    "lib/api-client-react/tsconfig.validation.json",
+  ]);
+
+  runStep(
+    "Typechecking the API server against refreshed declarations",
+    "pnpm",
+    [
+      "--filter",
+      "@workspace/api-server",
+      "exec",
+      "tsc",
+      "-p",
+      "tsconfig.declarations.json",
+      "--noEmit",
+    ],
+  );
+
+  runStep(
+    "Typechecking HTML Port Studio against refreshed React API declarations",
+    "pnpm",
+    [
+      "--filter",
+      "@workspace/html-port-studio",
+      "exec",
+      "tsc",
+      "-p",
+      "tsconfig.declarations.json",
+      "--noEmit",
+    ],
+  );
+
+  compareGeneratedSource(
+    "React client",
+    "lib/api-client-react/src/generated",
+    ".cache/api-validation/api-client-react/generated",
+  );
+  compareGeneratedSource(
+    "Zod",
+    "lib/api-zod/src/generated",
+    ".cache/api-validation/api-zod/generated",
+  );
+
+  cleanValidationOutput();
+
   console.log(
-    `[api-validation] Source import compatibility boundary is synchronized at ${contractLimit} bytes across the adapter, OpenAPI, and generated API.`,
+    "\n[api-validation] Passed: generated sources are current and API consumers typecheck against refreshed declarations.",
   );
 }
 
-cleanValidationOutput();
-mkdirSync(validationRoot, { recursive: true });
-copyFileSync(
-  resolve(root, "lib", "api-client-react", "src", "custom-fetch.ts"),
-  resolve(validationRoot, "custom-fetch.ts"),
-);
-
-runStep(
-  "Regenerating API sources from the OpenAPI contract",
-  "pnpm",
-  [
-    "--filter",
-    "@workspace/api-spec",
-    "exec",
-    "orval",
-    "--config",
-    "./orval.config.ts",
-  ],
-  {
-    API_CODEGEN_OUTPUT_ROOT: validationRoot,
-  },
-);
-
-mkdirSync(resolve(validationRoot, "api-client-react"), { recursive: true });
-copyFileSync(
-  resolve(validationRoot, "custom-fetch.ts"),
-  resolve(validationRoot, "api-client-react", "custom-fetch.ts"),
-);
-const generatedClientPath = resolve(
-  validationRoot,
-  "api-client-react",
-  "generated",
-  "api.ts",
-);
-writeFileSync(
-  generatedClientPath,
-  readFileSync(generatedClientPath, "utf8").replaceAll(
-    "../../custom-fetch",
-    "../custom-fetch",
-  ),
-);
-writeFileSync(
-  resolve(validationRoot, "api-client-react", "index.ts"),
-  'export * from "./generated/api";\nexport * from "./generated/api.schemas";\n',
-);
-
-writeFileSync(
-  resolve(validationRoot, "api-zod", "index.ts"),
-  'export * from "./generated/api";\nexport * from "./generated/types";\n',
-);
-
-validateSourceLimitBoundary(
-  resolve(validationRoot, "api-zod", "generated", "api.ts"),
-);
-
-runStep("Force-refreshing API Zod declarations", "pnpm", [
-  "exec",
-  "tsc",
-  "--build",
-  "--force",
-  "lib/api-zod/tsconfig.validation.json",
-]);
-
-runStep("Force-refreshing React API client declarations", "pnpm", [
-  "exec",
-  "tsc",
-  "--build",
-  "--force",
-  "lib/api-client-react/tsconfig.validation.json",
-]);
-
-runStep("Typechecking the API server against refreshed declarations", "pnpm", [
-  "--filter",
-  "@workspace/api-server",
-  "exec",
-  "tsc",
-  "-p",
-  "tsconfig.declarations.json",
-  "--noEmit",
-]);
-
-runStep(
-  "Typechecking HTML Port Studio against refreshed React API declarations",
-  "pnpm",
-  [
-    "--filter",
-    "@workspace/html-port-studio",
-    "exec",
-    "tsc",
-    "-p",
-    "tsconfig.declarations.json",
-    "--noEmit",
-  ],
-);
-
-compareGeneratedSource(
-  "React client",
-  "lib/api-client-react/src/generated",
-  ".cache/api-validation/api-client-react/generated",
-);
-compareGeneratedSource(
-  "Zod",
-  "lib/api-zod/src/generated",
-  ".cache/api-validation/api-zod/generated",
-);
-
-cleanValidationOutput();
-
-console.log(
-  "\n[api-validation] Passed: generated sources are current and API consumers typecheck against refreshed declarations.",
-);
+if (
+  process.argv[1] &&
+  fileURLToPath(import.meta.url) === resolve(process.argv[1])
+) {
+  main();
+}
