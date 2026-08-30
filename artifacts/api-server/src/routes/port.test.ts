@@ -206,6 +206,29 @@ test("covers the analysis boundary matrix and origin routing", async () => {
       code: "INVALID_JSON",
     });
 
+    const malformedJsonEndpoints = [
+      "/port/hosted-url",
+      "/port/playground/import",
+      "/port/poe/chat",
+      "/port/github/import",
+      "/port/replit-projects",
+      "/port/replit-projects/test-job/retry",
+    ];
+    for (const endpoint of malformedJsonEndpoints) {
+      const malformedEndpointResponse = await fetch(`${baseUrl}${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: '{"source":"do not echo this request content"',
+      });
+      assert.equal(malformedEndpointResponse.status, 400, endpoint);
+      const malformedEndpointBody = (await malformedEndpointResponse.json()) as Json;
+      assert.deepEqual(malformedEndpointBody, {
+        error: "Provide a valid JSON request body.",
+        code: "INVALID_JSON",
+      }, endpoint);
+      assert.doesNotMatch(JSON.stringify(malformedEndpointBody), /do not echo this request content/);
+    }
+
     const parserOverflow = await analyze({ html: "x".repeat(8 * 1024 * 1024) });
     assert.equal(parserOverflow.status, 413);
     assert.equal(parserOverflow.body.code, "BUNDLE_TOO_LARGE");

@@ -96,7 +96,6 @@ const jsonBodyErrorHandler: ErrorRequestHandler = (
   res: Response,
   next: NextFunction,
 ) => {
-  const isAnalysisRequest = req.path === "/api/port/analyze";
   const errorType =
     typeof error === "object" &&
     error !== null &&
@@ -104,7 +103,7 @@ const jsonBodyErrorHandler: ErrorRequestHandler = (
       ? (error as { type?: unknown }).type
       : undefined;
 
-  if (isAnalysisRequest && errorType === "entity.parse.failed") {
+  if (errorType === "entity.parse.failed") {
     res.status(400).json({
       error: "Provide a valid JSON request body.",
       code: "INVALID_JSON",
@@ -116,7 +115,7 @@ const jsonBodyErrorHandler: ErrorRequestHandler = (
     errorType === "entity.too.large"
   ) {
     res.status(413).json(
-      isAnalysisRequest
+      req.path === "/api/port/analyze"
         ? {
             error: `Provide exactly one valid source bundle no larger than ${SOURCE_TEXT_LIMIT_LABEL}.`,
             code: "BUNDLE_TOO_LARGE",
