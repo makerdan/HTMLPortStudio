@@ -290,6 +290,159 @@ test("requires an exact live Poe model confirmation before chat forwarding", asy
   assert.doesNotMatch(chatSource, /toLowerCase|toUpperCase|PascalCase/);
 });
 
+test("forwards confirmed Claude repairs unchanged and hides Poe failure details", async () => {
+  const confirmedModel = "Claude-Sonnet-4.6";
+  const redactedMessages = [
+    {
+      role: "system",
+      content: "You are a careful repair assistant. Never request or reveal credentials.",
+    },
+    {
+      role: "user",
+      content:
+        "Repair this redacted source without changing unrelated code:\n" +
+        "const apiKey = '[REDACTED CREDENTIAL]';\n" +
+        "const answer = 42;",
+    },
+  ];
+  const poeRequests: Array<{
+    method: string;
+    path: string;
+    authorization: string | undefined;
+    body: Json | null;
+  }> = [];
+  let returnFailure = false;
+  const poe = http.createServer(async (request, response) => {
+    const url = new URL(request.url ?? "/", "http://127.0.0.1");
+    const body =
+      request.method === "POST" ? (JSON.parse(await readBody(request)) as Json) : null;
+    poeRequests.push({
+      method: request.method ?? "",
+      path: url.pathname,
+      authorization: request.headers.authorization,
+      body,
+    });
+
+    if (request.method === "GET" && url.pathname === "/v1/models") {
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(
+        JSON.stringify({
+          data: [{ id: confirmedModel }, { id: "another-confirmed-model" }],
+        }),
+      );
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/v1/chat/completions") {
+      if (returnFailure) {
+        response.writeHead(429, { "Content-Type": "application/json" });
+        response.end(
+          JSON.stringify({
+            error: {
+              message: "provider-internal diagnostic with sensitive details",
+              request_id: "provider-secret-request-id",
+            },
+          }),
+        );
+        return;
+      }
+
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(
+        JSON.stringify({
+          model: confirmedModel,
+          choices: [{ message: { content: "The redacted repair is safe to apply." } }],
+          usage: { prompt_tokens: 31, completion_tokens: 9 },
+        }),
+      );
+      return;
+    }
+
+    response.writeHead(404, { "Content-Type": "application/json" });
+    response.end(JSON.stringify({ error: "not found" }));
+  });
+  const poePort = await listen(poe);
+  const apiPort = await unusedPort();
+  const api = spawn(process.execPath, ["--enable-source-maps", "dist/index.mjs"], {
+    cwd: new URL("../../", import.meta.url).pathname,
+    env: {
+      ...process.env,
+      PORT: String(apiPort),
+      POE_API_KEY: "test-poe-key",
+      POE_API_BASE_URL: `http://127.0.0.1:${poePort}/v1`,
+      NODE_ENV: "test",
+    },
+    stdio: "ignore",
+  });
+
+  try {
+    const baseUrl = `http://127.0.0.1:${apiPort}/api`;
+    await waitFor(async () => {
+      try {
+        return (await fetch(`${baseUrl}/healthz`)).ok;
+      } catch {
+        return false;
+      }
+    }, "API server did not start");
+
+    const catalogue = await jsonRequest(`${baseUrl}/port/poe/models`);
+    assert.equal(catalogue.status, 200);
+    assert.deepEqual(catalogue.body.models, [confirmedModel, "another-confirmed-model"]);
+
+    const successfulChat = await jsonRequest(`${baseUrl}/port/poe/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: confirmedModel,
+        messages: redactedMessages,
+        maxTokens: 321,
+      }),
+    });
+    assert.equal(successfulChat.status, 200);
+    assert.deepEqual(successfulChat.body, {
+      content: "The redacted repair is safe to apply.",
+      model: confirmedModel,
+      usage: { promptTokens: 31, completionTokens: 9 },
+    });
+
+    const forwardedChat = poeRequests.find(
+      (request) => request.method === "POST" && request.path === "/v1/chat/completions",
+    );
+    assert.ok(forwardedChat);
+    assert.equal(forwardedChat.authorization, "Bearer test-poe-key");
+    assert.deepEqual(forwardedChat.body, {
+      model: confirmedModel,
+      messages: redactedMessages,
+      max_tokens: 321,
+    });
+
+    returnFailure = true;
+    const failedChat = await jsonRequest(`${baseUrl}/port/poe/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: confirmedModel,
+        messages: redactedMessages,
+      }),
+    });
+    assert.equal(failedChat.status, 503);
+    assert.deepEqual(failedChat.body, {
+      error:
+        "Poe returned 429. Check POE_API_KEY, account access, and the exact model identifier.",
+    });
+    assert.doesNotMatch(
+      JSON.stringify(failedChat.body),
+      /provider-internal diagnostic|provider-secret-request-id/,
+    );
+  } finally {
+    if (!api.killed) {
+      api.kill("SIGTERM");
+      await once(api, "exit").catch(() => undefined);
+    }
+    await new Promise<void>((resolve) => poe.close(() => resolve()));
+  }
+});
+
 test("forwards source unchanged and resumes only the failed setup skill", async () => {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   const ownerId = `port-test-owner-${randomUUID()}`;

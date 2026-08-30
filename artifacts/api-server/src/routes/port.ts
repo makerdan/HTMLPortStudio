@@ -213,7 +213,8 @@ async function poeRequest(path: string, init?: RequestInit): Promise<Response> {
     throw new Error("POE_NOT_CONFIGURED");
   }
 
-  return fetch(`https://api.poe.com/v1${path}`, {
+  const baseUrl = (process.env.POE_API_BASE_URL ?? "https://api.poe.com/v1").replace(/\/+$/, "");
+  return fetch(`${baseUrl}${path}`, {
     ...init,
     headers: {
       Authorization: `Bearer ${apiKey}`,
