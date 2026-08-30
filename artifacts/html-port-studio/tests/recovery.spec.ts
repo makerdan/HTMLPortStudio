@@ -175,3 +175,134 @@ test("stops handoff polling after an error and only resumes on retry", async ({ 
   await page.getByRole("button", { name: "Retry status check" }).click();
   await expect.poll(() => statusChecks).toBeGreaterThan(checksWhenFailed);
 });
+
+test("keeps credential recovery analytics coarse across every browser outcome", async ({ page }) => {
+  const credentialHtml =
+    '<!doctype html><html><body><script>const apiKey = "super-secret-browser-value";</script><h1>Private finding marker</h1></body></html>';
+  const safeProposal =
+    "The credential is removed.\n\nFILE_ID: file-1\n```html\n<!doctype html><html><body><h1>Safe patch</h1></body></html>\n```";
+  let analysisAttempts = 0;
+
+  await page.addInitScript(() => {
+    const testWindow = window as typeof window & {
+      recoveryAnalyticsEvents: Array<{ name: string; data: unknown }>;
+      umami?: {
+        track(name: string, data?: Record<string, string | number | boolean>): void;
+      };
+    };
+    const events: Array<{ name: string; data: unknown }> = [];
+    testWindow.recoveryAnalyticsEvents = events;
+    testWindow.umami = {
+      track(name, data) {
+        events.push({ name, data: data ?? null });
+      },
+    };
+  });
+  await mockAuth(page);
+  await page.route("**/api/port/analyze", (route) => {
+    analysisAttempts += 1;
+    if (analysisAttempts === 4) {
+      return route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "analysis-only-private-server-detail" }),
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        title: "Imported page",
+        bytes: credentialHtml.length,
+        scriptCount: 1,
+        externalScriptCount: 0,
+        inlineScriptCount: 1,
+        externalAssetCount: 0,
+        aiSignalCount: 0,
+        findings: [
+          {
+            severity: "error",
+            title: "Private finding marker",
+            detail: "finding-only-private-detail",
+            action: "private-finding-action",
+          },
+        ],
+        steps: [],
+      }),
+    });
+  });
+  await page.route("**/api/port/poe/models", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        configured: true,
+        models: ["Claude-Sonnet-4.5"],
+        message: "model-output-private-catalogue-detail",
+      }),
+    }),
+  );
+  await page.route("**/api/port/poe/chat", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        content: safeProposal,
+        model: "Claude-Sonnet-4.5",
+        usage: { promptTokens: 12, completionTokens: 34 },
+      }),
+    }),
+  );
+
+  await page.goto("/");
+  await page.getByPlaceholder(/paste your html/i).fill(credentialHtml);
+  await page.getByRole("button", { name: /analyze/i }).click();
+  await expect(page.getByText("Private finding marker")).toBeVisible();
+
+  await page.getByRole("button", { name: "Fix Code safely" }).click();
+  await expect(page.getByRole("heading", { name: "Request a reviewed Claude proposal" })).toBeVisible();
+  await page.getByLabel(/I confirm that only the complete redacted copy/i).check();
+  await page.getByRole("button", { name: "Request redacted Claude repair" }).click();
+  await expect(page.getByRole("heading", { name: "Review the untrusted proposal" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Reject proposal" }).click();
+  await expect(page.getByRole("heading", { name: "Review the untrusted proposal" })).not.toBeVisible();
+
+  await page.getByRole("button", { name: "Request redacted Claude repair" }).click();
+  await expect(page.getByRole("heading", { name: "Review the untrusted proposal" })).toBeVisible();
+  await page.getByRole("button", { name: "Apply reviewed patch" }).click();
+  await page.getByRole("button", { name: "Confirm apply and re-scan" }).click();
+  await expect(page.getByText("Reviewed patch applied in memory")).toBeVisible();
+
+  await page.getByRole("button", { name: "Undo and restore original" }).click();
+  await expect(page.getByRole("heading", { name: "Private finding marker" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Request a reviewed Claude proposal" })).toBeVisible();
+  await page.getByLabel(/I confirm that only the complete redacted copy/i).check();
+  await page.getByRole("button", { name: "Request redacted Claude repair" }).click();
+  await expect(page.getByRole("heading", { name: "Review the untrusted proposal" })).toBeVisible();
+  await page.getByRole("button", { name: "Apply reviewed patch" }).click();
+  await page.getByRole("button", { name: "Confirm apply and re-scan" }).click();
+  await expect(page.getByRole("button", { name: "Retry analysis" })).toBeVisible();
+
+  const analyticsEvents = await page.evaluate(() => {
+    const testWindow = window as typeof window & {
+      recoveryAnalyticsEvents: Array<{ name: string; data: unknown }>;
+    };
+    return testWindow.recoveryAnalyticsEvents;
+  });
+  expect(analyticsEvents).toEqual([
+    { name: "credential_recovery_opened", data: null },
+    { name: "credential_recovery_consent", data: null },
+    { name: "credential_recovery_proposal_requested", data: null },
+    { name: "credential_recovery_action", data: { action: "reject" } },
+    { name: "credential_recovery_proposal_requested", data: null },
+    { name: "credential_recovery_action", data: { action: "apply" } },
+    { name: "credential_recovery_rescan", data: { result: "passed" } },
+    { name: "credential_recovery_action", data: { action: "undo" } },
+    { name: "credential_recovery_opened", data: null },
+    { name: "credential_recovery_consent", data: null },
+    { name: "credential_recovery_proposal_requested", data: null },
+    { name: "credential_recovery_action", data: { action: "apply" } },
+    { name: "credential_recovery_rescan", data: { result: "failed" } },
+  ]);
+});
