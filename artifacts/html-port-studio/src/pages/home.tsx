@@ -1238,6 +1238,12 @@ function SourceEditorPanel({
     setReplaceConfirmation(null);
   }, [file?.path, revision]);
 
+  useEffect(() => {
+    if (!isStale) {
+      setStatus('');
+    }
+  }, [isStale]);
+
   const currentMatches = matches.ok ? matches.matches : [];
   const selectedMatch = currentMatches[activeMatch];
 

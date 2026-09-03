@@ -352,6 +352,31 @@ test("updates the sandbox preview from an edited entrypoint only after the edito
   await expect(preview.locator("#preview-marker")).toHaveText("After");
 });
 
+test("clears replaced editor feedback after re-analysis makes the report current", async ({ page }) => {
+  await openEditor(page);
+
+  const editor = page.getByRole("textbox", { name: "Edit source file index.html" });
+  await editor.fill("<main>Edited</main>\n<p>Edited</p>");
+  await expect(page.getByText("Unsaved source change is held in this browser tab.")).toBeVisible();
+
+  await page.getByRole("button", { name: "Re-analyze source" }).click();
+  await expect(page.getByRole("button", { name: "Analysis current" })).toBeVisible();
+  await expect(page.getByText("Unsaved source change is held in this browser tab.")).not.toBeVisible();
+  await expect(page.getByText("Unsaved changes")).not.toBeVisible();
+  await expect(page.getByText("Analysis is out of date")).not.toBeVisible();
+
+  await editor.fill("<main>Alpha</main>\n<p>Alpha</p>");
+  await page.getByPlaceholder(/find \(ctrl\/cmd\+f\)/i).fill("Alpha");
+  await page.getByPlaceholder("Replace with").fill("Omega");
+  await page.getByRole("button", { name: "Replace all" }).click();
+  await page.getByRole("button", { name: "Confirm replace all" }).click();
+  await expect(page.getByText("Replaced 2 matches.")).toBeVisible();
+
+  await page.getByRole("button", { name: "Re-analyze source" }).click();
+  await expect(page.getByRole("button", { name: "Analysis current" })).toBeVisible();
+  await expect(page.getByText("Replaced 2 matches.")).not.toBeVisible();
+});
+
 async function exerciseFindReplace(page: import("@playwright/test").Page) {
   await openEditor(page);
   const editor = page.getByRole("textbox", { name: "Edit source file index.html" });

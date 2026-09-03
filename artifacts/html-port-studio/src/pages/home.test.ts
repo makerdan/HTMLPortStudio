@@ -573,3 +573,15 @@ test("does not analyze ZIP source while it is being selected", async () => {
   assert.match(zipHandler, /makeZipSourceBundle\(await file\.arrayBuffer\(\), file\.name\)/);
   assert.match(zipHandler, /if \(sessionId !== importSessionRef\.current\) return/);
 });
+
+test("clears obsolete editor feedback when analysis becomes current", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+  const editorStart = source.indexOf("function SourceEditorPanel");
+  const editorEnd = source.indexOf("function ClaudeRepairPanel", editorStart);
+  const editorSource = source.slice(editorStart, editorEnd);
+
+  assert.match(editorSource, /const isStale = !hasReport \|\| analyzedRevision !== revision/);
+  assert.match(editorSource, /if \(!isStale\) \{\s*setStatus\(''\);\s*\}/s);
+  assert.match(editorSource, /onClick=\{onAnalyze\} disabled=\{isStale === false\}/);
+  assert.match(editorSource, /isStale \? 'Re-analyze source' : 'Analysis current'/);
+});
