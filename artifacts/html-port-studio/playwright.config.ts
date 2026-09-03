@@ -18,5 +18,11 @@ export default defineConfig({
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
     },
+    {
+      name: "firefox-recovery",
+      grep: /\[cross-browser\]/,
+      workers: 1,
+      use: { ...devices["Desktop Firefox"] },
+    },
   ],
 });

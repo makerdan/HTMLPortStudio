@@ -324,7 +324,7 @@ test("stops handoff polling after an error and only resumes on retry", async ({ 
 
 test("keeps credential recovery analytics coarse across every browser outcome", async ({ page }) => {
   const credentialHtml =
-    '<!doctype html><html><body><script>const apiKey = "super-secret-browser-value";</script><h1>Private finding marker</h1></body></html>';
+    "<!doctype html><html><body><main>Local export</main><script>const apiKey = \"sk-proj-browser-download-secret\";</script></body></html>";
   const safeProposal =
     "The credential is removed.\n\nFILE_ID: file-1\n```html\n<!doctype html><html><body><h1>Safe patch</h1></body></html>\n```";
   let analysisAttempts = 0;
@@ -542,20 +542,26 @@ async function exerciseFindReplace(page: import("@playwright/test").Page) {
   await expect(page.getByRole("status")).toHaveText("No matches");
 }
 
-test("supports find and replace keyboard, confirmation, cancellation, and no-match states on desktop", async ({ page }) => {
+test("[cross-browser] supports find and replace keyboard, confirmation, cancellation, and no-match states on desktop", async ({
+  page,
+}) => {
   await exerciseFindReplace(page);
 });
 
 test.describe("source editor on mobile", () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
-  test("keeps find and replace controls usable at a mobile width", async ({ page }) => {
+  test("[cross-browser] keeps find and replace controls usable at a mobile width", async ({
+    page,
+  }) => {
     await exerciseFindReplace(page);
     await expect(page.getByRole("tab", { name: "Source Editor" })).toBeVisible();
   });
 });
 
-test("downloads a single source file and ZIP locally, warning before credential-bearing exports", async ({ page }) => {
+test("[cross-browser] downloads a single source file and ZIP locally, warning before credential-bearing exports", async ({
+  page,
+}) => {
   const credentialHtml =
     "<!doctype html><html><body><main>Local export</main><script>const apiKey = \"sk-proj-browser-download-secret\";</script></body></html>";
   await openEditor(page, credentialHtml);
@@ -677,7 +683,9 @@ test("gates Claude on the exact live model and exhausts bounded attempts", async
   expect(chatAttempts).toBe(3);
 });
 
-test("withholds malformed Claude patches and rejects a response that becomes stale", async ({ page }) => {
+test("[cross-browser] withholds malformed Claude patches and rejects a response that becomes stale", async ({
+  page,
+}) => {
   let resolveChat: (() => void) | null = null;
   await openClaudeReview(page);
   await page.route("**/api/port/poe/chat", (route) => {
@@ -717,7 +725,9 @@ test("withholds malformed Claude patches and rejects a response that becomes sta
   await expect(editor).toHaveValue("<main>Changed while Claude worked</main>");
 });
 
-test("requires Claude review and explicit apply, then supports undo", async ({ page }) => {
+test("[cross-browser] requires Claude review and explicit apply, then supports undo", async ({
+  page,
+}) => {
   const original = "<main>Alpha</main>";
   await openClaudeReview(page, original);
   await page.route("**/api/port/poe/chat", (route) =>
