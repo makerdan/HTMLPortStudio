@@ -73,3 +73,30 @@ Import pasted, single-file, or public GitHub HTML apps as normalized source bund
 ## Pointers
 
 - See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+
+## Agent rules
+
+### Failure Gate
+
+Task-driven work follows the canonical `.agents/skills/failure-gate/SKILL.md`.
+Before writing a plan, complete its discovery checklist: read relevant memory,
+inspect the validation baseline catalog, search recent task failures, run the
+backend spot-check when applicable, record pre-existing failures or explicitly
+record none, and choose the lightest registered validation tier that covers the
+task. Announce the completed checklist before the first plan heading.
+
+Every plan must contain `## Pre-existing failures to ignore` and `## Validation`.
+Validation must name a registered tier in `**Command:**`, include a real
+`**Why:**`, and include `**Do not escalate:**`. Use
+`TASK_PLAN_FILE=<plan>` with `scripts/check-failure-gate.mjs` and
+`scripts/check-regression-guard.mjs` before creating a task.
+
+Task validation must run exactly the plan-selected tier through
+`scripts/run-locked-tier.mjs`; it must not substitute a heavier or lighter
+command. Missing or malformed plan/tier data fails closed. The validation
+workflow may add missing section stubs for the current `TASK_PLAN_FILE`, but
+then runs strict linting so placeholders, invalid tiers, and unfilled
+explanations still fail. Typecheck and build failures are task failures, not
+pre-existing test baselines. A passing retry proves intermittency only; an
+unlisted failure needs two-factor provenance before it can be classified as
+pre-existing.

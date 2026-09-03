@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "tiers": [
+    {
+      "name": "test-standard",
+      "command": "pnpm run test-standard",
+      "description": "Workspace typechecks and the project's focused API and Studio checks."
+    }
+  ]
+}
