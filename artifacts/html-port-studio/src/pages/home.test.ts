@@ -48,6 +48,18 @@ test("keeps source requests scoped to the current import", async () => {
   assert.match(source, /<label htmlFor="assistant-prompt"/);
 });
 
+test("resets the GitHub import mutation when starting over", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+  const resetStart = source.indexOf("const handleReset = () =>");
+  const resetEnd = source.indexOf("const handleFileSelect", resetStart);
+  const resetHandler = source.slice(resetStart, resetEnd);
+
+  assert.notEqual(resetStart, -1);
+  assert.notEqual(resetEnd, -1);
+  assert.match(resetHandler, /importSessionRef\.current \+= 1/);
+  assert.match(resetHandler, /githubImportMutation\.reset\(\)/);
+});
+
 test("validates HTML files before reading their contents", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
   const validationIndex = source.indexOf("validateHtmlFile(file)");

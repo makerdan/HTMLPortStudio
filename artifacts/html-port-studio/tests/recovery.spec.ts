@@ -1,6 +1,53 @@
 import { expect, test } from "@playwright/test";
 
 const html = "<!doctype html><html><body><main>Imported page</main></body></html>";
+const githubUrl = "https://github.com/acme/demo";
+const githubRepository = {
+  sourceUrl: githubUrl,
+  fullName: "acme/demo",
+  displayName: "demo",
+  defaultBranch: "main",
+  description: "A public demo repository",
+  stars: 0,
+  refs: [{ name: "main", sha: "a".repeat(40) }],
+};
+const githubImport = {
+  bundle: {
+    version: 1,
+    sourceType: "github_repository",
+    files: [{ path: "index.html", content: "<main>GitHub snapshot</main>" }],
+    entrypoint: "index.html",
+    metadata: {
+      displayName: "acme/demo",
+      sourceUrl: githubUrl,
+      resolvedRef: "main",
+      resolvedCommitSha: "b".repeat(40),
+    },
+  },
+  analysis: {
+    title: "GitHub snapshot",
+    bytes: 30,
+    scriptCount: 0,
+    externalScriptCount: 0,
+    inlineScriptCount: 0,
+    externalAssetCount: 0,
+    aiSignalCount: 0,
+    findings: [],
+    steps: [],
+    sourceType: "github_repository",
+    entrypoint: "index.html",
+    fileCount: 1,
+    totalBytes: 30,
+    files: ["index.html"],
+    localAssetReferences: [],
+    externalDependencies: [],
+  },
+  repository: githubRepository,
+  resolvedRef: "main",
+  resolvedCommitSha: "b".repeat(40),
+  entrypointCandidates: ["index.html"],
+  warnings: [],
+};
 
 async function mockAuth(page: import("@playwright/test").Page) {
   await page.route("**/__clerk/**", (route) => route.abort());
@@ -115,6 +162,94 @@ test("keeps the import surface available when an auth callback URL is present", 
   await page.goto("/");
   await analyzeImportedHtml(page);
   await expect(page.getByText("Create a Replit Project")).toBeVisible();
+});
+
+async function openGithubImport(page: import("@playwright/test").Page) {
+  await page.getByRole("tab", { name: /Import GitHub repository/i }).click();
+  await page.getByRole("textbox", { name: "Public GitHub repository URL" }).fill(githubUrl);
+  await page.getByRole("button", { name: "Inspect" }).click();
+  await expect(page.getByText("acme/demo")).toBeVisible();
+}
+
+test("starting over invalidates a pending GitHub import and permits a fresh import", async ({ page }) => {
+  let importAttempts = 0;
+  let releaseFirstImport: (() => void) | null = null;
+  await mockAuth(page);
+  await page.route("**/api/port/github/repository**", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(githubRepository) }),
+  );
+  await page.route("**/api/port/github/import", (route) => {
+    importAttempts += 1;
+    if (importAttempts === 1) {
+      return new Promise<void>((resolve) => {
+        releaseFirstImport = () => {
+          void route
+            .fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(githubImport) })
+            .then(resolve);
+        };
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(githubImport),
+    });
+  });
+
+  await page.goto("/");
+  await openGithubImport(page);
+  const fetchButton = page.getByRole("button", { name: "Fetch selected snapshot" });
+  await fetchButton.click();
+  await expect(page.getByRole("button", { name: "Importing snapshot..." })).toBeDisabled();
+
+  await page.getByRole("button", { name: "Reset HTML Port Studio" }).click();
+  await expect(page.getByPlaceholder(/paste your html/i)).toBeVisible();
+  await openGithubImport(page);
+  const freshFetchButton = page.getByRole("button", { name: "Fetch selected snapshot" });
+  await expect(freshFetchButton).toBeEnabled();
+  await freshFetchButton.click();
+  await expect(page.getByText("Review this read-only snapshot")).toBeVisible();
+  expect(importAttempts).toBe(2);
+
+  releaseFirstImport?.();
+  await expect(page.getByText("Review this read-only snapshot")).toBeVisible();
+});
+
+test("starting over clears a failed GitHub import so it can be retried cleanly", async ({ page }) => {
+  let importAttempts = 0;
+  await mockAuth(page);
+  await page.route("**/api/port/github/repository**", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(githubRepository) }),
+  );
+  await page.route("**/api/port/github/import", (route) => {
+    importAttempts += 1;
+    if (importAttempts === 1) {
+      return route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Temporary GitHub outage" }),
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(githubImport),
+    });
+  });
+
+  await page.goto("/");
+  await openGithubImport(page);
+  await page.getByRole("button", { name: "Fetch selected snapshot" }).click();
+  await expect(page.getByText("GitHub import needs attention")).toBeVisible();
+
+  await page.getByRole("button", { name: "Reset HTML Port Studio" }).click();
+  await expect(page.getByPlaceholder(/paste your html/i)).toBeVisible();
+  await openGithubImport(page);
+  const freshFetchButton = page.getByRole("button", { name: "Fetch selected snapshot" });
+  await expect(freshFetchButton).toBeEnabled();
+  await freshFetchButton.click();
+  await expect(page.getByText("Review this read-only snapshot")).toBeVisible();
+  expect(importAttempts).toBe(2);
 });
 
 test("keeps actionable analysis errors visible in the Studio home alert", async ({ page }) => {

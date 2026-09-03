@@ -2109,6 +2109,7 @@ export default function Home() {
   const handleReset = () => {
     importSessionRef.current += 1;
     analyzeMutation.reset();
+    githubImportMutation.reset();
     clearRecovery();
     setAnalysisData(null);
     setHtmlInput('');
