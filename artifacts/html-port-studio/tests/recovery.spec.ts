@@ -322,6 +322,218 @@ test("stops handoff polling after an error and only resumes on retry", async ({ 
   await expect.poll(() => statusChecks).toBeGreaterThan(checksWhenFailed);
 });
 
+test("[cross-browser] recovers an in-progress authenticated handoff after reload", async ({ page }) => {
+  const jobId = "123e4567-e89b-12d3-a456-426614174010";
+  const status = {
+    jobId,
+    status: "running",
+    projectId: null,
+    projectUrl: null,
+    projectName: "Imported page",
+    currentStep: "Port Authority",
+    steps: [
+      { name: "Poe Setup", status: "completed", error: null },
+      { name: "Port Authority", status: "running", error: null },
+    ],
+    error: null,
+  };
+  let statusChecks = 0;
+
+  await mockAuthenticatedAuth(page);
+  await mockAnalysis(page);
+  await page.route("**/api/port/replit-project-connection", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ status: "connected", setupUrl: null }),
+    }),
+  );
+  await page.route("**/api/port/replit-projects", (route) =>
+    route.fulfill({
+      status: 202,
+      contentType: "application/json",
+      body: JSON.stringify(status),
+    }),
+  );
+  await page.route(`**/api/port/replit-projects/${jobId}`, (route) => {
+    statusChecks += 1;
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(status),
+    });
+  });
+
+  await page.goto("/");
+  await analyzeImportedHtml(page);
+  await page.getByRole("button", { name: "Create Replit Project" }).click();
+  await expect(page.getByText("Current step: Port Authority")).toBeVisible({ timeout: 15_000 });
+
+  const recoveryBeforeReload = await page.evaluate(() => ({
+    metadata: sessionStorage.getItem("html-port-studio:handoff-recovery"),
+    browserSessionId: sessionStorage.getItem("html-port-studio:browser-session"),
+  }));
+  expect(JSON.parse(recoveryBeforeReload.metadata ?? "{}")).toMatchObject({
+    jobId,
+    ownerId: "e2e-user",
+  });
+  expect(recoveryBeforeReload.browserSessionId).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+  );
+
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Resume handoff status" })).toBeVisible();
+  await expect(page.getByText("running handoff")).toBeVisible();
+  expect(statusChecks).toBeGreaterThan(1);
+
+  const recoveryAfterReload = await page.evaluate(() => ({
+    metadata: sessionStorage.getItem("html-port-studio:handoff-recovery"),
+    browserSessionId: sessionStorage.getItem("html-port-studio:browser-session"),
+  }));
+  expect(recoveryAfterReload).toEqual(recoveryBeforeReload);
+});
+
+test("[cross-browser] clears or surfaces completed, failed, stale, and foreign handoffs after reload", async ({
+  page,
+}) => {
+  const browserSessionId = "123e4567-e89b-12d3-a456-426614174011";
+  const records = {
+    completed: "123e4567-e89b-12d3-a456-426614174012",
+    failed: "123e4567-e89b-12d3-a456-426614174013",
+    stale: "123e4567-e89b-12d3-a456-426614174014",
+    foreignSession: "123e4567-e89b-12d3-a456-426614174015",
+    foreignOwner: "123e4567-e89b-12d3-a456-426614174016",
+    expired: "123e4567-e89b-12d3-a456-426614174018",
+  };
+  const statuses = new Map([
+    [records.completed, "completed"],
+    [records.failed, "failed"],
+    [records.stale, "running"],
+    [records.foreignSession, "running"],
+    [records.foreignOwner, "running"],
+  ]);
+
+  await mockAuthenticatedAuth(page);
+  await page.addInitScript((sessionId) => {
+    sessionStorage.setItem("html-port-studio:browser-session", sessionId);
+  }, browserSessionId);
+  await page.route("**/api/port/replit-projects/*", (route) => {
+    const jobId = new URL(route.request().url()).pathname.split("/").pop() ?? "";
+    const status = statuses.get(jobId);
+    if (!status) {
+      return route.fulfill({
+        status: 404,
+        contentType: "application/json",
+        body: JSON.stringify({
+          code: "PROJECT_HANDOFF_NOT_FOUND",
+          error: "Not found",
+        }),
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        jobId,
+        status,
+        projectId: status === "completed" ? "project-1" : null,
+        projectUrl: null,
+        projectName: "Imported page",
+        currentStep: status === "failed" ? "Port Authority" : null,
+        steps: [],
+        error: status === "failed" ? "The setup step failed." : null,
+      }),
+    });
+  });
+
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Import HTML App" })).toBeVisible();
+
+  const seedRecovery = async (
+    jobId: string,
+    overrides: Partial<{
+      ownerId: string;
+      browserSessionId: string;
+      createdAt: number;
+    }> = {},
+  ) => {
+    await page.evaluate(
+      ({ jobId, browserSessionId, ownerId, createdAt }) => {
+        sessionStorage.setItem(
+          "html-port-studio:handoff-recovery",
+          JSON.stringify({
+            version: 1,
+            jobId,
+            ownerId,
+            browserSessionId,
+            createdAt,
+          }),
+        );
+      },
+      {
+        jobId,
+        browserSessionId: overrides.browserSessionId ?? browserSessionId,
+        ownerId: overrides.ownerId ?? "e2e-user",
+        createdAt: overrides.createdAt ?? Date.now(),
+      },
+    );
+    await page.reload();
+  };
+
+  await seedRecovery(records.completed);
+  await expect(page.getByRole("heading", { name: "Import HTML App" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Resume handoff status" })).not.toBeVisible();
+  await expect
+    .poll(
+      () => page.evaluate(() => sessionStorage.getItem("html-port-studio:handoff-recovery")),
+      { timeout: 15_000 },
+    )
+    .toBeNull();
+
+  await seedRecovery(records.failed);
+  await expect(page.getByRole("heading", { name: "Resume handoff status" })).toBeVisible();
+  await expect(page.getByText("failed handoff")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Retry step" })).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => sessionStorage.getItem("html-port-studio:handoff-recovery")))
+    .not.toBeNull();
+
+  await seedRecovery(records.stale, {
+    createdAt: Date.now() - 8 * 24 * 60 * 60 * 1000,
+  });
+  await expect(page.getByRole("heading", { name: "Import HTML App" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Resume handoff status" })).not.toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => sessionStorage.getItem("html-port-studio:handoff-recovery")))
+    .toBeNull();
+
+  await seedRecovery(records.expired);
+  await expect(page.getByRole("heading", { name: "Import HTML App" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Resume handoff status" })).not.toBeVisible();
+  await expect
+    .poll(
+      () => page.evaluate(() => sessionStorage.getItem("html-port-studio:handoff-recovery")),
+      { timeout: 15_000 },
+    )
+    .toBeNull();
+
+  await seedRecovery(records.foreignSession, {
+    browserSessionId: "123e4567-e89b-12d3-a456-426614174017",
+  });
+  await expect(page.getByRole("heading", { name: "Import HTML App" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Resume handoff status" })).not.toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => sessionStorage.getItem("html-port-studio:handoff-recovery")))
+    .toBeNull();
+
+  await seedRecovery(records.foreignOwner, { ownerId: "another-owner" });
+  await expect(page.getByRole("heading", { name: "Import HTML App" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Resume handoff status" })).not.toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => sessionStorage.getItem("html-port-studio:handoff-recovery")))
+    .toBeNull();
+});
+
 test("keeps credential recovery analytics coarse across every browser outcome", async ({ page }) => {
   const credentialHtml =
     "<!doctype html><html><body><main>Local export</main><script>const apiKey = \"sk-proj-browser-download-secret\";</script></body></html>";

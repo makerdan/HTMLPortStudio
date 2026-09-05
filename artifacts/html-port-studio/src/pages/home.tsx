@@ -642,12 +642,17 @@ function RecoveredHandoffPanel({
     error: authError,
     login,
   } = useStudioAuth();
+  const browserSessionId = getBrowserSessionId();
   const retryMutation = useRetryReplitProjectSetup();
   const queryClient = useQueryClient();
   const statusQuery = useGetReplitProjectStatus(metadata.jobId, {
     query: {
       queryKey: ['replit-project-recovery-status', metadata.jobId],
-      enabled: !authLoading && isAuthenticated && user?.id === metadata.ownerId,
+      enabled:
+        !authLoading &&
+        isAuthenticated &&
+        user?.id === metadata.ownerId &&
+        browserSessionId === metadata.browserSessionId,
       refetchInterval: (query: {
         state: { error: unknown; data?: ReplitProjectHandoff };
       }) => {
@@ -661,10 +666,23 @@ function RecoveredHandoffPanel({
 
   useEffect(() => {
     if (authLoading) return;
-    if (!isAuthenticated || !user || user.id !== metadata.ownerId) {
+    if (
+      !isAuthenticated ||
+      !user ||
+      user.id !== metadata.ownerId ||
+      browserSessionId !== metadata.browserSessionId
+    ) {
       onClear();
     }
-  }, [authLoading, isAuthenticated, metadata.ownerId, onClear, user]);
+  }, [
+    authLoading,
+    browserSessionId,
+    isAuthenticated,
+    metadata.browserSessionId,
+    metadata.ownerId,
+    onClear,
+    user,
+  ]);
 
   useEffect(() => {
     if (statusQuery.data?.status === 'completed') {
