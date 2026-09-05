@@ -48,6 +48,43 @@ const githubImport = {
   entrypointCandidates: ["index.html"],
   warnings: [],
 };
+const hostedImport = {
+  originalUrl: "https://example.com/app",
+  finalUrl: "https://example.com/app",
+  status: "fetched",
+  bundle: {
+    version: 1,
+    sourceType: "hosted_page",
+    files: [{ path: "index.html", content: "<main>Hosted page</main>" }],
+    entrypoint: "index.html",
+    metadata: {
+      displayName: "Hosted page",
+      sourceUrl: "https://example.com/app",
+      originalUrl: "https://example.com/app",
+      finalUrl: "https://example.com/app",
+      warnings: [],
+    },
+  },
+  warnings: [],
+};
+const playgroundImport = {
+  provider: "codepen",
+  originalUrl: "https://codepen.io/alice/pen/demo",
+  status: "imported",
+  bundle: {
+    version: 1,
+    sourceType: "playground",
+    files: [{ path: "index.html", content: "<main>Playground</main>" }],
+    entrypoint: "index.html",
+    metadata: {
+      displayName: "Playground",
+      sourceUrl: "https://codepen.io/alice/pen/demo/",
+      originalUrl: "https://codepen.io/alice/pen/demo",
+      warnings: [],
+    },
+  },
+  warnings: [],
+};
 
 async function mockAuth(page: import("@playwright/test").Page) {
   await page.route("**/__clerk/**", (route) => route.abort());
@@ -260,6 +297,110 @@ test("starting over clears a failed GitHub import so it can be retried cleanly",
   await freshFetchButton.click();
   await expect(page.getByText("Review this read-only snapshot")).toBeVisible();
   expect(importAttempts).toBe(2);
+});
+
+test("starting over aborts a pending hosted import and keeps the fresh source entry silent", async ({ page }) => {
+  let importAttempts = 0;
+  let releaseFirstImport: (() => void) | null = null;
+  let firstImportRequest: import("@playwright/test").Request | null = null;
+  let firstImportRequestAborted = false;
+  await mockAuth(page);
+  page.on("requestfailed", (request) => {
+    if (request === firstImportRequest) {
+      firstImportRequestAborted = true;
+    }
+  });
+  await page.route("**/api/port/hosted-url", (route) => {
+    importAttempts += 1;
+    if (importAttempts === 1) {
+      firstImportRequest = route.request();
+      return new Promise<void>((resolve) => {
+        releaseFirstImport = () => {
+          void route
+            .fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(hostedImport) })
+            .then(resolve)
+            .catch(resolve);
+        };
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(hostedImport),
+    });
+  });
+
+  await page.goto("/");
+  await page.getByRole("tab", { name: /Import hosted URL/i }).click();
+  await page.getByRole("textbox", { name: "Hosted page URL" }).fill("https://example.com/app");
+  await page.getByRole("button", { name: "Fetch hosted HTML" }).click();
+  await expect(page.getByRole("button", { name: /Fetching\.\.\./ })).toBeDisabled();
+
+  await page.getByRole("button", { name: "Reset HTML Port Studio" }).click();
+  await expect(page.getByPlaceholder(/paste your html/i)).toBeVisible();
+  await expect.poll(() => firstImportRequestAborted).toBe(true);
+  await expect(page.getByText("Hosted page could not be imported")).not.toBeVisible();
+
+  await page.getByRole("tab", { name: /Import hosted URL/i }).click();
+  await page.getByRole("textbox", { name: "Hosted page URL" }).fill("https://example.com/app");
+  await page.getByRole("button", { name: "Fetch hosted HTML" }).click();
+  await expect(page.getByText("Hosted page fetched safely")).toBeVisible();
+  expect(importAttempts).toBe(2);
+
+  releaseFirstImport?.();
+  await expect(page.getByText("Hosted page fetched safely")).toBeVisible();
+});
+
+test("starting over aborts a pending playground import and keeps the fresh source entry silent", async ({ page }) => {
+  let importAttempts = 0;
+  let releaseFirstImport: (() => void) | null = null;
+  let firstImportRequest: import("@playwright/test").Request | null = null;
+  let firstImportRequestAborted = false;
+  await mockAuth(page);
+  page.on("requestfailed", (request) => {
+    if (request === firstImportRequest) {
+      firstImportRequestAborted = true;
+    }
+  });
+  await page.route("**/api/port/playground/import", (route) => {
+    importAttempts += 1;
+    if (importAttempts === 1) {
+      firstImportRequest = route.request();
+      return new Promise<void>((resolve) => {
+        releaseFirstImport = () => {
+          void route
+            .fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(playgroundImport) })
+            .then(resolve)
+            .catch(resolve);
+        };
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(playgroundImport),
+    });
+  });
+
+  await page.goto("/");
+  await page.getByRole("tab", { name: /Import CodePen \/ JSFiddle/i }).click();
+  await page.getByRole("textbox", { name: "Public CodePen or JSFiddle URL" }).fill("https://codepen.io/alice/pen/demo");
+  await page.getByRole("button", { name: "Import playground" }).click();
+  await expect(page.getByRole("button", { name: "Importing..." })).toBeDisabled();
+
+  await page.getByRole("button", { name: "Reset HTML Port Studio" }).click();
+  await expect(page.getByPlaceholder(/paste your html/i)).toBeVisible();
+  await expect.poll(() => firstImportRequestAborted).toBe(true);
+  await expect(page.getByText("Playground could not be imported")).not.toBeVisible();
+
+  await page.getByRole("tab", { name: /Import CodePen \/ JSFiddle/i }).click();
+  await page.getByRole("textbox", { name: "Public CodePen or JSFiddle URL" }).fill("https://codepen.io/alice/pen/demo");
+  await page.getByRole("button", { name: "Import playground" }).click();
+  await expect(page.getByText("CodePen source normalized safely")).toBeVisible();
+  expect(importAttempts).toBe(2);
+
+  releaseFirstImport?.();
+  await expect(page.getByText("CodePen source normalized safely")).toBeVisible();
 });
 
 test("keeps actionable analysis errors visible in the Studio home alert", async ({ page }) => {

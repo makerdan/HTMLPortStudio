@@ -12,6 +12,8 @@ import {
   useRetryReplitProjectSetup,
   useGetGithubRepository,
   importGithubRepository,
+  importHostedUrl,
+  importPlayground,
   useImportGithubRepository,
   useImportHostedUrl,
   useImportPlayground,
@@ -28,7 +30,9 @@ import type {
   GithubImportInput,
   GithubRef,
   HostedUrlImport,
+  HostedUrlInput,
   PlaygroundImport,
+  PlaygroundImportInput,
 } from '@workspace/api-client-react';
 import {
   SOURCE_TEXT_LIMIT_LABEL,
@@ -1757,6 +1761,8 @@ export default function Home() {
     },
   );
   const githubImportAbortControllerRef = useRef<AbortController | null>(null);
+  const hostedImportAbortControllerRef = useRef<AbortController | null>(null);
+  const playgroundImportAbortControllerRef = useRef<AbortController | null>(null);
   const githubImportMutation = useImportGithubRepository({
     mutation: {
       mutationFn: ({ data }: { data: GithubImportInput }) =>
@@ -1765,8 +1771,22 @@ export default function Home() {
         }),
     },
   });
-  const hostedImportMutation = useImportHostedUrl();
-  const playgroundImportMutation = useImportPlayground();
+  const hostedImportMutation = useImportHostedUrl({
+    mutation: {
+      mutationFn: ({ data }: { data: HostedUrlInput }) =>
+        importHostedUrl(data, {
+          signal: hostedImportAbortControllerRef.current?.signal,
+        }),
+    },
+  });
+  const playgroundImportMutation = useImportPlayground({
+    mutation: {
+      mutationFn: ({ data }: { data: PlaygroundImportInput }) =>
+        importPlayground(data, {
+          signal: playgroundImportAbortControllerRef.current?.signal,
+        }),
+    },
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const zipInputRef = useRef<HTMLInputElement>(null);
   const importSessionRef = useRef(0);
@@ -2070,12 +2090,18 @@ export default function Home() {
       return;
     }
     if (hostedImportMutation.isPending) return;
+    const abortController = new AbortController();
+    hostedImportAbortControllerRef.current = abortController;
     const sessionId = ++importSessionRef.current;
     setHostedError(null);
     hostedImportMutation.mutate(
       { data: { url: value } },
       {
         onSuccess: (data: HostedUrlImport) => {
+          if (hostedImportAbortControllerRef.current === abortController) {
+            hostedImportAbortControllerRef.current = null;
+          }
+          if (abortController.signal.aborted) return;
           if (sessionId !== importSessionRef.current) return;
           const bundle = data.bundle;
           if (bundle.sourceType !== 'hosted_page') {
@@ -2097,6 +2123,10 @@ export default function Home() {
           setHostedError(null);
         },
         onError: (error: unknown) => {
+          if (hostedImportAbortControllerRef.current === abortController) {
+            hostedImportAbortControllerRef.current = null;
+          }
+          if (abortController.signal.aborted) return;
           if (sessionId !== importSessionRef.current) return;
           setHostedImportData(null);
           setHostedError(
@@ -2124,6 +2154,8 @@ export default function Home() {
       return;
     }
     if (playgroundImportMutation.isPending) return;
+    const abortController = new AbortController();
+    playgroundImportAbortControllerRef.current = abortController;
     const sessionId = ++importSessionRef.current;
     setPlaygroundError(null);
     setPlaygroundImportData(null);
@@ -2131,6 +2163,10 @@ export default function Home() {
       { data: { url: value } },
       {
         onSuccess: (data: PlaygroundImport) => {
+          if (playgroundImportAbortControllerRef.current === abortController) {
+            playgroundImportAbortControllerRef.current = null;
+          }
+          if (abortController.signal.aborted) return;
           if (sessionId !== importSessionRef.current) return;
           if (data.bundle.sourceType !== 'playground') {
             setPlaygroundError('The server returned an unexpected playground source. Retry the import.');
@@ -2149,6 +2185,10 @@ export default function Home() {
           setPlaygroundError(null);
         },
         onError: (error: unknown) => {
+          if (playgroundImportAbortControllerRef.current === abortController) {
+            playgroundImportAbortControllerRef.current = null;
+          }
+          if (abortController.signal.aborted) return;
           if (sessionId !== importSessionRef.current) return;
           setPlaygroundImportData(null);
           setPlaygroundError(
@@ -2173,6 +2213,10 @@ export default function Home() {
     analyzeMutation.reset();
     githubImportAbortControllerRef.current?.abort();
     githubImportAbortControllerRef.current = null;
+    hostedImportAbortControllerRef.current?.abort();
+    hostedImportAbortControllerRef.current = null;
+    playgroundImportAbortControllerRef.current?.abort();
+    playgroundImportAbortControllerRef.current = null;
     githubImportMutation.reset();
     clearRecovery();
     setAnalysisData(null);
