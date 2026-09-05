@@ -48,6 +48,9 @@ export const STUDIO_ERROR_MESSAGES = {
 export const PROJECT_HANDOFF_FAILURE_FALLBACK =
   'The Replit project setup could not be completed. Retry the failed step.';
 
+export const PROJECT_HANDOFF_RECOVERY_EXPIRED =
+  'The project setup status is no longer available. Start again with a new source.';
+
 function getStructuredErrorCode(error: unknown): string | null {
   if (typeof error !== 'object' || error === null || !('data' in error)) {
     return null;

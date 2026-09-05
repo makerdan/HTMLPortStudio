@@ -89,6 +89,7 @@ import {
 import {
   getStudioErrorMessage,
   PROJECT_HANDOFF_FAILURE_FALLBACK,
+  PROJECT_HANDOFF_RECOVERY_EXPIRED,
 } from './studio-error';
 import {
   ZipSourceError,
@@ -633,9 +634,11 @@ function HandoffStepIcon({
 function RecoveredHandoffPanel({
   metadata,
   onClear,
+  onExpired,
 }: {
   metadata: HandoffRecoveryMetadata;
   onClear: () => void;
+  onExpired: () => void;
 }) {
   const {
     user,
@@ -661,6 +664,13 @@ function RecoveredHandoffPanel({
         if (query.state.error) return false;
         const status = query.state.data?.status;
         return status === 'completed' || status === 'failed' ? false : 800;
+      },
+      retry: (failureCount: number, error: unknown) => {
+        const code = apiErrorCode(error);
+        if (code === 'PROJECT_HANDOFF_NOT_FOUND' || code === 'AUTHENTICATION_REQUIRED') {
+          return false;
+        }
+        return failureCount < 3;
       },
     },
   });
@@ -692,10 +702,12 @@ function RecoveredHandoffPanel({
       return;
     }
     const code = apiErrorCode(statusQuery.error);
-    if (code === 'PROJECT_HANDOFF_NOT_FOUND' || code === 'AUTHENTICATION_REQUIRED') {
+    if (code === 'PROJECT_HANDOFF_NOT_FOUND') {
+      onExpired();
+    } else if (code === 'AUTHENTICATION_REQUIRED') {
       onClear();
     }
-  }, [onClear, statusQuery.data?.status, statusQuery.error]);
+  }, [onClear, onExpired, statusQuery.data?.status, statusQuery.error]);
 
   const handleRetry = () => {
     retryMutation.mutate(
@@ -1699,6 +1711,7 @@ export default function Home() {
   const [recoveryMetadata, setRecoveryMetadata] = useState<HandoffRecoveryMetadata | null>(
     () => readHandoffRecovery(),
   );
+  const [recoveryNotice, setRecoveryNotice] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [githubUrl, setGithubUrl] = useState('');
   const [githubLookupUrl, setGithubLookupUrl] = useState('');
@@ -1787,6 +1800,13 @@ export default function Home() {
   const clearRecovery = useCallback(() => {
     clearHandoffRecovery();
     setRecoveryMetadata(null);
+    setRecoveryNotice(null);
+  }, []);
+
+  const handleRecoveryExpired = useCallback(() => {
+    clearHandoffRecovery();
+    setRecoveryMetadata(null);
+    setRecoveryNotice(PROJECT_HANDOFF_RECOVERY_EXPIRED);
   }, []);
 
   const saveRecovery = useCallback((metadata: HandoffRecoveryMetadata) => {
@@ -1945,6 +1965,7 @@ export default function Home() {
     if (nextSource === selectedSource) return;
     importSessionRef.current += 1;
     analyzeMutation.reset();
+    clearRecovery();
     setAnalysisData(null);
     setSelectedSource(nextSource);
     setFileError(null);
@@ -2420,8 +2441,24 @@ export default function Home() {
         <Header onReset={handleReset} />
         <main className="flex-1 flex flex-col items-center justify-center p-6">
           <div className="w-full max-w-3xl space-y-4 animate-in fade-in zoom-in-95 duration-300">
+            {recoveryNotice && (
+              <Alert className="border-warning/50 bg-warning/10">
+                <Info className="h-4 w-4" />
+                <AlertTitle>Project setup status unavailable</AlertTitle>
+                <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
+                  <span>{recoveryNotice}</span>
+                  <Button type="button" size="sm" variant="outline" onClick={() => setRecoveryNotice(null)}>
+                    Dismiss
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            )}
             {recoveryMetadata && (
-              <RecoveredHandoffPanel metadata={recoveryMetadata} onClear={clearRecovery} />
+              <RecoveredHandoffPanel
+                metadata={recoveryMetadata}
+                onClear={clearRecovery}
+                onExpired={handleRecoveryExpired}
+              />
             )}
             {lastAppliedRepair && (
               <Alert className="border-primary/30 bg-primary/5">

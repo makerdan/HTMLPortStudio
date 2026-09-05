@@ -520,12 +520,28 @@ test("[cross-browser] clears or surfaces completed, failed, stale, and foreign h
   await seedRecovery(records.expired);
   await expect(page.getByRole("heading", { name: "Import HTML App" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Resume handoff status" })).not.toBeVisible();
+  await expect(page.getByRole("heading", { name: "Project setup status unavailable" })).toBeVisible();
+  await expect(
+    page.getByText("The project setup status is no longer available. Start again with a new source."),
+  ).toBeVisible();
+  await expect(page.getByText("Not found")).not.toBeVisible();
+  await expect(page.getByText(/Imported HTML/i)).not.toBeVisible();
   await expect
     .poll(
       () => page.evaluate(() => sessionStorage.getItem("html-port-studio:handoff-recovery")),
       { timeout: 15_000 },
     )
     .toBeNull();
+  await page.getByRole("button", { name: "Dismiss" }).click();
+  await expect(page.getByRole("heading", { name: "Project setup status unavailable" })).not.toBeVisible();
+
+  await seedRecovery(records.expired);
+  await expect(page.getByRole("heading", { name: "Project setup status unavailable" })).toBeVisible();
+  await page.getByRole("tab", { name: "Upload HTML" }).click();
+  await expect(page.getByRole("heading", { name: "Project setup status unavailable" })).not.toBeVisible();
+  await page.getByRole("tab", { name: "Paste HTML" }).click();
+  await page.getByPlaceholder(/paste your html/i).fill("<main>Fresh source</main>");
+  await expect(page.getByRole("heading", { name: "Project setup status unavailable" })).not.toBeVisible();
 
   await seedRecovery(records.foreignSession, {
     browserSessionId: "123e4567-e89b-12d3-a456-426614174017",

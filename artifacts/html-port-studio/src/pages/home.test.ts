@@ -12,6 +12,7 @@ import { getAnalysisErrorPresentation } from "./analysis-error.ts";
 import {
   getStudioErrorMessage,
   PROJECT_HANDOFF_FAILURE_FALLBACK,
+  PROJECT_HANDOFF_RECOVERY_EXPIRED,
   STUDIO_ERROR_MESSAGES,
 } from "./studio-error.ts";
 import {
@@ -411,6 +412,7 @@ test("uses concise fallbacks for unknown, transport, and non-JSON errors", () =>
     PROJECT_HANDOFF_FAILURE_FALLBACK,
     "The Replit project setup could not be completed. Retry the failed step.",
   );
+  assert.match(PROJECT_HANDOFF_RECOVERY_EXPIRED, /status is no longer available/i);
 });
 
 test("does not render raw server error fields in non-analysis surfaces", async () => {
