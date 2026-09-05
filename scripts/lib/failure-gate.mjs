@@ -5,6 +5,9 @@ import { ROOT, extractSectionBody, loadTierRegistry, resolvePlanFile } from "./t
 const BASELINE_FILE = path.join(ROOT, "docs/validation/failure-baseline.json");
 const REQUIRED_SECTIONS = ["Pre-existing failures to ignore", "Validation"];
 const PLACEHOLDER = /(?:<[^>]+>|\b(?:TODO|TBD|FIXME|REQUIRED)\b|\[(?:fill|choose|reason|command)[^\]]*\]|\.\.\.)/i;
+const BASELINE_STATUSES = new Set(["active", "needs-review", "intermittent", "environment-limited", "resolved"]);
+const BASELINE_TEXT_FIELDS = ["suite", "test", "signature", "owner"];
+const BASELINE_DATE_FIELDS = ["firstObserved", "lastVerified", "reviewDeadline"];
 
 export const BASELINE_STUB = `## Pre-existing failures to ignore
 None known at plan time. Treat every failure as a potential regression.
@@ -25,35 +28,76 @@ function sectionExists(text, heading) {
 function loadBaselineCatalog() {
   try {
     const catalog = JSON.parse(fs.readFileSync(BASELINE_FILE, "utf8"));
-    return Array.isArray(catalog.records) ? catalog.records : [];
+    if (!catalog || typeof catalog !== "object" || !Array.isArray(catalog.records)) {
+      return {
+        records: [],
+        errors: [`baseline catalog ${path.relative(ROOT, BASELINE_FILE)} must contain a records array.`],
+      };
+    }
+
+    const errors = [];
+    const ids = new Map();
+    for (const [index, record] of catalog.records.entries()) {
+      if (!record || typeof record !== "object" || Array.isArray(record)) {
+        errors.push(`baseline record at index ${index} is malformed.`);
+        continue;
+      }
+      const id = typeof record.id === "string" ? record.id.trim() : "";
+      if (!id) {
+        errors.push(`baseline record at index ${index} is malformed: it has no ID.`);
+        continue;
+      }
+      if (ids.has(id)) {
+        errors.push(`baseline ${id} is duplicated in the catalog (records ${ids.get(id)} and ${index}).`);
+      } else {
+        ids.set(id, index);
+      }
+      if (typeof record.status !== "string" || !BASELINE_STATUSES.has(record.status)) {
+        errors.push(`baseline ${id} has an invalid status.`);
+      }
+      for (const field of BASELINE_TEXT_FIELDS) {
+        if (typeof record[field] !== "string" || !record[field].trim()) {
+          errors.push(`baseline ${id} is malformed: it has no valid ${field}.`);
+        }
+      }
+      for (const field of BASELINE_DATE_FIELDS) {
+        if (!record[field] || Number.isNaN(new Date(record[field]).getTime())) {
+          errors.push(`baseline ${id} is malformed: it has no valid ${field}.`);
+        }
+      }
+    }
+    return { records: catalog.records, errors };
   } catch (error) {
     throw new Error(`Cannot read baseline catalog ${path.relative(ROOT, BASELINE_FILE)}: ${error.message}`);
   }
+}
+
+function repairAction(id) {
+  return `declare **Owned baseline repair:** \`${id}\` and repair the recorded failure`;
 }
 
 function checkBaselineReferences(text, errors) {
   const baseline = extractSectionBody(text, REQUIRED_SECTIONS[0]) || "";
   const references = [...baseline.matchAll(/^\s*-\s*\*\*(Ignored baseline|Owned baseline repair):\*\*\s*`([^`]+)`/gm)];
   const ownershipById = new Map();
-  const catalog = loadBaselineCatalog();
+  const { records: catalog, errors: catalogErrors } = loadBaselineCatalog();
+  errors.push(...catalogErrors);
   for (const [, ownership, id] of references) {
     if (ownershipById.has(id)) {
-      errors.push(`baseline ${id} declares more than one ownership.`);
+      errors.push(`baseline ${id} declares more than one ownership; choose one repair action.`);
       continue;
     }
     ownershipById.set(id, ownership);
     const record = catalog.find((candidate) => candidate?.id === id);
     if (!record) {
-      errors.push(`baseline ${id} is not present in the catalog.`);
+      errors.push(`baseline ${id} is not present in the catalog; ${repairAction(id)}.`);
       continue;
     }
+    if (ownership === "Owned baseline repair") continue;
     if (record.status !== "active") {
-      errors.push(`baseline ${id} is not active (status: ${record.status || "missing"}).`);
-    }
-    if (!record.reviewDeadline || Number.isNaN(new Date(record.reviewDeadline).getTime())) {
-      errors.push(`baseline ${id} has no valid review deadline.`);
+      errors.push(`baseline ${id} cannot authorize an ignored failure because it is not active (status: ${record.status || "missing"}); ${repairAction(id)}.`);
     } else if (new Date(record.reviewDeadline).getTime() < Date.now()) {
-      errors.push(`baseline ${id} has passed its review deadline.`);
+      errors.push(`baseline ${id} cannot authorize an ignored failure because its review deadline has passed; ${repairAction(id)}.`);
     }
   }
 }

@@ -9,6 +9,7 @@ import { validatePlanText } from "./lib/failure-gate.mjs";
 const root = path.resolve(import.meta.dirname, "..");
 const checker = path.join(root, "scripts/check-failure-gate.mjs");
 const runner = path.join(root, "scripts/run-locked-tier.mjs");
+const baselineFile = path.join(root, "docs/validation/failure-baseline.json");
 const valid = `# Valid
 
 ## Pre-existing failures to ignore
@@ -19,6 +20,35 @@ None known at plan time.
 **Why:** The standard tier covers this task's checks.
 **Do not escalate:** Run exactly this command.
 `;
+
+function baselineRecord(id, overrides = {}) {
+  return {
+    id,
+    status: "active",
+    suite: "test-standard",
+    test: "example test",
+    signature: "example failure",
+    owner: "Failure Gate maintainers",
+    firstObserved: "2026-01-01T00:00:00.000Z",
+    lastVerified: "2026-08-01T00:00:00.000Z",
+    reviewDeadline: "2099-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function planWithReference(ownership, id = "BASE-EXAMPLE") {
+  return valid.replace("None known at plan time.", `- **${ownership}:** \`${id}\` — recorded failure.`);
+}
+
+function withCatalog(records, callback) {
+  const original = fs.readFileSync(baselineFile, "utf8");
+  try {
+    fs.writeFileSync(baselineFile, JSON.stringify({ version: 1, records }, null, 2));
+    return callback();
+  } finally {
+    fs.writeFileSync(baselineFile, original);
+  }
+}
 
 test("accepts a valid plan", () => {
   assert.deepEqual(validatePlanText(valid, "valid plan"), []);
@@ -38,6 +68,64 @@ test("rejects an invalid tier", () => {
 test("rejects placeholder explanations", () => {
   const result = validatePlanText(valid.replace("The standard tier covers this task's checks.", "TBD"), "placeholder plan");
   assert.ok(result.some((error) => error.includes("placeholder")));
+});
+
+test("accepts an active, unexpired ignored baseline", () => {
+  const errors = withCatalog([baselineRecord("BASE-ACTIVE")], () =>
+    validatePlanText(planWithReference("Ignored baseline", "BASE-ACTIVE"), "active baseline plan"));
+  assert.deepEqual(errors, []);
+});
+
+test("rejects an expired ignored baseline and names the repair action", () => {
+  const errors = withCatalog([baselineRecord("BASE-EXPIRED", {
+    reviewDeadline: "2020-01-01T00:00:00.000Z",
+  })], () => validatePlanText(planWithReference("Ignored baseline", "BASE-EXPIRED"), "expired baseline plan"));
+  assert.ok(errors.some((error) => error.includes("BASE-EXPIRED") && error.includes("deadline has passed")));
+  assert.ok(errors.some((error) => error.includes("Owned baseline repair")));
+});
+
+for (const status of ["needs-review", "intermittent", "environment-limited", "resolved"]) {
+  test(`rejects a ${status} ignored baseline`, () => {
+    const errors = withCatalog([baselineRecord(`BASE-${status.toUpperCase()}`, { status })], () =>
+      validatePlanText(planWithReference("Ignored baseline", `BASE-${status.toUpperCase()}`), `${status} baseline plan`));
+    assert.ok(errors.some((error) => error.includes(`BASE-${status.toUpperCase()}`) && error.includes(`status: ${status}`)));
+    assert.ok(errors.some((error) => error.includes("Owned baseline repair")));
+  });
+}
+
+test("allows owned repair of an expired or non-active baseline", () => {
+  const errors = withCatalog([baselineRecord("BASE-REPAIR", {
+    status: "needs-review",
+    reviewDeadline: "2020-01-01T00:00:00.000Z",
+  })], () => validatePlanText(planWithReference("Owned baseline repair", "BASE-REPAIR"), "owned repair plan"));
+  assert.deepEqual(errors, []);
+});
+
+test("rejects duplicate ownership references", () => {
+  const plan = planWithReference("Ignored baseline", "BASE-DUPLICATE")
+    .replace("## Validation", "- **Owned baseline repair:** `BASE-DUPLICATE` — repair it.\n\n## Validation");
+  const errors = withCatalog([baselineRecord("BASE-DUPLICATE")], () => validatePlanText(plan, "duplicate ownership plan"));
+  assert.ok(errors.some((error) => error.includes("BASE-DUPLICATE") && error.includes("more than one ownership")));
+  assert.ok(errors.some((error) => error.includes("choose one repair action")));
+});
+
+test("rejects duplicate catalog IDs instead of authorizing the first record", () => {
+  const errors = withCatalog([
+    baselineRecord("BASE-CATALOG-DUPLICATE"),
+    baselineRecord("BASE-CATALOG-DUPLICATE", { status: "resolved" }),
+  ], () => validatePlanText(planWithReference("Ignored baseline", "BASE-CATALOG-DUPLICATE"), "duplicate catalog plan"));
+  assert.ok(errors.some((error) => error.includes("BASE-CATALOG-DUPLICATE") && error.includes("duplicated in the catalog")));
+});
+
+test("rejects malformed baseline records", () => {
+  const errors = withCatalog([
+    baselineRecord("BASE-MALFORMED", { status: "not-a-status" }),
+    { id: "BASE-NO-DEADLINE", status: "active" },
+    "not a record",
+  ], () => validatePlanText(planWithReference("Ignored baseline", "BASE-MALFORMED"), "malformed baseline plan"));
+  assert.ok(errors.some((error) => error.includes("BASE-MALFORMED") && error.includes("invalid status")));
+  assert.ok(errors.some((error) => error.includes("BASE-NO-DEADLINE") && error.includes("valid reviewDeadline")));
+  assert.ok(errors.some((error) => error.includes("record at index 2") && error.includes("malformed")));
 });
 
 test("TASK_PLAN_FILE selects exactly one plan", () => {
