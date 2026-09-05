@@ -11,6 +11,7 @@ import {
   useGetReplitProjectStatus,
   useRetryReplitProjectSetup,
   useGetGithubRepository,
+  importGithubRepository,
   useImportGithubRepository,
   useImportHostedUrl,
   useImportPlayground,
@@ -24,6 +25,7 @@ import type {
   ReplitProjectHandoff,
   ReplitProjectStepStatus,
   GithubImport,
+  GithubImportInput,
   GithubRef,
   HostedUrlImport,
   PlaygroundImport,
@@ -1741,7 +1743,15 @@ export default function Home() {
       },
     },
   );
-  const githubImportMutation = useImportGithubRepository();
+  const githubImportAbortControllerRef = useRef<AbortController | null>(null);
+  const githubImportMutation = useImportGithubRepository({
+    mutation: {
+      mutationFn: ({ data }: { data: GithubImportInput }) =>
+        importGithubRepository(data, {
+          signal: githubImportAbortControllerRef.current?.signal,
+        }),
+    },
+  });
   const hostedImportMutation = useImportHostedUrl();
   const playgroundImportMutation = useImportPlayground();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1967,6 +1977,8 @@ export default function Home() {
   const handleGithubImport = () => {
     const ref = githubCommit.trim() || githubRef.trim();
     if (!githubLookupUrl || !ref || githubImportMutation.isPending) return;
+    const abortController = new AbortController();
+    githubImportAbortControllerRef.current = abortController;
     const sessionId = ++importSessionRef.current;
     setGithubError(null);
     githubImportMutation.mutate(
@@ -1979,12 +1991,20 @@ export default function Home() {
       },
       {
         onSuccess: (data: GithubImport) => {
+          if (githubImportAbortControllerRef.current === abortController) {
+            githubImportAbortControllerRef.current = null;
+          }
+          if (abortController.signal.aborted) return;
           if (sessionId !== importSessionRef.current) return;
           setGithubImportData(data);
           setGithubCandidates(data.entrypointCandidates);
           setGithubEntrypoint(data.bundle.entrypoint);
         },
         onError: (error: unknown) => {
+          if (githubImportAbortControllerRef.current === abortController) {
+            githubImportAbortControllerRef.current = null;
+          }
+          if (abortController.signal.aborted) return;
           if (sessionId !== importSessionRef.current) return;
           const candidates = apiErrorDetails(error).entrypointCandidates;
           setGithubCandidates(
@@ -2130,6 +2150,8 @@ export default function Home() {
   const handleReset = () => {
     importSessionRef.current += 1;
     analyzeMutation.reset();
+    githubImportAbortControllerRef.current?.abort();
+    githubImportAbortControllerRef.current = null;
     githubImportMutation.reset();
     clearRecovery();
     setAnalysisData(null);

@@ -174,18 +174,27 @@ async function openGithubImport(page: import("@playwright/test").Page) {
 test("starting over invalidates a pending GitHub import and permits a fresh import", async ({ page }) => {
   let importAttempts = 0;
   let releaseFirstImport: (() => void) | null = null;
+  let firstImportRequest: import("@playwright/test").Request | null = null;
+  let firstImportRequestAborted = false;
   await mockAuth(page);
+  page.on("requestfailed", (request) => {
+    if (request === firstImportRequest) {
+      firstImportRequestAborted = true;
+    }
+  });
   await page.route("**/api/port/github/repository**", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(githubRepository) }),
   );
   await page.route("**/api/port/github/import", (route) => {
     importAttempts += 1;
     if (importAttempts === 1) {
+      firstImportRequest = route.request();
       return new Promise<void>((resolve) => {
         releaseFirstImport = () => {
           void route
             .fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(githubImport) })
-            .then(resolve);
+            .then(resolve)
+            .catch(resolve);
         };
       });
     }
@@ -204,6 +213,7 @@ test("starting over invalidates a pending GitHub import and permits a fresh impo
 
   await page.getByRole("button", { name: "Reset HTML Port Studio" }).click();
   await expect(page.getByPlaceholder(/paste your html/i)).toBeVisible();
+  await expect.poll(() => firstImportRequestAborted).toBe(true);
   await openGithubImport(page);
   const freshFetchButton = page.getByRole("button", { name: "Fetch selected snapshot" });
   await expect(freshFetchButton).toBeEnabled();
