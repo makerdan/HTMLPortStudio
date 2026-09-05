@@ -512,6 +512,56 @@ test("clears replaced editor feedback after re-analysis makes the report current
   await expect(page.getByText("Replaced 2 matches.")).not.toBeVisible();
 });
 
+test("keeps stale editor feedback through a failed re-analysis and clears it after retry", async ({ page }) => {
+  let analysisAttempts = 0;
+  await mockAuth(page);
+  await page.route("**/api/port/analyze", (route) => {
+    analysisAttempts += 1;
+    if (analysisAttempts === 2) {
+      return route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Temporary analysis outage" }),
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        title: "Imported page",
+        bytes: html.length,
+        scriptCount: 0,
+        externalScriptCount: 0,
+        inlineScriptCount: 0,
+        externalAssetCount: 0,
+        aiSignalCount: 0,
+        findings: [],
+        steps: [],
+      }),
+    });
+  });
+
+  await page.goto("/");
+  await analyzeImportedHtml(page);
+  await page.getByRole("tab", { name: "Source Editor" }).click();
+
+  const editor = page.getByRole("textbox", { name: "Edit source file index.html" });
+  await editor.fill("<main>Edited</main>\n<p>Edited</p>");
+  await expect(page.getByText("Unsaved source change is held in this browser tab.")).toBeVisible();
+  await page.getByRole("button", { name: "Re-analyze source" }).click();
+
+  await expect(page.getByText("Analysis is out of date")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Re-analyze source" })).toBeVisible();
+  await expect(page.getByText("Unsaved source change is held in this browser tab.")).toBeVisible();
+
+  await page.getByRole("button", { name: "Re-analyze source" }).click();
+  await expect(page.getByRole("button", { name: "Analysis current" })).toBeVisible();
+  await expect(page.getByText("Analysis is out of date")).not.toBeVisible();
+  await expect(page.getByText("Unsaved source change is held in this browser tab.")).not.toBeVisible();
+  await expect(page.getByText("Unsaved changes")).not.toBeVisible();
+  expect(analysisAttempts).toBe(3);
+});
+
 async function exerciseFindReplace(page: import("@playwright/test").Page) {
   await openEditor(page);
   const editor = page.getByRole("textbox", { name: "Edit source file index.html" });

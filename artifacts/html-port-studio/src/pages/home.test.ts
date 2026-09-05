@@ -597,3 +597,14 @@ test("clears obsolete editor feedback when analysis becomes current", async () =
   assert.match(editorSource, /onClick=\{onAnalyze\} disabled=\{isStale === false\}/);
   assert.match(editorSource, /isStale \? 'Re-analyze source' : 'Analysis current'/);
 });
+
+test("keeps the editor stale when analysis fails", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+  const submitStart = source.indexOf("const submitBundleForAnalysis");
+  const submitEnd = source.indexOf("const handleAnalyze", submitStart);
+  const submitSource = source.slice(submitStart, submitEnd);
+
+  assert.notEqual(submitStart, -1);
+  assert.match(submitSource, /onError: \(\) => \{\s*if \(sessionId !== importSessionRef\.current \|\| requestRevision !== sourceRevisionRef\.current\) return;\s*\/\/ A failed retry must never make the current revision look analyzed\.\s*\/\/ Keep the existing report and editor feedback available for another attempt\.\s*setAnalysisStale\(true\);/s);
+  assert.doesNotMatch(submitSource, /onError:[\s\S]*setAnalysisData\(null\)/);
+});

@@ -1802,6 +1802,9 @@ export default function Home() {
       },
       onError: () => {
         if (sessionId !== importSessionRef.current || requestRevision !== sourceRevisionRef.current) return;
+        // A failed retry must never make the current revision look analyzed.
+        // Keep the existing report and editor feedback available for another attempt.
+        setAnalysisStale(true);
         if (isRepairRescan) {
           trackEvent('credential_recovery_rescan', { result: 'failed' });
         }
