@@ -25,7 +25,7 @@ function sectionExists(text, heading) {
   return extractSectionBody(text, heading) !== null;
 }
 
-function loadBaselineCatalog() {
+export function loadBaselineCatalog() {
   try {
     const catalog = JSON.parse(fs.readFileSync(BASELINE_FILE, "utf8"));
     if (!catalog || typeof catalog !== "object" || !Array.isArray(catalog.records)) {

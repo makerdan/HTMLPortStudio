@@ -22,5 +22,8 @@ unexpired record. A stale or non-active record must instead be named as
 failure; repair ownership does not authorize ignoring it. A record ID may
 appear only once in a plan.
 
-Run `pnpm run maintain:validation-baseline` for an opt-in review report.
-Maintenance warnings do not fail unrelated task validation.
+Run `pnpm run maintain:validation-baseline` for an opt-in review report. The
+report labels malformed or duplicate records as `Schema problem` and expired
+active records as `Expired active record`, including the record ID or index
+reported by the catalog validator. Maintenance warnings do not fail unrelated
+task validation.

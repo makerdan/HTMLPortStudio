@@ -128,6 +128,25 @@ test("rejects malformed baseline records", () => {
   assert.ok(errors.some((error) => error.includes("record at index 2") && error.includes("malformed")));
 });
 
+test("maintenance reports schema problems and expired active records without failing", () => {
+  const result = withCatalog([
+    baselineRecord("BASE-DUPLICATE"),
+    baselineRecord("BASE-DUPLICATE", { reviewDeadline: "2020-01-01T00:00:00.000Z" }),
+    { id: "BASE-MALFORMED", status: "not-a-status" },
+    null,
+    "not a record",
+  ], () => spawnSync(process.execPath, [path.join(root, "scripts/maintain-validation-baseline.mjs")], {
+    cwd: root,
+    encoding: "utf8",
+  }));
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stderr, /Schema problem: baseline BASE-DUPLICATE is duplicated/);
+  assert.match(result.stderr, /Schema problem: baseline BASE-MALFORMED has an invalid status/);
+  assert.match(result.stderr, /Schema problem: baseline record at index 3 is malformed/);
+  assert.match(result.stderr, /Schema problem: baseline record at index 4 is malformed/);
+  assert.match(result.stderr, /Expired active record: BASE-DUPLICATE/);
+});
+
 test("TASK_PLAN_FILE selects exactly one plan", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "failure-gate-"));
   const file = path.join(directory, "plan.md");
