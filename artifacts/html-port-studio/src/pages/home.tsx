@@ -2636,9 +2636,9 @@ export default function Home() {
                 {selectedSource === 'html' && (
                   <div className="rounded-lg border border-dashed p-6 text-center">
                     <Upload className="mx-auto mb-2 h-6 w-6 text-primary" />
-                    <p className="text-sm font-medium">Upload HTML</p>
-                    <p className="mt-1 text-xs text-muted-foreground">Only public, local .html and .htm files are read.</p>
-                    <Button type="button" variant="outline" className="mt-3" onClick={() => fileInputRef.current?.click()}>
+                    <p className="text-base font-medium">Upload HTML</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Only public, local .html and .htm files are read.</p>
+                    <Button type="button" variant="outline" className="mt-3 text-base" onClick={() => fileInputRef.current?.click()}>
                       Choose HTML file
                     </Button>
                   </div>
