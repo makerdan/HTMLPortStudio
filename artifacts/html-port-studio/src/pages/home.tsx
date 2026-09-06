@@ -3508,20 +3508,20 @@ export default function Home() {
              <Tabs defaultValue="preview" className="h-full flex flex-col">
               <div className="border-b bg-card px-4 py-2 flex items-center justify-between">
                 <TabsList>
-                  <TabsTrigger value="preview" className="studio-button gap-2">
+                  <TabsTrigger value="preview" className="studio-button preview-toolbar-button gap-2">
                     <MonitorPlay aria-hidden="true" className="h-4 w-4" />
                     Safe Preview
                   </TabsTrigger>
-                  <TabsTrigger value="assistant" className="studio-button gap-2">
+                  <TabsTrigger value="assistant" className="studio-button preview-toolbar-button gap-2">
                     <Sparkles aria-hidden="true" className="h-4 w-4" />
                     Poe Assistant
                   </TabsTrigger>
-                   <TabsTrigger value="editor" className="studio-button gap-2">
+                   <TabsTrigger value="editor" className="studio-button preview-toolbar-button gap-2">
                      <Code2 aria-hidden="true" className="h-4 w-4" />
                      Source Editor
                    </TabsTrigger>
                 </TabsList>
-                <Button size="sm" variant="outline" className="gap-2 font-mono text-xs" onClick={handleReset}>
+                <Button size="sm" variant="outline" className="preview-toolbar-button gap-2 font-mono text-xs" onClick={handleReset}>
                   <ArrowRight aria-hidden="true" className="h-3 w-3" /> Start Over
                 </Button>
               </div>

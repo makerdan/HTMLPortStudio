@@ -114,4 +114,8 @@
   .studio-button {
     border: 1px solid hsl(var(--border));
   }
+
+  .preview-toolbar-button {
+    border-color: #000;
+  }
 }

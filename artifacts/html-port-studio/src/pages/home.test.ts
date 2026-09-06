@@ -226,7 +226,7 @@ test("renders the responsive Studio composition and accessible actions", async (
   assert.match(source, /md:border-r/);
 });
 
-test("gives Studio controls a token border without crossing the preview iframe", async () => {
+test("gives the Preview toolbar controls thin black borders without crossing the iframe", async () => {
   const homeSource = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
   const buttonSource = await readFile(
     new URL("../components/ui/button.tsx", import.meta.url),
@@ -241,8 +241,11 @@ test("gives Studio controls a token border without crossing the preview iframe",
   assert.match(buttonSource, /"studio-button inline-flex/);
   assert.match(fallbackSource, /className="studio-button mt-4/);
   assert.match(styles, /\.studio-button\s*\{\s*border:\s*1px solid hsl\(var\(--border\)\);\s*\}/s);
-  assert.match(homeSource, /<TabsTrigger value="preview" className="studio-button gap-2">/);
-  assert.match(homeSource, /<TabsTrigger value="assistant" className="studio-button gap-2">/);
+  assert.match(styles, /\.preview-toolbar-button\s*\{\s*border-color:\s*#000;\s*\}/s);
+  assert.match(homeSource, /<TabsTrigger value="preview" className="studio-button preview-toolbar-button gap-2">/);
+  assert.match(homeSource, /<TabsTrigger value="assistant" className="studio-button preview-toolbar-button gap-2">/);
+  assert.match(homeSource, /<TabsTrigger value="editor" className="studio-button preview-toolbar-button gap-2">/);
+  assert.match(homeSource, /<Button size="sm" variant="outline" className="preview-toolbar-button gap-2 font-mono text-xs"/);
   assert.match(homeSource, /<iframe[\s\S]*sandbox="allow-scripts allow-forms"[\s\S]*className="w-full h-full border-0"/);
 });
 
