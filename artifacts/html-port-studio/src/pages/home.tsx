@@ -2663,10 +2663,10 @@ export default function Home() {
                              <Files className="h-4 w-4" />
                            </div>
                             <div className="min-w-0 flex-1">
-                              <p className={`${sourceBundle.sourceType === 'single_file' ? 'text-base' : 'text-sm'} break-words font-semibold [overflow-wrap:anywhere]`}>
+                              <p className="break-words text-base font-semibold [overflow-wrap:anywhere]">
                                 {sourceBundle.metadata.displayName}
                               </p>
-                              <p className={`${sourceBundle.sourceType === 'single_file' ? 'text-sm' : 'text-xs'} break-words text-muted-foreground [overflow-wrap:anywhere]`}>
+                              <p className="break-words text-sm text-muted-foreground [overflow-wrap:anywhere]">
                                {sourceBundle.files.length} file{sourceBundle.files.length === 1 ? '' : 's'} ·{' '}
                                {formatBytes(
                                  sourceBundle.files.reduce(
