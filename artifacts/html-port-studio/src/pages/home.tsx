@@ -2693,12 +2693,11 @@ export default function Home() {
                            </Select>
                          )}
                        </div>
-                       <p className="mt-3 border-t pt-3 text-xs text-muted-foreground">
-                          Main HTML file: <span className="font-mono text-foreground">{sourceBundle.entrypoint}</span>
-                         {sourceBundle.sourceType === 'zip_project'
-                           ? ' · Selecting the ZIP only unpacks files locally; analyze when ready.'
-                           : ''}
-                       </p>
+                      {sourceBundle.sourceType === 'zip_project' && (
+                        <p className="mt-3 border-t pt-3 text-xs text-muted-foreground">
+                          Selecting the ZIP only unpacks files locally; analyze when ready.
+                        </p>
+                      )}
                      </CardContent>
                    </Card>
                  )}
@@ -3170,9 +3169,6 @@ export default function Home() {
                         {' · '}
                         Commit:{' '}
                         <span className="font-mono">{sourceBundle.metadata.resolvedCommitSha}</span>
-                      </div>
-                      <div className="mt-1">
-                        Main HTML file: <span className="font-mono">{sourceBundle.entrypoint}</span>
                       </div>
                     </div>
                   )}
