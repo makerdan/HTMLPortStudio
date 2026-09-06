@@ -2662,11 +2662,11 @@ export default function Home() {
                            <div className="mt-0.5 rounded-md bg-primary/10 p-2 text-primary">
                              <Files className="h-4 w-4" />
                            </div>
-                           <div>
-                              <p className={`${sourceBundle.sourceType === 'single_file' ? 'text-base' : 'text-sm'} font-semibold`}>
+                            <div className="min-w-0 flex-1">
+                              <p className={`${sourceBundle.sourceType === 'single_file' ? 'text-base' : 'text-sm'} break-words font-semibold [overflow-wrap:anywhere]`}>
                                 {sourceBundle.metadata.displayName}
                               </p>
-                              <p className={`${sourceBundle.sourceType === 'single_file' ? 'text-sm' : 'text-xs'} text-muted-foreground`}>
+                              <p className={`${sourceBundle.sourceType === 'single_file' ? 'text-sm' : 'text-xs'} break-words text-muted-foreground [overflow-wrap:anywhere]`}>
                                {sourceBundle.files.length} file{sourceBundle.files.length === 1 ? '' : 's'} ·{' '}
                                {formatBytes(
                                  sourceBundle.files.reduce(
