@@ -152,6 +152,7 @@ function formatBytes(bytes: number, decimals = 2) {
 }
 
 const HTML_FILE_EXTENSIONS = ['.html', '.htm'];
+const SAFE_BUNDLE_PATH = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[a-zA-Z0-9._/-]+$/;
 function utf8ByteLength(value: string): number {
   return new TextEncoder().encode(value).length;
 }
@@ -183,6 +184,15 @@ function validateHtmlFile(file: File): string | null {
     return `This HTML file is ${formatBytes(file.size)}. Choose a file no larger than ${SOURCE_TEXT_LIMIT_LABEL}.`;
   }
   return null;
+}
+
+function safeUploadedHtmlPath(fileName: string): string {
+  const normalized = fileName.replaceAll('\\', '/');
+  return SAFE_BUNDLE_PATH.test(normalized) &&
+    !normalized.endsWith('/') &&
+    !normalized.includes('//')
+    ? normalized
+    : 'index.html';
 }
 
 function validateHostedUrl(value: string): string | null {
@@ -1911,36 +1921,6 @@ export default function Home() {
     submitBundleForAnalysis(bundle);
   };
 
-  const handleRenameUnsafeHtmlFile = () => {
-    if (
-      selectedSource !== 'html' ||
-      sourceBundle?.sourceType !== 'single_file' ||
-      sourceBundle.files.length !== 1
-    ) {
-      return;
-    }
-    const [uploadedFile] = sourceBundle.files;
-    const safePath = 'index.html';
-    const nextBundle: SourceBundle = {
-      ...sourceBundle,
-      files: [{ ...uploadedFile, path: safePath }],
-      entrypoint: safePath,
-      metadata: {
-        ...sourceBundle.metadata,
-        displayName: 'index',
-      },
-    };
-    importSessionRef.current += 1;
-    clearRecovery();
-    setSourceBundle(nextBundle);
-    setAnalysisData(null);
-    const nextRevision = bumpSourceRevision();
-    setAnalyzedRevision(null);
-    setAnalysisStale(false);
-    analyzeMutation.reset();
-    submitBundleForAnalysis(nextBundle, { requestRevision: nextRevision });
-  };
-
   const bundleWithEntrypointSource = (source: string): SourceBundle => {
     if (sourceBundle) {
       return {
@@ -2306,13 +2286,14 @@ export default function Home() {
     const html = await file.text();
     if (sessionId !== importSessionRef.current) return;
     importSessionRef.current += 1;
+    const bundlePath = safeUploadedHtmlPath(file.name);
     setHtmlInput(html);
     clearRecovery();
     setSourceBundle({
       version: 1,
       sourceType: 'single_file',
-      files: [{ path: file.name, content: html }],
-      entrypoint: file.name,
+      files: [{ path: bundlePath, content: html }],
+      entrypoint: bundlePath,
       metadata: { displayName: file.name.replace(/\.(html?|HTML?)$/, '') || 'HTML app' },
     });
     setAnalysisData(null);
@@ -3119,19 +3100,6 @@ export default function Home() {
                             {analyzeMutation.isPending ? 'Retrying…' : 'Retry analysis'}
                           </Button>
                         )}
-                        {analysisError?.code === 'BUNDLE_UNSAFE_PATH' &&
-                          selectedSource === 'html' &&
-                          sourceBundle?.sourceType === 'single_file' && (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              onClick={handleRenameUnsafeHtmlFile}
-                              disabled={analyzeMutation.isPending}
-                            >
-                              Rename File
-                            </Button>
-                          )}
                         {htmlInput.trim() && (
                           <Button
                             type="button"

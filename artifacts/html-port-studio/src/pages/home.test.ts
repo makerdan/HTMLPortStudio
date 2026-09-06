@@ -109,28 +109,27 @@ test("maps structured analysis errors to safe, actionable guidance", () => {
   });
 
   assert.equal(result.title, "Analysis needs attention");
-  assert.equal(result.code, "BUNDLE_ENTRYPOINT_MISSING");
   assert.match(result.message, /entrypoint/i);
   assert.doesNotMatch(result.message, /internal source details/i);
   assert.equal(result.retryable, false);
 });
 
-test("offers a safe temporary rename for unsafe uploaded HTML paths", async () => {
+test("silently normalizes unsafe uploaded HTML paths before analysis", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
-  const handlerStart = source.indexOf("const handleRenameUnsafeHtmlFile");
-  const handlerEnd = source.indexOf("const bundleWithEntrypointSource", handlerStart);
-  const handler = source.slice(handlerStart, handlerEnd);
+  const helperStart = source.indexOf("function safeUploadedHtmlPath");
+  const helperEnd = source.indexOf("function validateHostedUrl", helperStart);
+  const helper = source.slice(helperStart, helperEnd);
   const errorBlockStart = source.indexOf("{analyzeMutation.isError && (");
   const errorBlockEnd = source.indexOf("{analyzeMutation.isError && repairSource", errorBlockStart);
   const errorBlock = source.slice(errorBlockStart, errorBlockEnd);
 
-  assert.notEqual(handlerStart, -1);
-  assert.notEqual(handlerEnd, -1);
-  assert.match(handler, /sourceType !== 'single_file'/);
-  assert.match(handler, /const safePath = 'index\.html'/);
-  assert.match(handler, /submitBundleForAnalysis\(nextBundle, \{ requestRevision: nextRevision \}\)/);
-  assert.match(errorBlock, /analysisError\?\.code === 'BUNDLE_UNSAFE_PATH'/);
-  assert.match(errorBlock, /Rename File/);
+  assert.notEqual(helperStart, -1);
+  assert.notEqual(helperEnd, -1);
+  assert.match(helper, /SAFE_BUNDLE_PATH\.test\(normalized\)/);
+  assert.match(helper, /: 'index\.html'/);
+  assert.match(source, /const bundlePath = safeUploadedHtmlPath\(file\.name\)/);
+  assert.match(source, /files: \[\{ path: bundlePath, content: html \}\]/);
+  assert.doesNotMatch(errorBlock, /Rename File/);
 });
 
 test("renders actionable analysis failures in the visible alert", async () => {

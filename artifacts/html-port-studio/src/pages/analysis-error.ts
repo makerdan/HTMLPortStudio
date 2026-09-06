@@ -5,14 +5,12 @@ type AnalysisErrorData = {
 };
 
 export type AnalysisErrorPresentation = {
-  code: string | null;
   title: string;
   message: string;
   retryable: boolean;
 };
 
 const FALLBACK_ANALYSIS_ERROR: AnalysisErrorPresentation = {
-  code: null,
   title: 'Analysis unavailable',
   message:
     "We couldn't reach the analysis service. Your HTML is still here. Check your connection and try again.",
@@ -64,7 +62,6 @@ export function getAnalysisErrorPresentation(error: unknown): AnalysisErrorPrese
 
   if (message) {
     return {
-      code,
       title: 'Analysis needs attention',
       message,
       retryable: false,
