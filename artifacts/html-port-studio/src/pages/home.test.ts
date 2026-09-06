@@ -154,6 +154,19 @@ test("clears every import method without changing the selected import card", asy
   );
 });
 
+test("opens the HTML file picker when the upload panel background is clicked", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+  const panelStart = source.indexOf("className=\"cursor-pointer rounded-lg border border-dashed");
+  const panelEnd = source.indexOf("{selectedSource === 'zip'", panelStart);
+  const panel = source.slice(panelStart, panelEnd);
+
+  assert.notEqual(panelStart, -1);
+  assert.notEqual(panelEnd, -1);
+  assert.match(panel, /closest\('button'\)/);
+  assert.match(panel, /fileInputRef\.current\?\.click\(\)/);
+  assert.match(panel, /hover:bg-muted\/20/);
+});
+
 test("renders actionable analysis failures in the visible alert", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
   const errorBlockStart = source.indexOf("{analyzeMutation.isError && (");

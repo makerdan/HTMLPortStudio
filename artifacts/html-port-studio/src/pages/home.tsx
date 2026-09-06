@@ -2681,7 +2681,14 @@ export default function Home() {
                   </>
                 )}
                 {selectedSource === 'html' && (
-                  <div className="rounded-lg border border-dashed p-6 text-center">
+                  <div
+                    className="cursor-pointer rounded-lg border border-dashed p-6 text-center transition-colors hover:bg-muted/20"
+                    onClick={(event) => {
+                      if (!(event.target as HTMLElement).closest('button')) {
+                        fileInputRef.current?.click();
+                      }
+                    }}
+                  >
                     <Upload className="mx-auto mb-2 h-6 w-6 text-primary" />
                     <p className="text-base font-medium">Upload HTML</p>
                     <p className="mt-1 text-sm text-muted-foreground">Only public, local .html and .htm files are read.</p>
