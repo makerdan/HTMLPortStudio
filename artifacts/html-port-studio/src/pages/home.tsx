@@ -2320,7 +2320,7 @@ export default function Home() {
       if (!entrypointFile) {
         throw new ZipSourceError(
           'ZIP_NO_HTML',
-          'The ZIP entrypoint could not be selected. Choose another archive.',
+          'The main HTML file could not be selected from this ZIP. Choose another archive.',
         );
       }
       clearRecovery();
@@ -2679,7 +2679,7 @@ export default function Home() {
                          {sourceBundle.files.filter((file) => /\.(?:html?)$/i.test(file.path)).length > 1 && (
                            <Select value={sourceBundle.entrypoint} onValueChange={handleEntrypointChange}>
                              <SelectTrigger className="w-full sm:w-[260px]">
-                               <SelectValue placeholder="Choose entrypoint" />
+                                <SelectValue placeholder="Choose main HTML file" />
                              </SelectTrigger>
                              <SelectContent>
                                {sourceBundle.files
@@ -2694,7 +2694,7 @@ export default function Home() {
                          )}
                        </div>
                        <p className="mt-3 border-t pt-3 text-xs text-muted-foreground">
-                         Entrypoint: <span className="font-mono text-foreground">{sourceBundle.entrypoint}</span>
+                          Main HTML file: <span className="font-mono text-foreground">{sourceBundle.entrypoint}</span>
                          {sourceBundle.sourceType === 'zip_project'
                            ? ' · Selecting the ZIP only unpacks files locally; analyze when ready.'
                            : ''}
@@ -3127,7 +3127,7 @@ export default function Home() {
                   {analyzeMutation.isPending ? (
                     <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Analyzing...</>
                   ) : entrypointSelectionRequired ? (
-                    <><Files className="mr-2 h-5 w-5" /> Choose an entrypoint to continue</>
+                    <><Files className="mr-2 h-5 w-5" /> Choose a main HTML file to continue</>
                   ) : (
                     <><Activity className="mr-2 h-5 w-5" /> Analyze & Preview</>
                   )}
@@ -3172,7 +3172,7 @@ export default function Home() {
                         <span className="font-mono">{sourceBundle.metadata.resolvedCommitSha}</span>
                       </div>
                       <div className="mt-1">
-                        Entrypoint: <span className="font-mono">{sourceBundle.entrypoint}</span>
+                        Main HTML file: <span className="font-mono">{sourceBundle.entrypoint}</span>
                       </div>
                     </div>
                   )}
