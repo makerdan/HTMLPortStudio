@@ -2557,10 +2557,10 @@ export default function Home() {
                       role="tab"
                       aria-selected={selectedSource === value}
                       variant={selectedSource === value ? 'default' : 'outline'}
-                      className="h-auto min-h-16 flex-col items-start justify-center gap-0.5 px-3 py-2 text-left"
+                      className="h-auto min-h-16 flex-col items-start justify-center gap-0.5 border border-black px-3 py-2 text-left"
                       onClick={() => handleSourceChange(value)}
                     >
-                      <span className="text-sm font-semibold">{label}</span>
+                      <span className="text-sm font-bold">{label}</span>
                       <span className={`text-xs ${selectedSource === value ? 'text-primary-foreground/75' : 'text-muted-foreground'}`}>
                         {description}
                       </span>
