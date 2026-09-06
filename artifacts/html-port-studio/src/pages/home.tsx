@@ -83,6 +83,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { getAnalysisErrorPresentation } from './analysis-error';
 import {
+  reconcileReadinessChecklist,
+  type ReadinessChecklistItem,
+} from './readiness-checklist';
+import {
   clearHandoffRecovery,
   createHandoffRecovery,
   getBrowserSessionId,
@@ -1733,9 +1737,7 @@ export default function Home() {
   const [htmlInput, setHtmlInput] = useState('');
   const [sourceBundle, setSourceBundle] = useState<SourceBundle | null>(null);
   const [analysisData, setAnalysisData] = useState<HtmlAnalysis | null>(null);
-  const [completedPortingSteps, setCompletedPortingSteps] = useState<Set<number>>(
-    () => new Set(),
-  );
+  const [readinessChecklist, setReadinessChecklist] = useState<ReadinessChecklistItem[]>([]);
   const [recoveryMetadata, setRecoveryMetadata] = useState<HandoffRecoveryMetadata | null>(
     () => readHandoffRecovery(),
   );
@@ -1890,7 +1892,9 @@ export default function Home() {
       onSuccess: (data: HtmlAnalysis) => {
         if (sessionId !== importSessionRef.current || requestRevision !== sourceRevisionRef.current) return;
         setAnalysisData(data);
-        setCompletedPortingSteps(new Set());
+        setReadinessChecklist((previous) =>
+          reconcileReadinessChecklist(previous, data.findings),
+        );
         setSourceBundle(bundle);
         setAnalyzedRevision(requestRevision);
         setAnalysisStale(false);
@@ -1983,7 +1987,6 @@ export default function Home() {
     setAnalyzedRevision(null);
     setAnalysisStale(true);
     setAnalysisData(null);
-    setCompletedPortingSteps(new Set());
     setRepairSource(patchedEntrypoint);
     setRepairOpen(false);
     // submitBundleForAnalysis(nextBundle) remains the recovery rescan boundary.
@@ -2007,7 +2010,6 @@ export default function Home() {
     setAnalyzedRevision(null);
     setAnalysisStale(true);
     setAnalysisData(null);
-    setCompletedPortingSteps(new Set());
     setRepairSource(original);
     setRepairOpen(containsCredential(original));
     submitBundleForAnalysis(nextBundle, { requestRevision: nextRevision });
@@ -2019,6 +2021,7 @@ export default function Home() {
     analyzeMutation.reset();
     clearRecovery();
     setAnalysisData(null);
+    setReadinessChecklist([]);
     setSelectedSource(nextSource);
     setFileError(null);
     setGithubError(null);
@@ -2106,6 +2109,9 @@ export default function Home() {
     setSourceBundle(bundle);
     setHtmlInput(entrypointHtml);
     setAnalysisData(githubImportData.analysis);
+    setReadinessChecklist(
+      reconcileReadinessChecklist([], githubImportData.analysis.findings),
+    );
     const nextRevision = bumpSourceRevision();
     setAnalyzedRevision(nextRevision);
     setAnalysisStale(false);
@@ -2148,6 +2154,7 @@ export default function Home() {
           setSourceBundle(bundle);
           setHtmlInput(entrypointHtml);
           setAnalysisData(null);
+          setReadinessChecklist([]);
           bumpSourceRevision();
           setAnalyzedRevision(null);
           setAnalysisStale(false);
@@ -2210,6 +2217,7 @@ export default function Home() {
           setSourceBundle(data.bundle);
           setHtmlInput(entrypointHtml);
           setAnalysisData(null);
+          setReadinessChecklist([]);
           bumpSourceRevision();
           setAnalyzedRevision(null);
           setAnalysisStale(false);
@@ -2252,6 +2260,7 @@ export default function Home() {
     githubImportMutation.reset();
     clearRecovery();
     setAnalysisData(null);
+    setReadinessChecklist([]);
     setHtmlInput('');
     setSourceBundle(null);
     sourceRevisionRef.current = 0;
@@ -2302,6 +2311,7 @@ export default function Home() {
     setHtmlInput('');
     setSourceBundle(null);
     setAnalysisData(null);
+    setReadinessChecklist([]);
     bumpSourceRevision();
     setAnalyzedRevision(null);
     setAnalysisStale(false);
@@ -2359,6 +2369,7 @@ export default function Home() {
       metadata: { displayName: file.name.replace(/\.(html?|HTML?)$/, '') || 'HTML app' },
     });
     setAnalysisData(null);
+    setReadinessChecklist([]);
     bumpSourceRevision();
     setAnalyzedRevision(null);
     setAnalysisStale(false);
@@ -2400,6 +2411,7 @@ export default function Home() {
       setSourceBundle(bundle);
       setHtmlInput(entrypointFile.content);
       setAnalysisData(null);
+      setReadinessChecklist([]);
       bumpSourceRevision();
       setAnalyzedRevision(null);
       setAnalysisStale(false);
@@ -3281,8 +3293,8 @@ export default function Home() {
     );
   }
 
-  const currentPortingStep = analysisData.steps.findIndex(
-    (_, index) => !completedPortingSteps.has(index),
+  const currentPortingStep = readinessChecklist.findIndex(
+    (item) => !item.completed,
   );
 
   // --- STUDIO VIEW ---
@@ -3485,16 +3497,19 @@ export default function Home() {
                  )}
 
                 {/* Steps */}
-                {analysisData.steps.length > 0 && (
+                {readinessChecklist.length > 0 && (
                   <div>
                     <h3 className="text-lg font-semibold mb-4">Porting Checklist</h3>
+                    <p className="-mt-2 mb-4 text-xs text-muted-foreground">
+                      Steps update automatically after each successful analysis.
+                    </p>
                     <div className="space-y-2">
-                      {analysisData.steps.map((step, idx) => (
+                      {readinessChecklist.map((item, idx) => (
                         <div
-                          key={idx}
+                          key={item.key}
                           aria-current={idx === currentPortingStep ? 'step' : undefined}
                           className={`flex items-start gap-3 rounded-lg border p-3 text-sm ${
-                            completedPortingSteps.has(idx)
+                            item.completed
                               ? 'border-green-500/40 bg-green-500/10'
                               : idx === currentPortingStep
                                 ? 'border-primary bg-primary/10 ring-1 ring-primary/30'
@@ -3502,47 +3517,34 @@ export default function Home() {
                           }`}
                         >
                           <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-                            completedPortingSteps.has(idx)
+                            item.completed
                               ? 'bg-green-600 text-white'
                               : idx === currentPortingStep
                                 ? 'bg-primary text-primary-foreground'
                                 : 'bg-muted text-muted-foreground'
                           }`}>
-                            {completedPortingSteps.has(idx) ? <Check className="h-3.5 w-3.5" /> : idx + 1}
+                            {item.completed ? <Check className="h-3.5 w-3.5" /> : idx + 1}
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
                               <span className={`text-xs font-semibold uppercase tracking-wide ${
-                                completedPortingSteps.has(idx)
+                                item.completed
                                   ? 'text-green-700'
                                   : idx === currentPortingStep
                                     ? 'text-primary'
                                     : 'text-muted-foreground'
                               }`}>
-                                {completedPortingSteps.has(idx)
+                                {item.completed
                                   ? 'Achieved'
                                   : idx === currentPortingStep
                                     ? 'Current step'
                                     : 'Upcoming'}
                               </span>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                className="h-7 px-2 text-xs"
-                                onClick={() => {
-                                  setCompletedPortingSteps((completed) => {
-                                    const next = new Set(completed);
-                                    if (next.has(idx)) next.delete(idx);
-                                    else next.add(idx);
-                                    return next;
-                                  });
-                                }}
-                              >
-                                {completedPortingSteps.has(idx) ? 'Mark incomplete' : 'Mark complete'}
-                              </Button>
                             </div>
-                            <p className="leading-tight text-foreground">{step}</p>
+                            <p className="font-semibold leading-tight text-foreground">{item.title}</p>
+                            <p className="mt-1 leading-tight text-muted-foreground">
+                              {item.requiredChange}
+                            </p>
                           </div>
                         </div>
                       ))}

@@ -9,6 +9,8 @@ import {
   writeHandoffRecovery,
 } from "../session-recovery.ts";
 import { getAnalysisErrorPresentation } from "./analysis-error.ts";
+import { reconcileReadinessChecklist } from "./readiness-checklist.ts";
+import type { PortFinding } from "@workspace/api-client-react";
 import {
   getStudioErrorMessage,
   PROJECT_HANDOFF_FAILURE_FALLBACK,
@@ -255,13 +257,42 @@ test("renders unified readiness styling and a dynamic porting checklist", async 
   assert.match(source, /Readiness Findings:/);
   assert.match(source, /text-lg font-bold text-primary underline/);
   assert.match(source, /<Alert key=\{idx\} className="border-primary\/30 bg-primary\/5 !text-black">/);
-  assert.match(source, /const \[completedPortingSteps, setCompletedPortingSteps\]/);
+  assert.match(source, /const \[readinessChecklist, setReadinessChecklist\]/);
+  assert.match(source, /reconcileReadinessChecklist\(previous, data\.findings\)/);
   assert.match(source, /aria-current=\{idx === currentPortingStep \? 'step' : undefined\}/);
   assert.match(source, /'Achieved'/);
   assert.match(source, /'Current step'/);
   assert.match(source, /'Upcoming'/);
-  assert.match(source, /'Mark incomplete'/);
-  assert.match(source, /'Mark complete'/);
+  assert.doesNotMatch(source, /'Mark incomplete'|'Mark complete'/);
+});
+
+test("automatically completes resolved findings and reopens recurring findings", () => {
+  const credentialFinding = {
+    severity: "blocker",
+    title: "Credential exposed",
+    detail: "A browser credential is present.",
+    action: "Move the credential to the server.",
+  } as unknown as PortFinding;
+  const assetFinding = {
+    severity: "warning",
+    title: "Local asset missing",
+    detail: "An image cannot be found.",
+    action: "Add the missing image.",
+  } as unknown as PortFinding;
+
+  const initial = reconcileReadinessChecklist([], [credentialFinding, assetFinding]);
+  assert.deepEqual(initial.map((item) => item.completed), [false, false]);
+
+  const afterCredentialFix = reconcileReadinessChecklist(initial, [assetFinding]);
+  assert.equal(afterCredentialFix[0]?.title, "Credential exposed");
+  assert.equal(afterCredentialFix[0]?.completed, true);
+  assert.equal(afterCredentialFix[1]?.completed, false);
+
+  const recurring = reconcileReadinessChecklist(afterCredentialFix, [
+    credentialFinding,
+    assetFinding,
+  ]);
+  assert.equal(recurring[0]?.completed, false);
 });
 
 test("keeps Replit connection setup usable from browsers and the Mac desktop app", async () => {
