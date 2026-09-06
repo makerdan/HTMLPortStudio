@@ -131,9 +131,9 @@ test("normalizes every uploaded HTML filename to index.html internally", async (
   assert.doesNotMatch(errorBlock, /Rename File/);
 });
 
-test("clears an HTML upload without changing the selected import card", async () => {
+test("clears every import method without changing the selected import card", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
-  const handlerStart = source.indexOf("const handleClearHtmlUpload");
+  const handlerStart = source.indexOf("const handleClearSelectedSource");
   const handlerEnd = source.indexOf("const handleFileSelect", handlerStart);
   const handler = source.slice(handlerStart, handlerEnd);
 
@@ -144,9 +144,14 @@ test("clears an HTML upload without changing the selected import card", async ()
   assert.match(handler, /setHtmlInput\(''\)/);
   assert.match(handler, /setSourceBundle\(null\)/);
   assert.match(handler, /setAnalysisData\(null\)/);
+  assert.match(handler, /setGithubUrl\(''\)/);
+  assert.match(handler, /setHostedUrl\(''\)/);
+  assert.match(handler, /setPlaygroundUrl\(''\)/);
   assert.doesNotMatch(handler, /setSelectedSource/);
-  assert.match(source, /onClick=\{handleClearHtmlUpload\}/);
-  assert.match(source, />\s*Clear\s*<\/Button>/);
+  assert.equal(
+    source.match(/onClick=\{handleClearSelectedSource\}/g)?.length,
+    6,
+  );
 });
 
 test("renders actionable analysis failures in the visible alert", async () => {

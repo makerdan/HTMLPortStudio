@@ -1708,6 +1708,7 @@ function ClaudeRepairPanel({
 
 export default function Home() {
   type SourceChoice = 'paste' | 'html' | 'zip' | 'github' | 'hosted' | 'playground';
+  const queryClient = useQueryClient();
   const [selectedSource, setSelectedSource] = useState<SourceChoice>('paste');
   const [htmlInput, setHtmlInput] = useState('');
   const [sourceBundle, setSourceBundle] = useState<SourceBundle | null>(null);
@@ -2259,9 +2260,18 @@ export default function Home() {
     setSelectedSource('paste');
   };
 
-  const handleClearHtmlUpload = () => {
+  const handleClearSelectedSource = () => {
     importSessionRef.current += 1;
     analyzeMutation.reset();
+    githubImportAbortControllerRef.current?.abort();
+    githubImportAbortControllerRef.current = null;
+    hostedImportAbortControllerRef.current?.abort();
+    hostedImportAbortControllerRef.current = null;
+    playgroundImportAbortControllerRef.current?.abort();
+    playgroundImportAbortControllerRef.current = null;
+    githubImportMutation.reset();
+    hostedImportMutation.reset();
+    playgroundImportMutation.reset();
     clearRecovery();
     setHtmlInput('');
     setSourceBundle(null);
@@ -2277,6 +2287,22 @@ export default function Home() {
     setClaudeApplyError(null);
     setPendingDownload(null);
     setDownloadError(null);
+    setGithubUrl('');
+    setGithubLookupUrl('');
+    setGithubRef('');
+    setGithubCommit('');
+    setGithubEntrypoint('');
+    setGithubCandidates([]);
+    setGithubError(null);
+    setGithubImportData(null);
+    queryClient.removeQueries({ queryKey: ['github-repository'] });
+    setZipLoading(false);
+    setHostedUrl('');
+    setHostedError(null);
+    setHostedImportData(null);
+    setPlaygroundUrl('');
+    setPlaygroundError(null);
+    setPlaygroundImportData(null);
   };
 
   const handleFileSelect = async (
@@ -2641,9 +2667,20 @@ export default function Home() {
                 </div>
                 {selectedSource === 'paste' && (
                   <>
-                    <label htmlFor="html-source" className="mb-2 block text-sm font-medium text-foreground">
-                      HTML source
-                    </label>
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <label htmlFor="html-source" className="block text-sm font-medium text-foreground">
+                        HTML source
+                      </label>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={handleClearSelectedSource}
+                        disabled={!htmlInput && sourceBundle?.sourceType !== 'pasted_html'}
+                      >
+                        Clear
+                      </Button>
+                    </div>
                     <Textarea
                       id="html-source"
                       value={htmlInput}
@@ -2667,7 +2704,7 @@ export default function Home() {
                         type="button"
                         variant="outline"
                         className="text-base"
-                        onClick={handleClearHtmlUpload}
+                        onClick={handleClearSelectedSource}
                         disabled={sourceBundle?.sourceType !== 'single_file'}
                       >
                         Clear
@@ -2680,9 +2717,19 @@ export default function Home() {
                     <FileArchive className="mx-auto mb-2 h-6 w-6 text-primary" />
                     <p className="text-sm font-medium">Upload ZIP</p>
                     <p className="mt-1 text-xs text-muted-foreground">ZIP files are unpacked locally; nothing is sent until analysis.</p>
-                    <Button type="button" variant="outline" className="mt-3" onClick={() => zipInputRef.current?.click()} disabled={zipLoading}>
-                      {zipLoading ? 'Unpacking ZIP...' : 'Choose ZIP project'}
-                    </Button>
+                    <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+                      <Button type="button" variant="outline" onClick={() => zipInputRef.current?.click()} disabled={zipLoading}>
+                        {zipLoading ? 'Unpacking ZIP...' : 'Choose ZIP project'}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleClearSelectedSource}
+                        disabled={!zipLoading && sourceBundle?.sourceType !== 'zip_project' && !fileError}
+                      >
+                        Clear
+                      </Button>
+                    </div>
                   </div>
                 )}
 
@@ -2769,6 +2816,17 @@ export default function Home() {
                       ) : (
                         'Inspect'
                       )}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleClearSelectedSource}
+                      disabled={
+                        !githubImportMutation.isPending &&
+                        (!githubUrl && !githubLookupUrl && !githubRepositoryQuery.data && !githubError && !githubImportData)
+                      }
+                    >
+                      Clear
                     </Button>
                   </div>
 
@@ -2945,6 +3003,20 @@ export default function Home() {
                         'Fetch hosted HTML'
                       )}
                     </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="shrink-0"
+                      onClick={handleClearSelectedSource}
+                      disabled={
+                        !hostedImportMutation.isPending &&
+                        !hostedUrl &&
+                        !hostedError &&
+                        !hostedImportData
+                      }
+                    >
+                      Clear
+                    </Button>
                   </div>
                   <p className="mt-2 text-xs text-muted-foreground">
                     HTTPS is required by default. Private, loopback, metadata, credentialed,
@@ -3039,6 +3111,20 @@ export default function Home() {
                         ) : (
                           'Import playground'
                         )}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="shrink-0"
+                        onClick={handleClearSelectedSource}
+                        disabled={
+                          !playgroundImportMutation.isPending &&
+                          !playgroundUrl &&
+                          !playgroundError &&
+                          !playgroundImportData
+                        }
+                      >
+                        Clear
                       </Button>
                     </div>
                     <p className="mt-2 text-xs text-muted-foreground">
