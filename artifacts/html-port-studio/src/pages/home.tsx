@@ -2663,8 +2663,10 @@ export default function Home() {
                              <Files className="h-4 w-4" />
                            </div>
                            <div>
-                             <p className="text-sm font-semibold">{sourceBundle.metadata.displayName}</p>
-                             <p className="text-xs text-muted-foreground">
+                              <p className={`${sourceBundle.sourceType === 'single_file' ? 'text-base' : 'text-sm'} font-semibold`}>
+                                {sourceBundle.metadata.displayName}
+                              </p>
+                              <p className={`${sourceBundle.sourceType === 'single_file' ? 'text-sm' : 'text-xs'} text-muted-foreground`}>
                                {sourceBundle.files.length} file{sourceBundle.files.length === 1 ? '' : 's'} ·{' '}
                                {formatBytes(
                                  sourceBundle.files.reduce(
