@@ -1829,6 +1829,11 @@ export default function Home() {
     setRecoveryNotice(PROJECT_HANDOFF_RECOVERY_EXPIRED);
   }, []);
 
+  const handleRestartExpiredRecovery = useCallback(() => {
+    clearRecovery();
+    setSelectedSource('paste');
+  }, [clearRecovery]);
+
   const saveRecovery = useCallback((metadata: HandoffRecoveryMetadata) => {
     if (writeHandoffRecovery(metadata)) {
       setRecoveryMetadata(metadata);
@@ -2491,8 +2496,8 @@ export default function Home() {
                 <AlertTitle>Project setup status unavailable</AlertTitle>
                 <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
                   <span>{recoveryNotice}</span>
-                  <Button type="button" size="sm" variant="outline" onClick={() => setRecoveryNotice(null)}>
-                    Dismiss
+                  <Button type="button" size="sm" variant="outline" onClick={handleRestartExpiredRecovery}>
+                    Start with a new source
                   </Button>
                 </AlertDescription>
               </Alert>

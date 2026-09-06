@@ -673,8 +673,27 @@ test("[cross-browser] clears or surfaces completed, failed, stale, and foreign h
       { timeout: 15_000 },
     )
     .toBeNull();
-  await page.getByRole("button", { name: "Dismiss" }).click();
+  await page.evaluate(
+    ({ jobId, browserSessionId }) => {
+      sessionStorage.setItem(
+        "html-port-studio:handoff-recovery",
+        JSON.stringify({
+          version: 1,
+          jobId,
+          ownerId: "e2e-user",
+          browserSessionId,
+          createdAt: Date.now(),
+        }),
+      );
+    },
+    { jobId: records.expired, browserSessionId },
+  );
+  await page.getByRole("button", { name: "Start with a new source" }).click();
   await expect(page.getByRole("heading", { name: "Project setup status unavailable" })).not.toBeVisible();
+  await expect(page.getByRole("tab", { name: "Paste HTML" })).toHaveAttribute("data-state", "active");
+  await expect
+    .poll(() => page.evaluate(() => sessionStorage.getItem("html-port-studio:handoff-recovery")))
+    .toBeNull();
 
   await seedRecovery(records.expired);
   await expect(page.getByRole("heading", { name: "Project setup status unavailable" })).toBeVisible();
