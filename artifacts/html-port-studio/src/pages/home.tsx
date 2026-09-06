@@ -2560,7 +2560,7 @@ export default function Home() {
                       className="h-auto min-h-16 flex-col items-start justify-center gap-0.5 border border-black px-3 py-2 text-left"
                       onClick={() => handleSourceChange(value)}
                     >
-                      <span className="text-sm font-bold">{label}</span>
+                      <span className="text-base font-bold">{label}</span>
                       <span className={`text-xs ${selectedSource === value ? 'text-primary-foreground/75' : 'text-muted-foreground'}`}>
                         {description}
                       </span>
