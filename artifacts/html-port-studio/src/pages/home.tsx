@@ -3521,7 +3521,7 @@ export default function Home() {
                      Source Editor
                    </TabsTrigger>
                 </TabsList>
-                <Button size="sm" variant="outline" className="preview-toolbar-button gap-2 font-mono text-xs" onClick={handleReset}>
+                <Button size="sm" variant="outline" className="start-over-button gap-2 font-mono text-xs" onClick={handleReset}>
                   <ArrowRight aria-hidden="true" className="h-3 w-3" /> Start Over
                 </Button>
               </div>
