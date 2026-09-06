@@ -152,7 +152,6 @@ function formatBytes(bytes: number, decimals = 2) {
 }
 
 const HTML_FILE_EXTENSIONS = ['.html', '.htm'];
-const SAFE_BUNDLE_PATH = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[a-zA-Z0-9._/-]+$/;
 function utf8ByteLength(value: string): number {
   return new TextEncoder().encode(value).length;
 }
@@ -184,15 +183,6 @@ function validateHtmlFile(file: File): string | null {
     return `This HTML file is ${formatBytes(file.size)}. Choose a file no larger than ${SOURCE_TEXT_LIMIT_LABEL}.`;
   }
   return null;
-}
-
-function safeUploadedHtmlPath(fileName: string): string {
-  const normalized = fileName.replaceAll('\\', '/');
-  return SAFE_BUNDLE_PATH.test(normalized) &&
-    !normalized.endsWith('/') &&
-    !normalized.includes('//')
-    ? normalized
-    : 'index.html';
 }
 
 function validateHostedUrl(value: string): string | null {
@@ -2286,7 +2276,7 @@ export default function Home() {
     const html = await file.text();
     if (sessionId !== importSessionRef.current) return;
     importSessionRef.current += 1;
-    const bundlePath = safeUploadedHtmlPath(file.name);
+    const bundlePath = 'index.html';
     setHtmlInput(html);
     clearRecovery();
     setSourceBundle({

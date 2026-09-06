@@ -114,21 +114,20 @@ test("maps structured analysis errors to safe, actionable guidance", () => {
   assert.equal(result.retryable, false);
 });
 
-test("silently normalizes unsafe uploaded HTML paths before analysis", async () => {
+test("normalizes every uploaded HTML filename to index.html internally", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
-  const helperStart = source.indexOf("function safeUploadedHtmlPath");
-  const helperEnd = source.indexOf("function validateHostedUrl", helperStart);
-  const helper = source.slice(helperStart, helperEnd);
+  const handlerStart = source.indexOf("const handleFileSelect");
+  const handlerEnd = source.indexOf("const handleZipSelect", handlerStart);
+  const handler = source.slice(handlerStart, handlerEnd);
   const errorBlockStart = source.indexOf("{analyzeMutation.isError && (");
   const errorBlockEnd = source.indexOf("{analyzeMutation.isError && repairSource", errorBlockStart);
   const errorBlock = source.slice(errorBlockStart, errorBlockEnd);
 
-  assert.notEqual(helperStart, -1);
-  assert.notEqual(helperEnd, -1);
-  assert.match(helper, /SAFE_BUNDLE_PATH\.test\(normalized\)/);
-  assert.match(helper, /: 'index\.html'/);
-  assert.match(source, /const bundlePath = safeUploadedHtmlPath\(file\.name\)/);
-  assert.match(source, /files: \[\{ path: bundlePath, content: html \}\]/);
+  assert.notEqual(handlerStart, -1);
+  assert.notEqual(handlerEnd, -1);
+  assert.match(handler, /const bundlePath = 'index\.html'/);
+  assert.match(handler, /files: \[\{ path: bundlePath, content: html \}\]/);
+  assert.match(handler, /displayName: file\.name\.replace/);
   assert.doesNotMatch(errorBlock, /Rename File/);
 });
 
