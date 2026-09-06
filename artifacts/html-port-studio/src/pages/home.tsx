@@ -130,16 +130,10 @@ import {
 // ----------------------------------------------------------------------
 // Types and Helpers
 // ----------------------------------------------------------------------
-const SEVERITY_COLORS = {
-  info: 'info',
-  warning: 'warning',
-  blocker: 'destructive'
-} as const;
-
 const SEVERITY_ICONS = {
-  info: <Info className="h-4 w-4" />,
-  warning: <AlertTriangle className="h-4 w-4" />,
-  blocker: <XCircle className="h-4 w-4" />
+  info: <Info className="h-4 w-4 text-primary" />,
+  warning: <AlertTriangle className="h-4 w-4 text-primary" />,
+  blocker: <XCircle className="h-4 w-4 text-primary" />
 } as const;
 
 function formatBytes(bytes: number, decimals = 2) {
@@ -833,6 +827,7 @@ function ReplitProjectHandoffPanel({
   const [jobId, setJobId] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [showConnectionSetup, setShowConnectionSetup] = useState(false);
+  const [setupLinkCopied, setSetupLinkCopied] = useState(false);
   const queryClient = useQueryClient();
   const createMutation = useCreateReplitProject();
   const retryMutation = useRetryReplitProjectSetup();
@@ -941,6 +936,17 @@ function ReplitProjectHandoffPanel({
     const result = await connectionQuery.refetch();
     if (result.data?.status === 'connected') {
       setShowConnectionSetup(false);
+    }
+  };
+
+  const handleCopySetupLink = async () => {
+    const setupUrl = connectionSetupQuery.data?.setupUrl;
+    if (!setupUrl) return;
+    try {
+      await navigator.clipboard.writeText(setupUrl);
+      setSetupLinkCopied(true);
+    } catch {
+      setSetupLinkCopied(false);
     }
   };
 
@@ -1083,21 +1089,35 @@ function ReplitProjectHandoffPanel({
                   <Loader2 className="h-4 w-4 animate-spin" /> Opening secure setup…
                 </div>
               ) : connectionSetupQuery.data?.setupUrl ? (
-                <div className="flex flex-wrap gap-2">
-                  <Button asChild size="sm">
-                    <a href={connectionSetupQuery.data.setupUrl} target="_blank" rel="noreferrer">
-                      Open Replit connection setup
-                    </a>
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => void handleCheckConnection()}
-                    disabled={connectionQuery.isFetching}
-                  >
-                    {connectionQuery.isFetching ? 'Checking…' : 'I connected it — check again'}
-                  </Button>
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-2">
+                    <Button asChild size="sm">
+                      <a
+                        href={connectionSetupQuery.data.setupUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Open Replit connection setup
+                      </a>
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" onClick={() => void handleCopySetupLink()}>
+                      {setupLinkCopied ? 'Setup link copied' : 'Copy setup link'}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void handleCheckConnection()}
+                      disabled={connectionQuery.isFetching}
+                    >
+                      {connectionQuery.isFetching ? 'Checking…' : 'I connected it — check again'}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    In a browser, setup opens in a new tab. In the Replit desktop app on Mac,
+                    it may open in your default browser. If it does not, copy the setup link,
+                    finish there, then return and check the connection.
+                  </p>
                 </div>
               ) : (
                 <Alert variant="destructive">
@@ -1713,6 +1733,9 @@ export default function Home() {
   const [htmlInput, setHtmlInput] = useState('');
   const [sourceBundle, setSourceBundle] = useState<SourceBundle | null>(null);
   const [analysisData, setAnalysisData] = useState<HtmlAnalysis | null>(null);
+  const [completedPortingSteps, setCompletedPortingSteps] = useState<Set<number>>(
+    () => new Set(),
+  );
   const [recoveryMetadata, setRecoveryMetadata] = useState<HandoffRecoveryMetadata | null>(
     () => readHandoffRecovery(),
   );
@@ -1867,6 +1890,7 @@ export default function Home() {
       onSuccess: (data: HtmlAnalysis) => {
         if (sessionId !== importSessionRef.current || requestRevision !== sourceRevisionRef.current) return;
         setAnalysisData(data);
+        setCompletedPortingSteps(new Set());
         setSourceBundle(bundle);
         setAnalyzedRevision(requestRevision);
         setAnalysisStale(false);
@@ -1959,6 +1983,7 @@ export default function Home() {
     setAnalyzedRevision(null);
     setAnalysisStale(true);
     setAnalysisData(null);
+    setCompletedPortingSteps(new Set());
     setRepairSource(patchedEntrypoint);
     setRepairOpen(false);
     // submitBundleForAnalysis(nextBundle) remains the recovery rescan boundary.
@@ -1982,6 +2007,7 @@ export default function Home() {
     setAnalyzedRevision(null);
     setAnalysisStale(true);
     setAnalysisData(null);
+    setCompletedPortingSteps(new Set());
     setRepairSource(original);
     setRepairOpen(containsCredential(original));
     submitBundleForAnalysis(nextBundle, { requestRevision: nextRevision });
@@ -3255,6 +3281,10 @@ export default function Home() {
     );
   }
 
+  const currentPortingStep = analysisData.steps.findIndex(
+    (_, index) => !completedPortingSteps.has(index),
+  );
+
   // --- STUDIO VIEW ---
   return (
     <div className="flex h-screen flex-col bg-background overflow-hidden animate-in fade-in duration-300">
@@ -3333,14 +3363,16 @@ export default function Home() {
                 <div>
                   <div className="flex items-center gap-2 mb-4">
                     <ListChecks className="h-5 w-5 text-foreground" />
-                    <h3 className="text-lg font-semibold">Readiness Findings</h3>
+                    <h3 className="text-lg font-bold text-primary underline">
+                      Readiness Findings:
+                    </h3>
                     <Badge variant="outline" className="ml-auto bg-muted">
                       {analysisData.findings.length}
                     </Badge>
                   </div>
 
                   {analysisData.findings.length === 0 ? (
-                     <Alert className="bg-primary/5 border-primary/20 !text-black">
+                     <Alert className="border-primary/30 bg-primary/5 !text-black">
                       <CheckCircle className="h-4 w-4 !text-primary" />
                        <AlertTitle className="!text-black">All Clear</AlertTitle>
                        <AlertDescription className="!text-black">No issues found. Ready to port!</AlertDescription>
@@ -3348,7 +3380,7 @@ export default function Home() {
                   ) : (
                     <div className="space-y-3">
                       {analysisData.findings.map((finding, idx) => (
-                        <Alert key={idx} variant={SEVERITY_COLORS[finding.severity]} className="!text-black">
+                        <Alert key={idx} className="border-primary/30 bg-primary/5 !text-black">
                           {SEVERITY_ICONS[finding.severity]}
                           <AlertTitle className="capitalize font-semibold !text-black">{finding.title}</AlertTitle>
                           <AlertDescription className="mt-2 space-y-2 !text-black">
@@ -3458,11 +3490,60 @@ export default function Home() {
                     <h3 className="text-lg font-semibold mb-4">Porting Checklist</h3>
                     <div className="space-y-2">
                       {analysisData.steps.map((step, idx) => (
-                        <div key={idx} className="flex gap-3 text-sm p-3 rounded-lg border bg-card">
-                          <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
-                            {idx + 1}
+                        <div
+                          key={idx}
+                          aria-current={idx === currentPortingStep ? 'step' : undefined}
+                          className={`flex items-start gap-3 rounded-lg border p-3 text-sm ${
+                            completedPortingSteps.has(idx)
+                              ? 'border-green-500/40 bg-green-500/10'
+                              : idx === currentPortingStep
+                                ? 'border-primary bg-primary/10 ring-1 ring-primary/30'
+                                : 'border-border bg-card'
+                          }`}
+                        >
+                          <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                            completedPortingSteps.has(idx)
+                              ? 'bg-green-600 text-white'
+                              : idx === currentPortingStep
+                                ? 'bg-primary text-primary-foreground'
+                                : 'bg-muted text-muted-foreground'
+                          }`}>
+                            {completedPortingSteps.has(idx) ? <Check className="h-3.5 w-3.5" /> : idx + 1}
                           </div>
-                          <p className="text-muted-foreground leading-tight pt-0.5">{step}</p>
+                          <div className="min-w-0 flex-1">
+                            <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                              <span className={`text-xs font-semibold uppercase tracking-wide ${
+                                completedPortingSteps.has(idx)
+                                  ? 'text-green-700'
+                                  : idx === currentPortingStep
+                                    ? 'text-primary'
+                                    : 'text-muted-foreground'
+                              }`}>
+                                {completedPortingSteps.has(idx)
+                                  ? 'Achieved'
+                                  : idx === currentPortingStep
+                                    ? 'Current step'
+                                    : 'Upcoming'}
+                              </span>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => {
+                                  setCompletedPortingSteps((completed) => {
+                                    const next = new Set(completed);
+                                    if (next.has(idx)) next.delete(idx);
+                                    else next.add(idx);
+                                    return next;
+                                  });
+                                }}
+                              >
+                                {completedPortingSteps.has(idx) ? 'Mark incomplete' : 'Mark complete'}
+                              </Button>
+                            </div>
+                            <p className="leading-tight text-foreground">{step}</p>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -3521,7 +3602,13 @@ export default function Home() {
                      Source Editor
                    </TabsTrigger>
                 </TabsList>
-                <Button size="sm" variant="outline" className="start-over-button gap-2 font-mono text-xs" onClick={handleReset}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-2 font-mono text-xs"
+                  style={{ border: '1px solid #dc2626' }}
+                  onClick={handleReset}
+                >
                   <ArrowRight aria-hidden="true" className="h-3 w-3" /> Start Over
                 </Button>
               </div>
