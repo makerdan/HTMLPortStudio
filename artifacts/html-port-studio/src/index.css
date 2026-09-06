@@ -102,6 +102,9 @@
   * {
     @apply border-border;
   }
+  #root {
+    padding-bottom: 50vh;
+  }
   body {
     @apply font-sans antialiased bg-background text-foreground;
   }
