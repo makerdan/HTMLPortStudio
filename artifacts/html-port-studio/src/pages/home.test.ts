@@ -131,6 +131,24 @@ test("normalizes every uploaded HTML filename to index.html internally", async (
   assert.doesNotMatch(errorBlock, /Rename File/);
 });
 
+test("clears an HTML upload without changing the selected import card", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+  const handlerStart = source.indexOf("const handleClearHtmlUpload");
+  const handlerEnd = source.indexOf("const handleFileSelect", handlerStart);
+  const handler = source.slice(handlerStart, handlerEnd);
+
+  assert.notEqual(handlerStart, -1);
+  assert.notEqual(handlerEnd, -1);
+  assert.match(handler, /importSessionRef\.current \+= 1/);
+  assert.match(handler, /analyzeMutation\.reset\(\)/);
+  assert.match(handler, /setHtmlInput\(''\)/);
+  assert.match(handler, /setSourceBundle\(null\)/);
+  assert.match(handler, /setAnalysisData\(null\)/);
+  assert.doesNotMatch(handler, /setSelectedSource/);
+  assert.match(source, /onClick=\{handleClearHtmlUpload\}/);
+  assert.match(source, />\s*Clear\s*<\/Button>/);
+});
+
 test("renders actionable analysis failures in the visible alert", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
   const errorBlockStart = source.indexOf("{analyzeMutation.isError && (");

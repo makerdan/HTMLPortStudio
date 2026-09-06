@@ -2259,6 +2259,26 @@ export default function Home() {
     setSelectedSource('paste');
   };
 
+  const handleClearHtmlUpload = () => {
+    importSessionRef.current += 1;
+    analyzeMutation.reset();
+    clearRecovery();
+    setHtmlInput('');
+    setSourceBundle(null);
+    setAnalysisData(null);
+    bumpSourceRevision();
+    setAnalyzedRevision(null);
+    setAnalysisStale(false);
+    setFileError(null);
+    setRepairOpen(false);
+    setRepairSource(null);
+    setLastAppliedRepair(null);
+    setClaudeRepairOpen(false);
+    setClaudeApplyError(null);
+    setPendingDownload(null);
+    setDownloadError(null);
+  };
+
   const handleFileSelect = async (
     event: React.ChangeEvent<HTMLInputElement>,
   ) => {
@@ -2639,9 +2659,20 @@ export default function Home() {
                     <Upload className="mx-auto mb-2 h-6 w-6 text-primary" />
                     <p className="text-base font-medium">Upload HTML</p>
                     <p className="mt-1 text-sm text-muted-foreground">Only public, local .html and .htm files are read.</p>
-                    <Button type="button" variant="outline" className="mt-3 text-base" onClick={() => fileInputRef.current?.click()}>
-                      Choose HTML file
-                    </Button>
+                    <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+                      <Button type="button" variant="outline" className="text-base" onClick={() => fileInputRef.current?.click()}>
+                        Choose HTML file
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="text-base"
+                        onClick={handleClearHtmlUpload}
+                        disabled={sourceBundle?.sourceType !== 'single_file'}
+                      >
+                        Clear
+                      </Button>
+                    </div>
                   </div>
                 )}
                 {selectedSource === 'zip' && (
