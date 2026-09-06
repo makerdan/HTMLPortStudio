@@ -2637,17 +2637,6 @@ export default function Home() {
                          : 'Choose a ZIP project to unpack locally before analysis.'}
                   </p>
                    <div className="flex shrink-0 flex-wrap justify-end gap-2">
-                     {selectedSource === 'html' && <Button
-                       type="button"
-                       variant="outline"
-                       size="default"
-                       className="h-11 gap-2 border border-purple-500 px-4 text-sm font-semibold"
-                       onClick={() => fileInputRef.current?.click()}
-                       disabled={zipLoading}
-                     >
-                       <Upload className="h-3.5 w-3.5" />
-                       Choose HTML file
-                     </Button>}
                      {selectedSource === 'zip' && <Button
                        type="button"
                        variant="outline"
