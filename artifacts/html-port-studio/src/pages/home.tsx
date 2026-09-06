@@ -1911,6 +1911,36 @@ export default function Home() {
     submitBundleForAnalysis(bundle);
   };
 
+  const handleRenameUnsafeHtmlFile = () => {
+    if (
+      selectedSource !== 'html' ||
+      sourceBundle?.sourceType !== 'single_file' ||
+      sourceBundle.files.length !== 1
+    ) {
+      return;
+    }
+    const [uploadedFile] = sourceBundle.files;
+    const safePath = 'index.html';
+    const nextBundle: SourceBundle = {
+      ...sourceBundle,
+      files: [{ ...uploadedFile, path: safePath }],
+      entrypoint: safePath,
+      metadata: {
+        ...sourceBundle.metadata,
+        displayName: 'index',
+      },
+    };
+    importSessionRef.current += 1;
+    clearRecovery();
+    setSourceBundle(nextBundle);
+    setAnalysisData(null);
+    const nextRevision = bumpSourceRevision();
+    setAnalyzedRevision(null);
+    setAnalysisStale(false);
+    analyzeMutation.reset();
+    submitBundleForAnalysis(nextBundle, { requestRevision: nextRevision });
+  };
+
   const bundleWithEntrypointSource = (source: string): SourceBundle => {
     if (sourceBundle) {
       return {
@@ -3089,6 +3119,19 @@ export default function Home() {
                             {analyzeMutation.isPending ? 'Retrying…' : 'Retry analysis'}
                           </Button>
                         )}
+                        {analysisError?.code === 'BUNDLE_UNSAFE_PATH' &&
+                          selectedSource === 'html' &&
+                          sourceBundle?.sourceType === 'single_file' && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={handleRenameUnsafeHtmlFile}
+                              disabled={analyzeMutation.isPending}
+                            >
+                              Rename File
+                            </Button>
+                          )}
                         {htmlInput.trim() && (
                           <Button
                             type="button"
