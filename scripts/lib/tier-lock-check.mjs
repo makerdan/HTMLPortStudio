@@ -6,21 +6,25 @@ export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 export const TIER_REGISTRY_FILE = path.join(ROOT, "docs/validation/validation-tiers.json");
 
 export function loadTierRegistry() {
+  const registryLabel = path.relative(ROOT, TIER_REGISTRY_FILE);
   let parsed;
   try {
     parsed = JSON.parse(fs.readFileSync(TIER_REGISTRY_FILE, "utf8"));
   } catch (error) {
-    throw new Error(`Cannot read validation-tier registry ${path.relative(ROOT, TIER_REGISTRY_FILE)}: ${error.message}`);
+    throw new Error(`Cannot read validation-tier registry ${registryLabel}: ${error.message}`);
   }
   if (!Array.isArray(parsed?.tiers) || parsed.tiers.length === 0) {
-    throw new Error("Validation-tier registry must contain at least one tier.");
+    throw new Error(`Validation-tier registry ${registryLabel} has malformed tier data: expected a non-empty "tiers" array.`);
   }
   const tiers = new Map();
-  for (const tier of parsed.tiers) {
-    if (!tier || typeof tier.name !== "string" || !tier.name.trim() ||
-        typeof tier.command !== "string" || !tier.command.trim() ||
-        tiers.has(tier.name)) {
-      throw new Error("Validation-tier registry contains an invalid or duplicate tier.");
+  for (const [index, tier] of parsed.tiers.entries()) {
+    if (!tier || typeof tier !== "object" || Array.isArray(tier) ||
+        typeof tier.name !== "string" || !tier.name.trim() ||
+        typeof tier.command !== "string" || !tier.command.trim()) {
+      throw new Error(`Validation-tier registry ${registryLabel} has malformed tier at index ${index}: expected an object with non-empty string "name" and "command".`);
+    }
+    if (tiers.has(tier.name)) {
+      throw new Error(`Validation-tier registry ${registryLabel} has duplicate tier name "${tier.name}" at index ${index}.`);
     }
     tiers.set(tier.name, tier);
   }
@@ -52,20 +56,26 @@ export function extractValidationCommand(planText) {
 export function readPlanTier(planFile) {
   const resolved = resolvePlanFile(planFile);
   if (!resolved) throw new Error("TASK_PLAN_FILE is required for a task-driven tier lock.");
+  const planLabel = path.relative(ROOT, resolved);
   let text;
   try {
     text = fs.readFileSync(resolved, "utf8");
   } catch (error) {
-    throw new Error(`Cannot read task plan ${path.relative(ROOT, resolved)}: ${error.message}`);
+    throw new Error(`Cannot read task plan ${planLabel}: ${error.message}`);
   }
   const tierName = extractValidationCommand(text);
   if (!tierName) {
-    throw new Error(`TIER-LOCK VIOLATION: ${path.relative(ROOT, resolved)} has no parseable Validation command.`);
+    throw new Error(`TIER-LOCK VIOLATION: ${planLabel} has no parseable Validation **Command:**; provide one registered validation tier name.`);
   }
-  const tiers = loadTierRegistry();
+  let tiers;
+  try {
+    tiers = loadTierRegistry();
+  } catch (error) {
+    throw new Error(`TIER-LOCK VIOLATION: ${planLabel} requests validation tier "${tierName}" via Validation **Command:**, but the validation-tier registry is invalid: ${error.message}`);
+  }
   const tier = tiers.get(tierName);
   if (!tier) {
-    throw new Error(`TIER-LOCK VIOLATION: unknown validation tier "${tierName}".`);
+    throw new Error(`TIER-LOCK VIOLATION: ${planLabel} requests unknown validation tier "${tierName}" via Validation **Command:**; check the registered tiers in ${path.relative(ROOT, TIER_REGISTRY_FILE)}.`);
   }
   return { planFile: resolved, planText: text, tierName, tier };
 }

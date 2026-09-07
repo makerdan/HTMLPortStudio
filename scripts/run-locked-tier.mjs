@@ -24,6 +24,9 @@ try {
   const env = { ...process.env, TASK_PLAN_FILE: plan.planFile };
   process.exit(runTier(plan.tierName, { env }));
 } catch (error) {
-  console.error(`[TIER-LOCK VIOLATION] ${error.message}`);
+  const message = error.message.startsWith("TIER-LOCK VIOLATION:")
+    ? error.message
+    : `[TIER-LOCK VIOLATION] ${error.message}`;
+  console.error(message);
   process.exit(1);
 }

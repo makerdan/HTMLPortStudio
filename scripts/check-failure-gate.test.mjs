@@ -5,7 +5,7 @@ import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import test from "node:test";
 import { validatePlanText } from "./lib/failure-gate.mjs";
-import { loadTierRegistry, readPlanTier } from "./lib/tier-lock-check.mjs";
+import { TIER_REGISTRY_FILE, loadTierRegistry, readPlanTier } from "./lib/tier-lock-check.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const checker = path.join(root, "scripts/check-failure-gate.mjs");
@@ -48,6 +48,16 @@ function withCatalog(records, callback) {
     return callback();
   } finally {
     fs.writeFileSync(baselineFile, original);
+  }
+}
+
+function withTierRegistry(registry, callback) {
+  const original = fs.readFileSync(TIER_REGISTRY_FILE, "utf8");
+  try {
+    fs.writeFileSync(TIER_REGISTRY_FILE, JSON.stringify(registry, null, 2));
+    return callback();
+  } finally {
+    fs.writeFileSync(TIER_REGISTRY_FILE, original);
   }
 }
 
@@ -213,6 +223,48 @@ test("locked runner rejects a plan with an invalid tier before running", () => {
   });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /TIER-LOCK VIOLATION/);
+  assert.match(result.stderr, new RegExp(`${path.relative(root, file)}.*unknown validation tier "heavier-than-allowed".*Validation \\*\\*Command:\\*\\*`));
+  fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test("locked runner explains a missing validation command and stops before running", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "failure-gate-lock-"));
+  const file = path.join(directory, "plan.md");
+  fs.writeFileSync(file, valid.replace("**Command:** `test-standard`\n", ""));
+  const result = spawnSync(process.execPath, [runner, file], {
+    cwd: root,
+    env: process.env,
+    encoding: "utf8",
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, new RegExp(`${path.relative(root, file)}.*no parseable Validation \\*\\*Command:\\*\\*`));
+  assert.doesNotMatch(result.stderr, /\[VALIDATION\] Running tier/);
+  fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test("locked runner explains malformed registry data and stops before running", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "failure-gate-lock-"));
+  const file = path.join(directory, "plan.md");
+  const marker = path.join(directory, "validation-ran");
+  fs.writeFileSync(file, valid);
+  const result = withTierRegistry({
+    version: 1,
+    tiers: [
+      {
+        name: "test-standard",
+        command: `node -e "require('fs').writeFileSync('${marker}', 'ran')"`,
+      },
+      { name: "malformed-tier" },
+    ],
+  }, () => spawnSync(process.execPath, [runner, file], {
+    cwd: root,
+    env: process.env,
+    encoding: "utf8",
+  }));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, new RegExp(`${path.relative(root, file)}.*validation tier "test-standard".*malformed tier at index 1`));
+  assert.doesNotMatch(result.stderr, /\[VALIDATION\] Running tier/);
+  assert.equal(fs.existsSync(marker), false);
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
