@@ -119,6 +119,7 @@ const playgroundImportFailures = [
   ["PLAYGROUND_URL_PORT_NOT_ALLOWED", "The playground link uses a non-standard port.", "Use the standard provider URL."],
   ["PLAYGROUND_URL_UNSUPPORTED_FORM", "The playground URL form is unsupported.", "Use a public pen or fiddle URL."],
   ["PLAYGROUND_PROVIDER_UNSUPPORTED", "That playground provider is unsupported.", "Use CodePen or JSFiddle."],
+  ["PLAYGROUND_UNSAFE_DESTINATION", "The playground export resolved to a private network.", "Retry from the provider URL."],
   ["PLAYGROUND_REDIRECT_UNSAFE", "The playground export redirected unsafely.", "Retry from the provider URL."],
   ["PLAYGROUND_TIMEOUT", "The playground export timed out.", "Check the provider and retry."],
   ["PLAYGROUND_RATE_LIMITED", "Playground imports are temporarily rate limited.", "Wait before retrying."],

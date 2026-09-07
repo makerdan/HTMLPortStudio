@@ -1,3 +1,10 @@
+import {
+  defaultUrlLookup,
+  fetchPinnedUrl,
+  PinnedUrlError,
+  validatePublicUrlDestination,
+  type UrlLookup,
+} from "./server-url.ts";
 import { SOURCE_TEXT_LIMIT_LABEL, SOURCE_TEXT_MAX_BYTES } from "./source-limits.ts";
 
 type PlaygroundProvider = "codepen" | "jsfiddle";
@@ -30,9 +37,14 @@ export type PlaygroundImport = {
   warnings: string[];
 };
 
-type PlaygroundFetch = typeof fetch;
+type PlaygroundFetch = (
+  input: string,
+  init: RequestInit,
+  pinnedAddress?: string,
+) => Promise<Response>;
 type PlaygroundDependencies = {
   fetch: PlaygroundFetch;
+  lookup: UrlLookup;
   timeoutMs: number;
 };
 
@@ -40,6 +52,7 @@ const CODEPEN_HOSTS = new Set(["codepen.io", "www.codepen.io"]);
 const JSFIDDLE_HOSTS = new Set(["jsfiddle.net", "www.jsfiddle.net"]);
 export const PLAYGROUND_MAX_BYTES = SOURCE_TEXT_MAX_BYTES;
 export const PLAYGROUND_TIMEOUT_MS = 10_000;
+export const PLAYGROUND_MAX_REDIRECTS = 5;
 
 export class PlaygroundError extends Error {
   public readonly code: string;
@@ -195,6 +208,12 @@ function responseHostIsAllowed(response: Response, provider: PlaygroundProvider)
   }
 }
 
+function providerHostIsAllowed(url: URL, provider: PlaygroundProvider): boolean {
+  return provider === "codepen"
+    ? CODEPEN_HOSTS.has(url.hostname.toLowerCase())
+    : JSFIDDLE_HOSTS.has(url.hostname.toLowerCase());
+}
+
 async function fetchProviderText(
   url: string,
   provider: PlaygroundProvider,
@@ -203,29 +222,73 @@ async function fetchProviderText(
 ): Promise<string | null> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), dependencies.timeoutMs);
+  let currentUrl = url;
   try {
-    const response = await dependencies.fetch(url, {
-      method: "GET",
-      redirect: "follow",
-      signal: controller.signal,
-      headers: { Accept: "text/html,text/css,application/javascript,text/javascript" },
-    });
-    if (!responseHostIsAllowed(response, provider)) {
-      throw new PlaygroundError(
-        "PLAYGROUND_REDIRECT_UNSAFE",
-        "The playground export redirected outside its provider, so it was not imported.",
-      );
+    for (let redirectCount = 0; redirectCount <= PLAYGROUND_MAX_REDIRECTS; redirectCount += 1) {
+      const parsedUrl = new URL(currentUrl);
+      if (parsedUrl.protocol !== "https:" || !providerHostIsAllowed(parsedUrl, provider)) {
+        throw new PlaygroundError(
+          "PLAYGROUND_REDIRECT_UNSAFE",
+          "The playground export redirected outside its provider, so it was not imported.",
+        );
+      }
+      let validatedDestination: { address: string };
+      try {
+        validatedDestination = await validatePublicUrlDestination(parsedUrl, dependencies.lookup);
+      } catch (error) {
+        if (error instanceof PinnedUrlError) {
+          throw new PlaygroundError(
+            "PLAYGROUND_UNSAFE_DESTINATION",
+            "The playground export resolved to a private or reserved network and was not imported.",
+          );
+        }
+        throw error;
+      }
+      const response = await dependencies.fetch(currentUrl, {
+        method: "GET",
+        redirect: "manual",
+        signal: controller.signal,
+        headers: { Accept: "text/html,text/css,application/javascript,text/javascript" },
+      }, validatedDestination.address);
+      if (!responseHostIsAllowed(response, provider)) {
+        throw new PlaygroundError(
+          "PLAYGROUND_REDIRECT_UNSAFE",
+          "The playground export redirected outside its provider, so it was not imported.",
+        );
+      }
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get("location");
+        if (!location || redirectCount === PLAYGROUND_MAX_REDIRECTS) {
+          throw new PlaygroundError(
+            "PLAYGROUND_REDIRECT_UNSAFE",
+            "The playground export redirected too many times or without a destination.",
+          );
+        }
+        try {
+          currentUrl = new URL(location, currentUrl).toString();
+        } catch {
+          throw new PlaygroundError(
+            "PLAYGROUND_REDIRECT_UNSAFE",
+            "The playground export redirected to an invalid destination.",
+          );
+        }
+        continue;
+      }
+      if (response.status === 404 || response.status === 410) return null;
+      if (!response.ok) {
+        throw new PlaygroundError(
+          "PLAYGROUND_PROVIDER_UNAVAILABLE",
+          `The public ${provider === "codepen" ? "CodePen" : "JSFiddle"} export could not be fetched right now.`,
+        );
+      }
+      const content = await readLimitedBody(response, controller.signal, PLAYGROUND_MAX_BYTES);
+      if (!content.trim()) return null;
+      return content;
     }
-    if (response.status === 404 || response.status === 410) return null;
-    if (!response.ok) {
-      throw new PlaygroundError(
-        "PLAYGROUND_PROVIDER_UNAVAILABLE",
-        `The public ${provider === "codepen" ? "CodePen" : "JSFiddle"} export could not be fetched right now.`,
-      );
-    }
-    const content = await readLimitedBody(response, controller.signal, PLAYGROUND_MAX_BYTES);
-    if (!content.trim()) return null;
-    return content;
+    throw new PlaygroundError(
+      "PLAYGROUND_REDIRECT_UNSAFE",
+      "The playground export redirected too many times.",
+    );
   } catch (error) {
     if (error instanceof PlaygroundError) throw error;
     if (controller.signal.aborted) {
@@ -416,7 +479,9 @@ export const playgroundAdapters: readonly PlaygroundAdapter[] = [
     matches: (source) => source.provider === "codepen",
     import: (source, dependencies = {}) =>
       importCodePen(source, {
-        fetch: dependencies.fetch ?? fetch,
+        fetch: dependencies.fetch ?? ((input, init, pinnedAddress) =>
+          pinnedAddress ? fetchPinnedUrl(input, init, pinnedAddress) : fetch(input, init)),
+        lookup: dependencies.lookup ?? defaultUrlLookup,
         timeoutMs: dependencies.timeoutMs ?? PLAYGROUND_TIMEOUT_MS,
       }),
   },
@@ -425,7 +490,9 @@ export const playgroundAdapters: readonly PlaygroundAdapter[] = [
     matches: (source) => source.provider === "jsfiddle",
     import: (source, dependencies = {}) =>
       importJsFiddle(source, {
-        fetch: dependencies.fetch ?? fetch,
+        fetch: dependencies.fetch ?? ((input, init, pinnedAddress) =>
+          pinnedAddress ? fetchPinnedUrl(input, init, pinnedAddress) : fetch(input, init)),
+        lookup: dependencies.lookup ?? defaultUrlLookup,
         timeoutMs: dependencies.timeoutMs ?? PLAYGROUND_TIMEOUT_MS,
       }),
   },
@@ -447,5 +514,10 @@ export async function importPlayground(
   dependencies?: Partial<PlaygroundDependencies>,
 ): Promise<PlaygroundImport> {
   const source = parsePlaygroundUrl(input);
-  return resolvePlaygroundAdapter(source).import(source, dependencies);
+  return resolvePlaygroundAdapter(source).import(source, {
+    fetch: globalThis.fetch,
+    lookup: defaultUrlLookup,
+    timeoutMs: PLAYGROUND_TIMEOUT_MS,
+    ...dependencies,
+  });
 }

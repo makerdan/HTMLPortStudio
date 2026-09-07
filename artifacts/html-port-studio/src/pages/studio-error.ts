@@ -95,6 +95,8 @@ export const STUDIO_ERROR_MESSAGES = {
     'That link is not a supported public CodePen or JSFiddle page. Copy the playground’s public URL.',
   PLAYGROUND_PROVIDER_UNSUPPORTED:
     'That playground provider is not supported yet. Use CodePen, JSFiddle, or import a hosted HTML page.',
+  PLAYGROUND_UNSAFE_DESTINATION:
+    'The playground export resolved to a private or reserved network, so it was not imported.',
   PLAYGROUND_REDIRECT_UNSAFE:
     'The playground export redirected outside its provider, so it was not imported. Try the public provider link again.',
   PLAYGROUND_TIMEOUT:
@@ -132,6 +134,7 @@ export const STUDIO_ERROR_ACTIONS = {
   PLAYGROUND_URL_PORT_NOT_ALLOWED: 'Use the standard HTTPS provider URL without a custom port.',
   PLAYGROUND_URL_UNSUPPORTED_FORM: 'Use a public pen or fiddle URL, not a collection, editor, or private link.',
   PLAYGROUND_PROVIDER_UNSUPPORTED: 'Use CodePen or JSFiddle, or switch to the hosted URL importer.',
+  PLAYGROUND_UNSAFE_DESTINATION: 'Retry the public provider URL and confirm it does not redirect to a private network.',
   PLAYGROUND_REDIRECT_UNSAFE: 'Retry from the original public provider URL and review any redirect.',
   PLAYGROUND_TIMEOUT: 'Check that the provider is available, then retry.',
   PLAYGROUND_RATE_LIMITED: 'Wait before retrying, or use paste, file, ZIP, GitHub, or hosted URL import.',

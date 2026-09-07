@@ -78,6 +78,83 @@ test("normalizes the public JSFiddle result and reports its limitations", async 
   assert.match(result.bundle.metadata.originalUrl, /jsfiddle\.net\/alice\/demo/);
 });
 
+test("pins provider exports and blocks private destinations", async () => {
+  let fetchCalls = 0;
+  let pinnedAddress = "";
+  const result = await importPlayground("https://jsfiddle.net/alice/pinned/", {
+    lookup: async () => [{ address: "93.184.216.34", family: 4 }],
+    fetch: async (_input, _init, address) => {
+      fetchCalls += 1;
+      pinnedAddress = address ?? "";
+      return response("<!doctype html><html><body>Pinned</body></html>", "https://jsfiddle.net/alice/pinned/");
+    },
+  });
+  assert.equal(result.provider, "jsfiddle");
+  assert.equal(fetchCalls, 1);
+  assert.equal(pinnedAddress, "93.184.216.34");
+
+  fetchCalls = 0;
+  await assert.rejects(
+    () =>
+      importPlayground("https://jsfiddle.net/alice/private/", {
+        lookup: async () => [{ address: "10.0.0.4", family: 4 }],
+        fetch: async () => {
+          fetchCalls += 1;
+          return response("<!doctype html>", "https://jsfiddle.net/alice/private/");
+        },
+      }),
+    (error: unknown) =>
+      error instanceof PlaygroundError && error.code === "PLAYGROUND_UNSAFE_DESTINATION",
+  );
+  assert.equal(fetchCalls, 0);
+});
+
+test("validates provider redirects and blocks redirect DNS rebinding", async () => {
+  let fetchCalls = 0;
+  let lookupCalls = 0;
+  await assert.rejects(
+    () =>
+      importPlayground("https://jsfiddle.net/alice/redirect/", {
+        lookup: async () => {
+          lookupCalls += 1;
+          if (lookupCalls <= 2) return [{ address: "93.184.216.34", family: 4 }];
+          return lookupCalls === 3
+            ? [{ address: "93.184.216.35", family: 4 }]
+            : [{ address: "169.254.169.254", family: 4 }];
+        },
+        fetch: async () => {
+          fetchCalls += 1;
+          return new Response("", {
+            status: 302,
+            headers: { location: "https://jsfiddle.net/alice/final/" },
+          });
+        },
+      }),
+    (error: unknown) =>
+      error instanceof PlaygroundError && error.code === "PLAYGROUND_UNSAFE_DESTINATION",
+  );
+  assert.equal(fetchCalls, 1);
+  assert.equal(lookupCalls, 4);
+
+  fetchCalls = 0;
+  await assert.rejects(
+    () =>
+      importPlayground("https://codepen.io/alice/pen/redirect", {
+        lookup: async () => [{ address: "93.184.216.34", family: 4 }],
+        fetch: async () => {
+          fetchCalls += 1;
+          return new Response("", {
+            status: 302,
+            headers: { location: "https://example.com/private" },
+          });
+        },
+      }),
+    (error: unknown) =>
+      error instanceof PlaygroundError && error.code === "PLAYGROUND_REDIRECT_UNSAFE",
+  );
+  assert.equal(fetchCalls, 3);
+});
+
 test("does not pass empty or unavailable provider results into a bundle", async () => {
   await assert.rejects(
     () => importPlayground("https://codepen.io/alice/pen/empty", {

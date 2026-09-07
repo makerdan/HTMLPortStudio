@@ -91,6 +91,27 @@ test("blocks loopback and private destinations before fetch", async () => {
   assert.equal(fetchCalls, 0);
 });
 
+test("blocks link-local, metadata, and reserved destinations before fetch", async () => {
+  for (const input of [
+    "https://169.254.169.254/latest/meta-data",
+    "https://192.0.2.1/documentation",
+    "https://metadata.google.internal/computeMetadata/v1",
+    "https://[fe80::1]/local",
+  ]) {
+    let fetchCalls = 0;
+    await rejectsWith(
+      fetchHostedUrl(input, {
+        fetch: async () => {
+          fetchCalls += 1;
+          return response("<!doctype html>");
+        },
+      }),
+      "HOSTED_URL_BLOCKED_HOST",
+    );
+    assert.equal(fetchCalls, 0, input);
+  }
+});
+
 test("rechecks DNS and blocks rebinding before network access", async () => {
   let lookupCalls = 0;
   let fetchCalls = 0;
