@@ -2101,6 +2101,14 @@ export default function Home() {
     );
   };
 
+  const handleCancelGithubImport = () => {
+    importSessionRef.current += 1;
+    githubImportAbortControllerRef.current?.abort();
+    githubImportAbortControllerRef.current = null;
+    githubImportMutation.reset();
+    setGithubError('GitHub snapshot import cancelled. You can retry the same snapshot.');
+  };
+
   const handleGithubConfirm = () => {
     if (!githubImportData) return;
     const bundle = githubImportData.bundle;
@@ -2973,6 +2981,17 @@ export default function Home() {
                           'Fetch selected snapshot'
                         )}
                       </Button>
+                      {githubImportMutation.isPending && (
+                        <div className="mt-3 flex items-center justify-between rounded-lg border bg-muted/20 p-3 text-sm">
+                          <span className="flex items-center gap-2">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Fetching and checking the GitHub snapshot...
+                          </span>
+                          <Button type="button" size="sm" variant="outline" onClick={handleCancelGithubImport}>
+                            Cancel
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   )}
 

@@ -247,6 +247,7 @@ test("starting over invalidates a pending GitHub import and permits a fresh impo
   let releaseFirstImport: (() => void) | null = null;
   let firstImportRequest: import("@playwright/test").Request | null = null;
   let firstImportRequestAborted = false;
+  let firstImportResponseSettled = false;
   await mockAuth(page);
   page.on("requestfailed", (request) => {
     if (request === firstImportRequest) {
@@ -264,8 +265,14 @@ test("starting over invalidates a pending GitHub import and permits a fresh impo
         releaseFirstImport = () => {
           void route
             .fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(githubImport) })
-            .then(resolve)
-            .catch(resolve);
+            .then(() => {
+              firstImportResponseSettled = true;
+              resolve();
+            })
+            .catch(() => {
+              firstImportResponseSettled = true;
+              resolve();
+            });
         };
       });
     }
@@ -326,6 +333,60 @@ test("starting over clears a failed GitHub import so it can be retried cleanly",
   const freshFetchButton = page.getByRole("button", { name: "Fetch selected snapshot" });
   await expect(freshFetchButton).toBeEnabled();
   await freshFetchButton.click();
+  await expect(page.getByText("Review this read-only snapshot")).toBeVisible();
+  expect(importAttempts).toBe(2);
+});
+
+test("cancelling a pending GitHub import aborts the request, ignores its response, and permits retry", async ({ page }) => {
+  let importAttempts = 0;
+  let releaseFirstImport: (() => void) | null = null;
+  let firstImportRequest: import("@playwright/test").Request | null = null;
+  let firstImportRequestAborted = false;
+  await mockAuth(page);
+  page.on("requestfailed", (request) => {
+    if (request === firstImportRequest) {
+      firstImportRequestAborted = true;
+    }
+  });
+  await page.route("**/api/port/github/repository**", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(githubRepository) }),
+  );
+  await page.route("**/api/port/github/import", (route) => {
+    importAttempts += 1;
+    if (importAttempts === 1) {
+      firstImportRequest = route.request();
+      return new Promise<void>((resolve) => {
+        releaseFirstImport = () => {
+          void route
+            .fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(githubImport) })
+            .then(resolve)
+            .catch(resolve);
+        };
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(githubImport),
+    });
+  });
+
+  await page.goto("/");
+  await openGithubImport(page);
+  await page.getByRole("button", { name: "Fetch selected snapshot" }).click();
+  await expect(page.getByRole("button", { name: "Importing snapshot..." })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Cancel" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByText("GitHub snapshot import cancelled. You can retry the same snapshot.")).toBeVisible();
+  await expect.poll(() => firstImportRequestAborted).toBe(true);
+
+  releaseFirstImport?.();
+  await expect.poll(() => firstImportResponseSettled).toBe(true);
+  await expect(page.getByText("Review this read-only snapshot")).toHaveCount(0);
+  await expect(page.getByText("GitHub import needs attention")).toBeVisible();
+
+  await page.getByRole("button", { name: "Retry snapshot fetch" }).click();
   await expect(page.getByText("Review this read-only snapshot")).toBeVisible();
   expect(importAttempts).toBe(2);
 });
