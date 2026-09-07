@@ -19,6 +19,8 @@ export * from './hostedUrlImportStatus';
 export * from './hostedUrlInput';
 export * from './htmlAnalysis';
 export * from './htmlInput';
+export * from './importErrorCode';
+export * from './importErrorResponse';
 export * from './playgroundImport';
 export * from './playgroundImportInput';
 export * from './playgroundImportStatus';

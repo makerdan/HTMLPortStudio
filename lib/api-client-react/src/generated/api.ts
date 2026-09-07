@@ -31,6 +31,7 @@ import type {
   HostedUrlInput,
   HtmlAnalysis,
   HtmlInput,
+  ImportErrorResponse,
   PlaygroundImport,
   PlaygroundImportInput,
   PoeChatInput,
@@ -246,7 +247,7 @@ export const importHostedUrl = async (hostedUrlInput: HostedUrlInput, options?: 
 
 
 
-export const getImportHostedUrlMutationOptions = <TError = ErrorType<ErrorResponse>,
+export const getImportHostedUrlMutationOptions = <TError = ErrorType<ImportErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importHostedUrl>>, TError,{data: BodyType<HostedUrlInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof importHostedUrl>>, TError,{data: BodyType<HostedUrlInput>}, TContext> => {
 
@@ -275,12 +276,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type ImportHostedUrlMutationResult = NonNullable<Awaited<ReturnType<typeof importHostedUrl>>>
     export type ImportHostedUrlMutationBody = BodyType<HostedUrlInput>
-    export type ImportHostedUrlMutationError = ErrorType<ErrorResponse>
+    export type ImportHostedUrlMutationError = ErrorType<ImportErrorResponse>
 
     /**
  * @summary Import a public hosted HTML page
  */
-export const useImportHostedUrl = <TError = ErrorType<ErrorResponse>,
+export const useImportHostedUrl = <TError = ErrorType<ImportErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importHostedUrl>>, TError,{data: BodyType<HostedUrlInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof importHostedUrl>>,
@@ -318,7 +319,7 @@ export const importPlayground = async (playgroundImportInput: PlaygroundImportIn
 
 
 
-export const getImportPlaygroundMutationOptions = <TError = ErrorType<ErrorResponse>,
+export const getImportPlaygroundMutationOptions = <TError = ErrorType<ImportErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importPlayground>>, TError,{data: BodyType<PlaygroundImportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof importPlayground>>, TError,{data: BodyType<PlaygroundImportInput>}, TContext> => {
 
@@ -347,12 +348,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type ImportPlaygroundMutationResult = NonNullable<Awaited<ReturnType<typeof importPlayground>>>
     export type ImportPlaygroundMutationBody = BodyType<PlaygroundImportInput>
-    export type ImportPlaygroundMutationError = ErrorType<ErrorResponse>
+    export type ImportPlaygroundMutationError = ErrorType<ImportErrorResponse>
 
     /**
  * @summary Import a public CodePen or JSFiddle playground
  */
-export const useImportPlayground = <TError = ErrorType<ErrorResponse>,
+export const useImportPlayground = <TError = ErrorType<ImportErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importPlayground>>, TError,{data: BodyType<PlaygroundImportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof importPlayground>>,

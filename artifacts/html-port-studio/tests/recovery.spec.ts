@@ -86,6 +86,40 @@ const playgroundImport = {
   warnings: [],
 };
 
+const hostedImportFailures = [
+  ["HOSTED_URL_INVALID", "The hosted link is invalid.", "Use a complete HTTPS URL."],
+  ["HOSTED_URL_UNSUPPORTED_PROTOCOL", "The hosted link uses an unsupported protocol.", "Use HTTPS."],
+  ["HOSTED_URL_HTTP_DISABLED", "This hosted import requires HTTPS.", "Open the page over HTTPS."],
+  ["HOSTED_URL_CREDENTIALS", "The hosted link includes credentials.", "Remove credentials from the URL."],
+  ["HOSTED_URL_PORT_NOT_ALLOWED", "The hosted link uses a non-standard port.", "Use the standard HTTPS port."],
+  ["HOSTED_URL_BLOCKED_HOST", "This destination is private.", "Choose a public site."],
+  ["HOSTED_URL_DNS_FAILED", "The hosted domain could not be resolved.", "Check the hostname."],
+  ["HOSTED_URL_DNS_REBINDING", "The hosted destination changed networks.", "Use a stable public hostname."],
+  ["HOSTED_URL_REDIRECT_INVALID", "The hosted page returned an unsafe redirect.", "Use the final public URL."],
+  ["HOSTED_URL_TOO_MANY_REDIRECTS", "The hosted page redirected too many times.", "Use the final public URL."],
+  ["HOSTED_URL_TIMEOUT", "The hosted page timed out.", "Confirm the site responds and retry."],
+  ["HOSTED_URL_RATE_LIMITED", "Hosted imports are temporarily rate limited.", "Wait before retrying."],
+  ["HOSTED_URL_TOO_LARGE", "The hosted page is too large.", "Use a smaller HTML page."],
+  ["HOSTED_URL_NOT_HTML", "The link returned non-HTML content.", "Choose an HTML document."],
+  ["HOSTED_URL_HTTP_ERROR", "The hosted page returned an error.", "Check that the page is public."],
+  ["HOSTED_URL_FETCH_FAILED", "The hosted page could not be reached.", "Check the public URL."],
+] as const;
+
+const playgroundImportFailures = [
+  ["PLAYGROUND_URL_INVALID", "The playground link is invalid.", "Copy the public playground URL."],
+  ["PLAYGROUND_URL_UNSUPPORTED_PROTOCOL", "The playground link requires HTTPS.", "Use the public HTTPS URL."],
+  ["PLAYGROUND_URL_CREDENTIALS", "The playground link includes credentials.", "Remove credentials from the URL."],
+  ["PLAYGROUND_URL_PORT_NOT_ALLOWED", "The playground link uses a non-standard port.", "Use the standard provider URL."],
+  ["PLAYGROUND_URL_UNSUPPORTED_FORM", "The playground URL form is unsupported.", "Use a public pen or fiddle URL."],
+  ["PLAYGROUND_PROVIDER_UNSUPPORTED", "That playground provider is unsupported.", "Use CodePen or JSFiddle."],
+  ["PLAYGROUND_REDIRECT_UNSAFE", "The playground export redirected unsafely.", "Retry from the provider URL."],
+  ["PLAYGROUND_TIMEOUT", "The playground export timed out.", "Check the provider and retry."],
+  ["PLAYGROUND_RATE_LIMITED", "Playground imports are temporarily rate limited.", "Wait before retrying."],
+  ["PLAYGROUND_RESPONSE_TOO_LARGE", "The playground export is too large.", "Use a smaller example."],
+  ["PLAYGROUND_EMPTY", "The playground has no public HTML export.", "Make the playground public."],
+  ["PLAYGROUND_PROVIDER_UNAVAILABLE", "The playground provider is unavailable.", "Retry later or use hosted HTML."],
+] as const;
+
 async function mockAuth(page: import("@playwright/test").Page) {
   await page.route("**/__clerk/**", (route) => route.abort());
 }
@@ -390,6 +424,61 @@ test("cancelling a pending playground import aborts the request and permits retr
   expect(importAttempts).toBe(2);
 
   releaseFirstImport?.();
+});
+
+test("shows safe recovery details for every hosted and playground import failure", async ({ page }) => {
+  let hostedFailure = hostedImportFailures[0];
+  let playgroundFailure = playgroundImportFailures[0];
+  await mockAuth(page);
+  await page.route("**/api/port/hosted-url", (route) =>
+    route.fulfill({
+      status: 502,
+      contentType: "application/json",
+      body: JSON.stringify({
+        code: hostedFailure[0],
+        error: hostedFailure[1],
+        action: hostedFailure[2],
+        internal: "private upstream details must not render",
+      }),
+    }),
+  );
+  await page.route("**/api/port/playground/import", (route) =>
+    route.fulfill({
+      status: 502,
+      contentType: "application/json",
+      body: JSON.stringify({
+        code: playgroundFailure[0],
+        error: playgroundFailure[1],
+        action: playgroundFailure[2],
+        internal: "private provider details must not render",
+      }),
+    }),
+  );
+
+  await page.goto("/");
+  await page.getByRole("tab", { name: /Import hosted URL/i }).click();
+  const hostedUrlInput = page.getByRole("textbox", { name: "Hosted page URL" });
+  const hostedButton = page.getByRole("button", { name: "Fetch hosted HTML" });
+  for (const failure of hostedImportFailures) {
+    hostedFailure = failure;
+    await hostedUrlInput.fill("https://example.com/app");
+    await hostedButton.click();
+    await expect(page.getByText(failure[1], { exact: true })).toBeVisible();
+    await expect(page.getByText(`Next step: ${failure[2]}`, { exact: true })).toBeVisible();
+    await expect(page.getByText(/private upstream details must not render/i)).toHaveCount(0);
+  }
+
+  await page.getByRole("tab", { name: /Import CodePen \/ JSFiddle/i }).click();
+  const playgroundUrlInput = page.getByRole("textbox", { name: "Public CodePen or JSFiddle URL" });
+  const playgroundButton = page.getByRole("button", { name: "Import playground" });
+  for (const failure of playgroundImportFailures) {
+    playgroundFailure = failure;
+    await playgroundUrlInput.fill("https://codepen.io/alice/pen/demo");
+    await playgroundButton.click();
+    await expect(page.getByText(failure[1], { exact: true })).toBeVisible();
+    await expect(page.getByText(`Next step: ${failure[2]}`, { exact: true })).toBeVisible();
+    await expect(page.getByText(/private provider details must not render/i)).toHaveCount(0);
+  }
 });
 
 test("keeps actionable analysis errors visible in the Studio home alert", async ({ page }) => {

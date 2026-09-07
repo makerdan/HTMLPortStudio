@@ -8,6 +8,12 @@ export type BodyType<T> = T;
 
 export type AuthTokenGetter = () => Promise<string | null> | string | null;
 
+export type ApiErrorPayload = {
+  error?: string;
+  code?: string;
+  action?: string;
+};
+
 const NO_BODY_STATUS = new Set([204, 205, 304]);
 const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 
@@ -160,6 +166,29 @@ export class ApiError<T = unknown> extends Error {
     this.method = requestInfo.method;
     this.url = response.url || requestInfo.url;
   }
+}
+
+/**
+ * Read the user-facing portion of a structured API error without exposing
+ * arbitrary response bodies to callers. Consumers should still allowlist
+ * codes before displaying these fields.
+ */
+export function getApiErrorPayload(error: unknown): ApiErrorPayload | null {
+  if (typeof error !== "object" || error === null || !("data" in error)) {
+    return null;
+  }
+
+  const data = (error as { data?: unknown }).data;
+  if (typeof data !== "object" || data === null) {
+    return null;
+  }
+
+  const payload = data as Record<string, unknown>;
+  return {
+    error: typeof payload.error === "string" ? payload.error : undefined,
+    code: typeof payload.code === "string" ? payload.code : undefined,
+    action: typeof payload.action === "string" ? payload.action : undefined,
+  };
 }
 
 export class ResponseParseError extends Error {

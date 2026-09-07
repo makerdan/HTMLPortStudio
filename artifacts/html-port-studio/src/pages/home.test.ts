@@ -13,8 +13,10 @@ import { reconcileReadinessChecklist } from "./readiness-checklist.ts";
 import type { PortFinding } from "@workspace/api-client-react";
 import {
   getStudioErrorMessage,
+  getStudioErrorPresentation,
   PROJECT_HANDOFF_FAILURE_FALLBACK,
   PROJECT_HANDOFF_RECOVERY_EXPIRED,
+  STUDIO_ERROR_ACTIONS,
   STUDIO_ERROR_MESSAGES,
 } from "./studio-error.ts";
 import {
@@ -379,6 +381,91 @@ test("keeps every assistant and handoff API code mapped to safe Studio copy", as
     assert.equal(typeof STUDIO_ERROR_MESSAGES[code as keyof typeof STUDIO_ERROR_MESSAGES], "string");
     assert.ok(STUDIO_ERROR_MESSAGES[code as keyof typeof STUDIO_ERROR_MESSAGES].length > 0);
   }
+});
+
+test("keeps every hosted and playground import failure actionable and safe", () => {
+  const importCodes = Object.keys(STUDIO_ERROR_MESSAGES).filter(
+    (code) => code.startsWith("HOSTED_URL_") || code.startsWith("PLAYGROUND_"),
+  );
+
+  assert.ok(importCodes.length > 0);
+  for (const code of importCodes) {
+    const result = getStudioErrorPresentation(
+      {
+        data: {
+          code,
+          error: `safe explanation for ${code}`,
+          action: `safe recovery for ${code}`,
+        },
+      },
+      "generic import fallback",
+    );
+    assert.equal(result.message, `safe explanation for ${code}`);
+    assert.equal(result.action, `safe recovery for ${code}`);
+    assert.ok(STUDIO_ERROR_ACTIONS[code as keyof typeof STUDIO_ERROR_ACTIONS]);
+  }
+
+  const untrusted = getStudioErrorPresentation(
+    {
+      data: {
+        code: "HOSTED_URL_NEW_SERVER_DETAIL",
+        error: "private upstream response and secret-token",
+        action: "internal retry instructions",
+      },
+    },
+    "safe generic import fallback",
+  );
+  assert.deepEqual(untrusted, { message: "safe generic import fallback" });
+});
+
+test("renders import recovery actions without exposing raw server fields", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /getStudioErrorPresentation\(/);
+  assert.match(source, /<p>\{hostedError\.message\}<\/p>/);
+  assert.match(source, /Next step: \{hostedError\.action\}/);
+  assert.match(source, /<p>\{playgroundError\.message\}<\/p>/);
+  assert.match(source, /Next step: \{playgroundError\.action\}/);
+  assert.doesNotMatch(source, /hostedError\?\.error|playgroundError\?\.error/);
+});
+
+test("keeps the import error contract synchronized across API and OpenAPI", async () => {
+  const [portSource, hostedSource, playgroundSource, openApiSource] =
+    await Promise.all([
+      readFile(new URL("../../../api-server/src/routes/port.ts", import.meta.url), "utf8"),
+      readFile(new URL("../../../api-server/src/routes/hosted-url.ts", import.meta.url), "utf8"),
+      readFile(new URL("../../../api-server/src/routes/playground.ts", import.meta.url), "utf8"),
+      readFile(new URL("../../../../lib/api-spec/openapi.yaml", import.meta.url), "utf8"),
+    ]);
+  const hostedRoute = portSource.slice(
+    portSource.indexOf('router.post("/port/hosted-url"'),
+    portSource.indexOf('router.post("/port/playground/import"'),
+  );
+  const playgroundRoute = portSource.slice(
+    portSource.indexOf('router.post("/port/playground/import"'),
+    portSource.indexOf('router.get("/port/poe/models"'),
+  );
+  const importCodes = Object.keys(STUDIO_ERROR_MESSAGES).filter(
+    (code) => code.startsWith("HOSTED_URL_") || code.startsWith("PLAYGROUND_"),
+  );
+
+  for (const code of importCodes) {
+    assert.match(
+      `${hostedRoute}\n${playgroundRoute}\n${hostedSource}\n${playgroundSource}`,
+      new RegExp(`\\b${code}\\b`),
+    );
+    assert.match(openApiSource, new RegExp(`- ${code}\\s*$`, "m"));
+  }
+  assert.match(openApiSource, /ImportErrorResponse:/);
+  assert.match(openApiSource, /description: Safe, actionable failure details/);
+  assert.match(
+    openApiSource,
+    /\/port\/hosted-url:[\s\S]*?\$ref: "#\/components\/schemas\/ImportErrorResponse"/,
+  );
+  assert.match(
+    openApiSource,
+    /\/port\/playground\/import:[\s\S]*?\$ref: "#\/components\/schemas\/ImportErrorResponse"/,
+  );
 });
 
 test("uses exact live Poe identifiers and preserves retryable assistant state", async () => {

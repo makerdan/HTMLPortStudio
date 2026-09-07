@@ -75,25 +75,25 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ImportErrorResponse"
         "413":
           description: Hosted HTML response is too large
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ImportErrorResponse"
         "429":
           description: Hosted URL import rate limit exceeded
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ImportErrorResponse"
         "502":
           description: Hosted page could not be fetched
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ImportErrorResponse"
   /port/playground/import:
     post:
       operationId: importPlayground
@@ -118,25 +118,25 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ImportErrorResponse"
         "413":
           description: Playground export exceeds importer limits
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ImportErrorResponse"
         "429":
           description: Playground import rate limit exceeded
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ImportErrorResponse"
         "502":
           description: Provider export could not be fetched
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ImportErrorResponse"
   /port/github/repository:
     get:
       operationId: getGithubRepository
@@ -460,6 +460,51 @@ components:
         action:
           type: string
       required: [error]
+    ImportErrorCode:
+      type: string
+      description: Stable, safe error identifiers emitted by hosted and playground imports.
+      enum:
+        - HOSTED_URL_INVALID
+        - HOSTED_URL_UNSUPPORTED_PROTOCOL
+        - HOSTED_URL_HTTP_DISABLED
+        - HOSTED_URL_CREDENTIALS
+        - HOSTED_URL_PORT_NOT_ALLOWED
+        - HOSTED_URL_BLOCKED_HOST
+        - HOSTED_URL_DNS_FAILED
+        - HOSTED_URL_DNS_REBINDING
+        - HOSTED_URL_REDIRECT_INVALID
+        - HOSTED_URL_TOO_MANY_REDIRECTS
+        - HOSTED_URL_TIMEOUT
+        - HOSTED_URL_RATE_LIMITED
+        - HOSTED_URL_TOO_LARGE
+        - HOSTED_URL_NOT_HTML
+        - HOSTED_URL_HTTP_ERROR
+        - HOSTED_URL_FETCH_FAILED
+        - PLAYGROUND_URL_INVALID
+        - PLAYGROUND_URL_UNSUPPORTED_PROTOCOL
+        - PLAYGROUND_URL_CREDENTIALS
+        - PLAYGROUND_URL_PORT_NOT_ALLOWED
+        - PLAYGROUND_URL_UNSUPPORTED_FORM
+        - PLAYGROUND_PROVIDER_UNSUPPORTED
+        - PLAYGROUND_REDIRECT_UNSAFE
+        - PLAYGROUND_TIMEOUT
+        - PLAYGROUND_RATE_LIMITED
+        - PLAYGROUND_RESPONSE_TOO_LARGE
+        - PLAYGROUND_EMPTY
+        - PLAYGROUND_PROVIDER_UNAVAILABLE
+    ImportErrorResponse:
+      type: object
+      description: Safe, actionable failure details for hosted and playground imports.
+      properties:
+        error:
+          type: string
+          description: User-facing explanation that does not include upstream or private-network details.
+        code:
+          $ref: "#/components/schemas/ImportErrorCode"
+        action:
+          type: string
+          description: Recommended next step for recovering from the import failure.
+      required: [error, code, action]
     SourceType:
       type: string
       enum: [pasted_html, single_file, zip_project, github_repository, hosted_page, playground]

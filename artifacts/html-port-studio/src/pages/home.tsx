@@ -96,8 +96,10 @@ import {
 } from '../session-recovery';
 import {
   getStudioErrorMessage,
+  getStudioErrorPresentation,
   PROJECT_HANDOFF_FAILURE_FALLBACK,
   PROJECT_HANDOFF_RECOVERY_EXPIRED,
+  type StudioErrorPresentation,
 } from './studio-error';
 import {
   ZipSourceError,
@@ -1752,10 +1754,10 @@ export default function Home() {
   const [githubError, setGithubError] = useState<string | null>(null);
   const [githubImportData, setGithubImportData] = useState<GithubImport | null>(null);
   const [hostedUrl, setHostedUrl] = useState('');
-  const [hostedError, setHostedError] = useState<string | null>(null);
+  const [hostedError, setHostedError] = useState<StudioErrorPresentation | null>(null);
   const [hostedImportData, setHostedImportData] = useState<HostedUrlImport | null>(null);
   const [playgroundUrl, setPlaygroundUrl] = useState('');
-  const [playgroundError, setPlaygroundError] = useState<string | null>(null);
+  const [playgroundError, setPlaygroundError] = useState<StudioErrorPresentation | null>(null);
   const [playgroundImportData, setPlaygroundImportData] = useState<PlaygroundImport | null>(null);
   const [repairOpen, setRepairOpen] = useState(false);
   const [repairSource, setRepairSource] = useState<string | null>(null);
@@ -2124,7 +2126,7 @@ export default function Home() {
     const value = hostedUrl.trim();
     const validationError = validateHostedUrl(value);
     if (validationError) {
-      setHostedError(validationError);
+      setHostedError({ message: validationError });
       return;
     }
     if (hostedImportMutation.isPending) return;
@@ -2144,7 +2146,9 @@ export default function Home() {
           const bundle = data.bundle;
           if (bundle.sourceType !== 'hosted_page') {
             setHostedImportData(null);
-            setHostedError('The server returned an unexpected hosted source. Retry the import.');
+            setHostedError({
+              message: 'The server returned an unexpected hosted source. Retry the import.',
+            });
             return;
           }
           const entrypointHtml =
@@ -2169,7 +2173,7 @@ export default function Home() {
           if (sessionId !== importSessionRef.current) return;
           setHostedImportData(null);
           setHostedError(
-            getStudioErrorMessage(
+            getStudioErrorPresentation(
               error,
               'The hosted page could not be imported. Your current source is still here.',
             ),
@@ -2184,14 +2188,14 @@ export default function Home() {
     hostedImportAbortControllerRef.current?.abort();
     hostedImportAbortControllerRef.current = null;
     hostedImportMutation.reset();
-    setHostedError('Hosted import cancelled. You can retry the same URL.');
+    setHostedError({ message: 'Hosted import cancelled. You can retry the same URL.' });
   };
 
   const handlePlaygroundImport = () => {
     const value = playgroundUrl.trim();
     const validationError = validatePlaygroundUrl(value);
     if (validationError) {
-      setPlaygroundError(validationError);
+      setPlaygroundError({ message: validationError });
       return;
     }
     if (playgroundImportMutation.isPending) return;
@@ -2210,7 +2214,9 @@ export default function Home() {
           if (abortController.signal.aborted) return;
           if (sessionId !== importSessionRef.current) return;
           if (data.bundle.sourceType !== 'playground') {
-            setPlaygroundError('The server returned an unexpected playground source. Retry the import.');
+            setPlaygroundError({
+              message: 'The server returned an unexpected playground source. Retry the import.',
+            });
             return;
           }
           const entrypointHtml =
@@ -2234,7 +2240,7 @@ export default function Home() {
           if (sessionId !== importSessionRef.current) return;
           setPlaygroundImportData(null);
           setPlaygroundError(
-            getStudioErrorMessage(
+            getStudioErrorPresentation(
               error,
               'The playground could not be imported. Your current source is still here.',
             ),
@@ -2249,7 +2255,7 @@ export default function Home() {
     playgroundImportAbortControllerRef.current?.abort();
     playgroundImportAbortControllerRef.current = null;
     playgroundImportMutation.reset();
-    setPlaygroundError('Playground import cancelled. You can retry the same URL.');
+    setPlaygroundError({ message: 'Playground import cancelled. You can retry the same URL.' });
   };
 
   const handleReset = () => {
@@ -3082,7 +3088,10 @@ export default function Home() {
                       <XCircle className="h-4 w-4" />
                       <AlertTitle>Hosted page could not be imported</AlertTitle>
                       <AlertDescription>
-                        {hostedError}
+                        <p>{hostedError.message}</p>
+                        {hostedError.action && (
+                          <p className="mt-2 font-medium">Next step: {hostedError.action}</p>
+                        )}
                         {!hostedImportMutation.isPending && (
                           <Button type="button" size="sm" variant="outline" className="mt-3" onClick={handleHostedImport}>
                             Retry hosted import
@@ -3191,7 +3200,10 @@ export default function Home() {
                         <XCircle className="h-4 w-4" />
                         <AlertTitle>Playground could not be imported</AlertTitle>
                         <AlertDescription>
-                          {playgroundError}
+                          <p>{playgroundError.message}</p>
+                          {playgroundError.action && (
+                            <p className="mt-2 font-medium">Next step: {playgroundError.action}</p>
+                          )}
                           {!playgroundImportMutation.isPending && (
                             <Button type="button" size="sm" variant="outline" className="mt-3" onClick={handlePlaygroundImport}>
                               Retry playground import
