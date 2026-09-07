@@ -65,18 +65,20 @@ test("accepts a valid plan", () => {
   assert.deepEqual(validatePlanText(valid, "valid plan"), []);
 });
 
-test("resolves a valid plan to the registered test-standard command", () => {
+test("resolves every registered tier from a valid plan to its exact command", () => {
+  const tiers = loadTierRegistry();
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "failure-gate-lock-"));
   const file = path.join(directory, "plan.md");
-  fs.writeFileSync(file, valid);
 
   try {
-    const registeredTier = loadTierRegistry().get("test-standard");
-    const resolved = readPlanTier(file);
+    for (const [tierName, registeredTier] of tiers) {
+      fs.writeFileSync(file, valid.replace("`test-standard`", `\`${tierName}\``));
+      const resolved = readPlanTier(file);
 
-    assert.equal(resolved.tierName, "test-standard");
-    assert.deepEqual(resolved.tier, registeredTier);
-    assert.equal(resolved.tier.command, registeredTier.command);
+      assert.equal(resolved.tierName, tierName);
+      assert.deepEqual(resolved.tier, registeredTier);
+      assert.equal(resolved.tier.command, registeredTier.command);
+    }
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }
