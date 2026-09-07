@@ -1,10 +1,4 @@
-import express, {
-  type ErrorRequestHandler,
-  type Express,
-  type NextFunction,
-  type Request,
-  type Response,
-} from "express";
+import express, { type ErrorRequestHandler, type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import { clerkMiddleware } from "@clerk/express";
@@ -17,6 +11,8 @@ import {
   clerkProxyMiddleware,
   getClerkProxyHost,
 } from "./middlewares/clerkProxyMiddleware";
+import { finalApiErrorHandler } from "./middlewares/apiErrorMiddleware.ts";
+import { getConfiguredPublicOrigin } from "./middlewares/publicOrigin.ts";
 
 const app: Express = express();
 const SOURCE_TEXT_LIMIT_LABEL = `${SOURCE_TEXT_MAX_BYTES / 1024 ** 2} MB`;
@@ -29,6 +25,8 @@ function allowedStudioOrigins(): Set<string> {
   if (process.env.REPLIT_DEV_DOMAIN) {
     configured.push(`https://${process.env.REPLIT_DEV_DOMAIN}`);
   }
+  const publicOrigin = getConfiguredPublicOrigin();
+  if (publicOrigin) configured.push(publicOrigin);
   return new Set(
     configured.filter((origin) => {
       try {
@@ -92,9 +90,9 @@ app.use("/api", router);
 
 const jsonBodyErrorHandler: ErrorRequestHandler = (
   error: unknown,
-  req: Request,
-  res: Response,
-  next: NextFunction,
+  req,
+  res,
+  next,
 ) => {
   const errorType =
     typeof error === "object" &&
@@ -131,5 +129,6 @@ const jsonBodyErrorHandler: ErrorRequestHandler = (
 };
 
 app.use(jsonBodyErrorHandler);
+app.use(finalApiErrorHandler);
 
 export default app;

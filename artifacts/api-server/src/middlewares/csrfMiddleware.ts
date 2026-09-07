@@ -1,16 +1,16 @@
 import type { NextFunction, Request, Response } from "express";
-
-function requestOrigin(req: Request): string {
-  const protocol = req.headers["x-forwarded-proto"] || req.protocol;
-  const host = req.headers["x-forwarded-host"] || req.headers.host;
-  return `${protocol}://${host}`;
-}
+import {
+  getConfiguredPublicOrigin,
+  getEffectiveRequestOrigin,
+} from "./publicOrigin.ts";
 
 function configuredStudioOrigins(): Set<string> {
   const values = process.env.HTML_PORT_STUDIO_ORIGINS
     ?.split(",")
     .map((origin) => origin.trim())
     .filter(Boolean) ?? [];
+  const publicOrigin = getConfiguredPublicOrigin();
+  if (publicOrigin) values.push(publicOrigin);
   if (process.env.REPLIT_DEV_DOMAIN) values.push(`https://${process.env.REPLIT_DEV_DOMAIN}`);
   return new Set(values);
 }
@@ -28,7 +28,7 @@ export function requireTrustedCookieOrigin(
   const allowed = configuredStudioOrigins();
   if (
     origin &&
-    (origin === requestOrigin(req) || allowed.has(origin))
+    (origin === getEffectiveRequestOrigin(req) || allowed.has(origin))
   ) {
     next();
     return;
