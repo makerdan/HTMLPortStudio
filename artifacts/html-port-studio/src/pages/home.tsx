@@ -2181,6 +2181,8 @@ export default function Home() {
 
   const handleCancelHostedImport = () => {
     importSessionRef.current += 1;
+    hostedImportAbortControllerRef.current?.abort();
+    hostedImportAbortControllerRef.current = null;
     hostedImportMutation.reset();
     setHostedError('Hosted import cancelled. You can retry the same URL.');
   };
@@ -2244,6 +2246,8 @@ export default function Home() {
 
   const handleCancelPlaygroundImport = () => {
     importSessionRef.current += 1;
+    playgroundImportAbortControllerRef.current?.abort();
+    playgroundImportAbortControllerRef.current = null;
     playgroundImportMutation.reset();
     setPlaygroundError('Playground import cancelled. You can retry the same URL.');
   };

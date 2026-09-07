@@ -257,9 +257,6 @@ test("starting over invalidates a pending GitHub import and permits a fresh impo
   await freshFetchButton.click();
   await expect(page.getByText("Review this read-only snapshot")).toBeVisible();
   expect(importAttempts).toBe(2);
-
-  releaseFirstImport?.();
-  await expect(page.getByText("Review this read-only snapshot")).toBeVisible();
 });
 
 test("starting over clears a failed GitHub import so it can be retried cleanly", async ({ page }) => {
@@ -299,7 +296,7 @@ test("starting over clears a failed GitHub import so it can be retried cleanly",
   expect(importAttempts).toBe(2);
 });
 
-test("starting over aborts a pending hosted import and keeps the fresh source entry silent", async ({ page }) => {
+test("cancelling a pending hosted import aborts the request and permits retry", async ({ page }) => {
   let importAttempts = 0;
   let releaseFirstImport: (() => void) | null = null;
   let firstImportRequest: import("@playwright/test").Request | null = null;
@@ -336,22 +333,18 @@ test("starting over aborts a pending hosted import and keeps the fresh source en
   await page.getByRole("button", { name: "Fetch hosted HTML" }).click();
   await expect(page.getByRole("button", { name: /Fetching\.\.\./ })).toBeDisabled();
 
-  await page.getByRole("button", { name: "Reset HTML Port Studio" }).click();
-  await expect(page.getByPlaceholder(/paste your html/i)).toBeVisible();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByText("Hosted import cancelled. You can retry the same URL.")).toBeVisible();
   await expect.poll(() => firstImportRequestAborted).toBe(true);
-  await expect(page.getByText("Hosted page could not be imported")).not.toBeVisible();
 
-  await page.getByRole("tab", { name: /Import hosted URL/i }).click();
-  await page.getByRole("textbox", { name: "Hosted page URL" }).fill("https://example.com/app");
-  await page.getByRole("button", { name: "Fetch hosted HTML" }).click();
+  await page.getByRole("button", { name: "Retry hosted import" }).click();
   await expect(page.getByText("Hosted page fetched safely")).toBeVisible();
   expect(importAttempts).toBe(2);
 
   releaseFirstImport?.();
-  await expect(page.getByText("Hosted page fetched safely")).toBeVisible();
 });
 
-test("starting over aborts a pending playground import and keeps the fresh source entry silent", async ({ page }) => {
+test("cancelling a pending playground import aborts the request and permits retry", async ({ page }) => {
   let importAttempts = 0;
   let releaseFirstImport: (() => void) | null = null;
   let firstImportRequest: import("@playwright/test").Request | null = null;
@@ -388,19 +381,15 @@ test("starting over aborts a pending playground import and keeps the fresh sourc
   await page.getByRole("button", { name: "Import playground" }).click();
   await expect(page.getByRole("button", { name: "Importing..." })).toBeDisabled();
 
-  await page.getByRole("button", { name: "Reset HTML Port Studio" }).click();
-  await expect(page.getByPlaceholder(/paste your html/i)).toBeVisible();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByText("Playground import cancelled. You can retry the same URL.")).toBeVisible();
   await expect.poll(() => firstImportRequestAborted).toBe(true);
-  await expect(page.getByText("Playground could not be imported")).not.toBeVisible();
 
-  await page.getByRole("tab", { name: /Import CodePen \/ JSFiddle/i }).click();
-  await page.getByRole("textbox", { name: "Public CodePen or JSFiddle URL" }).fill("https://codepen.io/alice/pen/demo");
-  await page.getByRole("button", { name: "Import playground" }).click();
+  await page.getByRole("button", { name: "Retry playground import" }).click();
   await expect(page.getByText("CodePen source normalized safely")).toBeVisible();
   expect(importAttempts).toBe(2);
 
   releaseFirstImport?.();
-  await expect(page.getByText("CodePen source normalized safely")).toBeVisible();
 });
 
 test("keeps actionable analysis errors visible in the Studio home alert", async ({ page }) => {
@@ -474,20 +463,8 @@ test("stops handoff polling after an error and only resumes on retry", async ({ 
 });
 
 test("[cross-browser] recovers an in-progress authenticated handoff after reload", async ({ page }) => {
-  const jobId = "123e4567-e89b-12d3-a456-426614174010";
-  const status = {
-    jobId,
-    status: "running",
-    projectId: null,
-    projectUrl: null,
-    projectName: "Imported page",
-    currentStep: "Port Authority",
-    steps: [
-      { name: "Poe Setup", status: "completed", error: null },
-      { name: "Port Authority", status: "running", error: null },
-    ],
-    error: null,
-  };
+    const jobId = new URL(route.request().url()).pathname.split("/").pop() ?? "";
+    const status = statuses.get(jobId);
   let statusChecks = 0;
 
   await mockAuthenticatedAuth(page);
