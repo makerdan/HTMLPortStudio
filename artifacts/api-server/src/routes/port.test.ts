@@ -477,6 +477,130 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
   }
 });
 
+test("bounds public Poe traffic before provider forwarding and caches models", async () => {
+  const confirmedModel = "Claude-Sonnet-4.6";
+  let modelRequests = 0;
+  let completionRequests = 0;
+  const poe = http.createServer(async (request, response) => {
+    const path = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
+    if (request.method === "GET" && path === "/v1/models") {
+      modelRequests += 1;
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ data: [{ id: confirmedModel }] }));
+      return;
+    }
+    if (request.method === "POST" && path === "/v1/chat/completions") {
+      completionRequests += 1;
+      await readBody(request);
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(
+        JSON.stringify({
+          model: confirmedModel,
+          choices: [{ message: { content: "bounded response" } }],
+        }),
+      );
+      return;
+    }
+    response.writeHead(404);
+    response.end();
+  });
+  const poePort = await listen(poe);
+  const apiPort = await unusedPort();
+  const api = spawn(process.execPath, ["--enable-source-maps", "dist/index.mjs"], {
+    cwd: new URL("../../", import.meta.url).pathname,
+    env: {
+      ...process.env,
+      PORT: String(apiPort),
+      POE_API_KEY: "test-poe-key",
+      POE_API_BASE_URL: `http://127.0.0.1:${poePort}/v1`,
+      NODE_ENV: "test",
+    },
+    stdio: "ignore",
+  });
+
+  try {
+    const baseUrl = `http://127.0.0.1:${apiPort}/api`;
+    await waitFor(async () => {
+      try {
+        return (await fetch(`${baseUrl}/healthz`)).ok;
+      } catch {
+        return false;
+      }
+    }, "API server did not start");
+
+    const firstCatalogue = await jsonRequest(`${baseUrl}/port/poe/models`);
+    const secondCatalogue = await jsonRequest(`${baseUrl}/port/poe/models`);
+    assert.equal(firstCatalogue.status, 200);
+    assert.equal(secondCatalogue.status, 200);
+    assert.deepEqual(firstCatalogue.body.models, [confirmedModel]);
+    assert.deepEqual(secondCatalogue.body.models, [confirmedModel]);
+    assert.equal(modelRequests, 1);
+
+    const oversized = await jsonRequest(`${baseUrl}/port/poe/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Forwarded-For": "198.51.100.8",
+      },
+      body: JSON.stringify({
+        model: confirmedModel,
+        messages: [{ role: "user", content: "x".repeat(600_000) }],
+      }),
+    });
+    assert.equal(oversized.status, 413);
+    assert.equal(oversized.body.code, "POE_CHAT_REQUEST_TOO_LARGE");
+
+    const overTokenCeiling = await jsonRequest(`${baseUrl}/port/poe/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Forwarded-For": "198.51.100.9",
+      },
+      body: JSON.stringify({
+        model: confirmedModel,
+        messages: [{ role: "user", content: "hello" }],
+        maxTokens: 8192,
+      }),
+    });
+    assert.equal(overTokenCeiling.status, 400);
+    assert.equal(overTokenCeiling.body.code, "POE_TOKEN_LIMIT_EXCEEDED");
+    assert.equal(completionRequests, 0);
+
+    const abuseHeaders = {
+      "Content-Type": "application/json",
+      "X-Forwarded-For": "198.51.100.10",
+    };
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const allowed = await jsonRequest(`${baseUrl}/port/poe/chat`, {
+        method: "POST",
+        headers: abuseHeaders,
+        body: JSON.stringify({
+          model: confirmedModel,
+          messages: [{ role: "user", content: `request-${attempt}` }],
+        }),
+      });
+      assert.equal(allowed.status, 200, `request ${attempt + 1} should be allowed`);
+    }
+    const blocked = await jsonRequest(`${baseUrl}/port/poe/chat`, {
+      method: "POST",
+      headers: abuseHeaders,
+      body: JSON.stringify({
+        model: confirmedModel,
+        messages: [{ role: "user", content: "request-7" }],
+      }),
+    });
+    assert.equal(blocked.status, 429);
+    assert.equal(blocked.body.code, "POE_RATE_LIMITED");
+    assert.equal(completionRequests, 6);
+  } finally {
+    if (!api.killed) {
+      api.kill("SIGTERM");
+      await once(api, "exit").catch(() => undefined);
+    }
+    await new Promise<void>((resolve) => poe.close(() => resolve()));
+  }
+});
+
 test("forwards source unchanged and resumes only the failed setup skill", async () => {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   const ownerId = `port-test-owner-${randomUUID()}`;
@@ -583,11 +707,14 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
     assert.equal(blockedChat.status, 400);
     assert.equal(blockedChat.body.code, "CHAT_CONTAINS_CREDENTIAL");
 
-    for (const credential of credentialRegressionMatrix) {
+    for (const [credentialIndex, credential] of credentialRegressionMatrix.entries()) {
       const valueInSource = credential.source.replace("VALUE", credential.value);
       const matrixChat = await jsonRequest(`${baseUrl}/port/poe/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Forwarded-For": `198.51.100.${credentialIndex + 20}`,
+        },
         body: JSON.stringify({
           model: "Claude-Sonnet-4.6",
           messages: [{ role: "user", content: `Review this imported source: ${valueInSource}` }],

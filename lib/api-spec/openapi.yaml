@@ -280,6 +280,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Chat request exceeds the server request byte limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Too many chat requests from the caller
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "503":
           description: Poe is not configured or unavailable
           content:
@@ -840,7 +852,7 @@ components:
         maxTokens:
           type: number
           minimum: 1
-          maximum: 8192
+          maximum: 4096
       required: [model, messages]
     PoeChatResponse:
       type: object
@@ -938,4 +950,3 @@ components:
         - currentStep
         - steps
         - error
-

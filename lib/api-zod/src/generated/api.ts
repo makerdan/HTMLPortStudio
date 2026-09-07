@@ -381,7 +381,7 @@ export const ListPoeModelsResponse = zod.object({
 
 export const chatWithPoeBodyMessagesMax = 40;
 
-export const chatWithPoeBodyMaxTokensMax = 8192;
+export const chatWithPoeBodyMaxTokensMax = 4096;
 
 
 

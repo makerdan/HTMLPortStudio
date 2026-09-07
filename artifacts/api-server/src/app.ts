@@ -13,6 +13,7 @@ import {
 } from "./middlewares/clerkProxyMiddleware";
 import { finalApiErrorHandler } from "./middlewares/apiErrorMiddleware.ts";
 import { getConfiguredPublicOrigin } from "./middlewares/publicOrigin.ts";
+import { POE_CHAT_REQUEST_MAX_BYTES } from "./routes/port";
 
 const app: Express = express();
 const SOURCE_TEXT_LIMIT_LABEL = `${SOURCE_TEXT_MAX_BYTES / 1024 ** 2} MB`;
@@ -39,6 +40,8 @@ function allowedStudioOrigins(): Set<string> {
 }
 
 const studioOrigins = allowedStudioOrigins();
+
+app.set("trust proxy", 1);
 
 app.use(
   pinoHttp({
@@ -83,6 +86,10 @@ if (process.env.CLERK_SECRET_KEY && process.env.CLERK_PUBLISHABLE_KEY) {
 // Repair prompts include the complete imported document plus a small
 // instruction envelope. Keep the analyzer and handoff limits at 2 MB while
 // allowing a valid near-limit document to reach the existing Poe bridge.
+app.use(
+  "/api/port/poe/chat",
+  express.json({ limit: `${POE_CHAT_REQUEST_MAX_BYTES}b` }),
+);
 app.use(express.json({ limit: "8mb" }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -113,7 +120,12 @@ const jsonBodyErrorHandler: ErrorRequestHandler = (
     errorType === "entity.too.large"
   ) {
     res.status(413).json(
-      req.path === "/api/port/analyze"
+      req.path === "/api/port/poe/chat"
+        ? {
+            error: "Poe chat requests must be smaller than 512 KiB.",
+            code: "POE_CHAT_REQUEST_TOO_LARGE",
+          }
+        : req.path === "/api/port/analyze"
         ? {
             error: `Provide exactly one valid source bundle no larger than ${SOURCE_TEXT_LIMIT_LABEL}.`,
             code: "BUNDLE_TOO_LARGE",

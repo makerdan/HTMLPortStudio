@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request } from "express";
 import { ReplitConnectors, type Connection } from "@replit/connectors-sdk";
 import {
   db,
@@ -232,7 +232,97 @@ type PoeModelCatalogue = {
   failed: boolean;
 };
 
+export const POE_CHAT_REQUEST_MAX_BYTES = 512 * 1024;
+export const POE_CHAT_MAX_COMPLETION_TOKENS = 4_096;
+const POE_CHAT_RATE_LIMIT_WINDOW_MS = 60_000;
+const POE_CHAT_RATE_LIMIT_MAX_REQUESTS = 6;
+const POE_MODEL_CATALOGUE_CACHE_TTL_MS = 30_000;
+const POE_MODEL_CATALOGUE_FAILURE_CACHE_TTL_MS = 5_000;
+
+type PoeRateLimitEntry = {
+  windowStartedAt: number;
+  requestCount: number;
+};
+
+type PoeModelCatalogueCache = {
+  value: PoeModelCatalogue;
+  expiresAt: number;
+};
+
+const poeChatRateLimits = new Map<string, PoeRateLimitEntry>();
+let poeModelCatalogueCache: PoeModelCatalogueCache | null = null;
+let poeModelCatalogueInFlight: Promise<PoeModelCatalogue> | null = null;
+
+function poeClientKey(req: Request): string {
+  return req.ip || req.socket.remoteAddress || "unknown";
+}
+
+function takePoeChatRateLimit(req: Request): {
+  allowed: boolean;
+  retryAfterSeconds?: number;
+} {
+  const now = Date.now();
+  for (const [key, entry] of poeChatRateLimits) {
+    if (now - entry.windowStartedAt >= POE_CHAT_RATE_LIMIT_WINDOW_MS) {
+      poeChatRateLimits.delete(key);
+    }
+  }
+
+  const key = poeClientKey(req);
+  const existing = poeChatRateLimits.get(key);
+  if (
+    !existing ||
+    now - existing.windowStartedAt >= POE_CHAT_RATE_LIMIT_WINDOW_MS
+  ) {
+    poeChatRateLimits.set(key, { windowStartedAt: now, requestCount: 1 });
+    return { allowed: true };
+  }
+
+  if (existing.requestCount >= POE_CHAT_RATE_LIMIT_MAX_REQUESTS) {
+    return {
+      allowed: false,
+      retryAfterSeconds: Math.max(
+        1,
+        Math.ceil(
+          (POE_CHAT_RATE_LIMIT_WINDOW_MS -
+            (now - existing.windowStartedAt)) /
+            1000,
+        ),
+      ),
+    };
+  }
+
+  existing.requestCount += 1;
+  return { allowed: true };
+}
+
 async function loadPoeModelCatalogue(): Promise<PoeModelCatalogue> {
+  const now = Date.now();
+  if (poeModelCatalogueCache && poeModelCatalogueCache.expiresAt > now) {
+    return poeModelCatalogueCache.value;
+  }
+  if (poeModelCatalogueInFlight) {
+    return poeModelCatalogueInFlight;
+  }
+
+  poeModelCatalogueInFlight = loadPoeModelCatalogueFromPoe();
+  try {
+    const catalogue = await poeModelCatalogueInFlight;
+    poeModelCatalogueCache = {
+      value: catalogue,
+      expiresAt:
+        Date.now() +
+        (catalogue.failed
+          ? POE_MODEL_CATALOGUE_FAILURE_CACHE_TTL_MS
+          : POE_MODEL_CATALOGUE_CACHE_TTL_MS),
+    };
+    return catalogue;
+  } finally {
+    poeModelCatalogueInFlight = null;
+  }
+}
+
+async function loadPoeModelCatalogueFromPoe(): Promise<PoeModelCatalogue> {
   if (!process.env.POE_API_KEY) {
     return {
       configured: false,
@@ -1009,12 +1099,41 @@ router.get("/port/poe/models", async (_req, res): Promise<void> => {
     });
     return;
   }
+  res.set("Cache-Control", "private, max-age=30");
   res.json(ListPoeModelsResponse.parse(catalogue));
 });
 
 router.post("/port/poe/chat", async (req, res): Promise<void> => {
+  const rateLimit = takePoeChatRateLimit(req);
+  if (!rateLimit.allowed) {
+    res
+      .set("Retry-After", String(rateLimit.retryAfterSeconds))
+      .status(429)
+      .json({
+        error: "Too many Poe requests from this address. Wait before trying again.",
+        code: "POE_RATE_LIMITED",
+      });
+    return;
+  }
+
   const parsed = ChatWithPoeBody.safeParse(req.body);
   if (!parsed.success) {
+    const requestedTokens =
+      typeof req.body === "object" &&
+      req.body !== null &&
+      "maxTokens" in req.body
+        ? (req.body as { maxTokens?: unknown }).maxTokens
+        : undefined;
+    if (
+      typeof requestedTokens === "number" &&
+      requestedTokens > POE_CHAT_MAX_COMPLETION_TOKENS
+    ) {
+      res.status(400).json({
+        error: `Poe completion tokens are limited to ${POE_CHAT_MAX_COMPLETION_TOKENS.toLocaleString()}.`,
+        code: "POE_TOKEN_LIMIT_EXCEEDED",
+      });
+      return;
+    }
     req.log.warn({ errors: parsed.error.message }, "Invalid Poe chat request");
     res.status(400).json({ error: "Provide a model and at least one message." });
     return;
@@ -1035,6 +1154,22 @@ router.post("/port/poe/chat", async (req, res): Promise<void> => {
       error:
         "This chat request contains a service credential. Remove it before sending content to Poe; the request was not forwarded.",
       code: "CHAT_CONTAINS_CREDENTIAL",
+    });
+    return;
+  }
+
+  if (parsed.data.maxTokens && parsed.data.maxTokens > POE_CHAT_MAX_COMPLETION_TOKENS) {
+    res.status(400).json({
+      error: `Poe completion tokens are limited to ${POE_CHAT_MAX_COMPLETION_TOKENS.toLocaleString()}.`,
+      code: "POE_TOKEN_LIMIT_EXCEEDED",
+    });
+    return;
+  }
+
+  if (Buffer.byteLength(JSON.stringify(parsed.data), "utf8") > POE_CHAT_REQUEST_MAX_BYTES) {
+    res.status(413).json({
+      error: "Poe chat requests must be smaller than 512 KiB.",
+      code: "POE_CHAT_REQUEST_TOO_LARGE",
     });
     return;
   }

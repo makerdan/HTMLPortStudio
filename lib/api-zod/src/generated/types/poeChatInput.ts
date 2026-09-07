@@ -17,7 +17,7 @@ export interface PoeChatInput {
   messages: PoeMessage[];
   /**
      * @minimum 1
-     * @maximum 8192
+     * @maximum 4096
      */
   maxTokens?: number;
 }

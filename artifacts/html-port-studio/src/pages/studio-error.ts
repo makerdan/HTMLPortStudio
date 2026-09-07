@@ -29,8 +29,14 @@ export const STUDIO_ERROR_MESSAGES = {
   CHAT_CONTAINS_CREDENTIAL:
     'This request contains a service credential. Remove it before sending content to the assistant, then try again.',
   CSRF_ORIGIN_REJECTED: 'Refresh the Studio and try the request again.',
+  POE_CHAT_REQUEST_TOO_LARGE:
+    'This assistant request is too large. Shorten the source or prompt, then try again.',
   POE_MODEL_UNAVAILABLE:
     'The requested Poe model is no longer available. Refresh model availability, then try again.',
+  POE_RATE_LIMITED:
+    'The assistant is temporarily rate limited. Wait a moment, then try again.',
+  POE_TOKEN_LIMIT_EXCEEDED:
+    'This assistant request asks for too many completion tokens. Reduce the request and try again.',
   INVALID_PROJECT_HANDOFF:
     'The project handoff input is invalid. Check the imported HTML and try again.',
   PROJECT_CREATION_CONNECTION_UNAVAILABLE:

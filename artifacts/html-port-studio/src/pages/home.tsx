@@ -3828,7 +3828,7 @@ function PoeRepairPanel({
             { role: 'system', content: context },
             ...historyForRequest.slice(-39),
           ],
-          maxTokens: 8192,
+          maxTokens: EDITOR_LIMITS.maxRepairCompletionTokens,
         },
       },
       {
