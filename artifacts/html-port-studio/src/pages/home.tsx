@@ -1817,6 +1817,11 @@ export default function Home() {
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const zipInputRef = useRef<HTMLInputElement>(null);
+  const sourceEntrypointRef = useRef<HTMLElement | null>(null);
+  const setSourceEntrypointRef = useCallback((element: HTMLElement | null) => {
+    sourceEntrypointRef.current = element;
+  }, []);
+  const pendingSourceFocusRef = useRef<SourceChoice | null>(null);
   const importSessionRef = useRef(0);
   const isMobile = useIsMobile();
   const bumpSourceRevision = () => {
@@ -1845,6 +1850,12 @@ export default function Home() {
     }
   }, [githubRepositoryQuery.data, githubRef]);
 
+  useEffect(() => {
+    if (pendingSourceFocusRef.current !== selectedSource) return;
+    pendingSourceFocusRef.current = null;
+    sourceEntrypointRef.current?.focus();
+  }, [selectedSource]);
+
   const clearRecovery = useCallback(() => {
     clearHandoffRecovery();
     setRecoveryMetadata(null);
@@ -1859,6 +1870,7 @@ export default function Home() {
 
   const handleRestartExpiredRecovery = useCallback(() => {
     clearRecovery();
+    pendingSourceFocusRef.current = 'paste';
     setSelectedSource('paste');
   }, [clearRecovery]);
 
@@ -2019,6 +2031,7 @@ export default function Home() {
 
   const handleSourceChange = (nextSource: SourceChoice) => {
     if (nextSource === selectedSource) return;
+    pendingSourceFocusRef.current = nextSource;
     importSessionRef.current += 1;
     analyzeMutation.reset();
     githubImportAbortControllerRef.current?.abort();
@@ -2728,7 +2741,9 @@ export default function Home() {
                   </p>
                    <div className="flex shrink-0 flex-wrap justify-end gap-2">
                      {selectedSource === 'zip' && <Button
+                        ref={setSourceEntrypointRef}
                        type="button"
+                        data-source-entrypoint="zip"
                        variant="outline"
                        size="default"
                        className="h-11 gap-2 border border-primary px-4 text-sm font-semibold"
@@ -2761,7 +2776,9 @@ export default function Home() {
                       </Button>
                     </div>
                     <Textarea
+                      ref={setSourceEntrypointRef}
                       id="html-source"
+                      data-source-entrypoint="paste"
                       value={htmlInput}
                       onChange={(e) => handleHtmlInputChange(e.target.value)}
                       placeholder="Paste your HTML code here..."
@@ -2783,7 +2800,14 @@ export default function Home() {
                     <p className="text-base font-medium">Upload HTML</p>
                     <p className="mt-1 text-sm text-muted-foreground">Only public, local .html and .htm files are read.</p>
                     <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-                      <Button type="button" variant="outline" className="text-base" onClick={() => fileInputRef.current?.click()}>
+                       <Button
+                         ref={setSourceEntrypointRef}
+                         type="button"
+                         variant="outline"
+                         className="text-base"
+                         data-source-entrypoint="html"
+                         onClick={() => fileInputRef.current?.click()}
+                       >
                         Choose HTML file
                       </Button>
                       <Button
@@ -2889,7 +2913,10 @@ export default function Home() {
                   </div>
                   <div className="flex gap-2">
                     <Input
+                       ref={setSourceEntrypointRef}
                       value={githubUrl}
+                      id="github-source-entrypoint"
+                      data-source-entrypoint="github"
                       onChange={(event) => setGithubUrl(event.target.value)}
                       placeholder="https://github.com/owner/repository"
                       aria-label="Public GitHub repository URL"
@@ -3079,7 +3106,10 @@ export default function Home() {
                   </div>
                   <div className="flex gap-2">
                     <Input
+                       ref={setSourceEntrypointRef}
                       value={hostedUrl}
+                      id="hosted-source-entrypoint"
+                      data-source-entrypoint="hosted"
                       onChange={(event) => {
                         setHostedUrl(event.target.value);
                         setHostedError(null);
@@ -3191,7 +3221,10 @@ export default function Home() {
                     </div>
                     <div className="flex gap-2">
                       <Input
+                        ref={setSourceEntrypointRef}
                         value={playgroundUrl}
+                        id="playground-source-entrypoint"
+                        data-source-entrypoint="playground"
                         onChange={(event) => {
                           setPlaygroundUrl(event.target.value);
                           setPlaygroundError(null);
