@@ -33,10 +33,12 @@ async function rejectsWith(
 
 test("fetches public HTML without executing it and returns portability warnings", async () => {
   let requestedUrl = "";
+  let pinnedAddress = "";
   const result = await fetchHostedUrl("https://example.com/app#section", {
     lookup: publicLookup,
-    fetch: async (url) => {
+    fetch: async (url, _init, address) => {
       requestedUrl = String(url);
+      pinnedAddress = address ?? "";
       return response(
         "<!doctype html><title>Hosted app</title><script src=\"https://cdn.example.test/app.js\"></script><script>fetch('/api')</script>",
       );
@@ -44,6 +46,7 @@ test("fetches public HTML without executing it and returns portability warnings"
   });
 
   assert.equal(requestedUrl, "https://example.com/app");
+  assert.equal(pinnedAddress, "93.184.216.34");
   assert.equal(result.originalUrl, "https://example.com/app");
   assert.equal(result.finalUrl, "https://example.com/app");
   assert.match(result.html, /Hosted app/);
@@ -75,6 +78,17 @@ test("blocks loopback and private destinations before fetch", async () => {
     "HOSTED_URL_BLOCKED_HOST",
   );
   assert.equal(fetchCalls, 0);
+
+  await rejectsWith(
+    fetchHostedUrl("https://[ff02::1]/reserved", {
+      fetch: async () => {
+        fetchCalls += 1;
+        return response("<!doctype html>");
+      },
+    }),
+    "HOSTED_URL_BLOCKED_HOST",
+  );
+  assert.equal(fetchCalls, 0);
 });
 
 test("rechecks DNS and blocks rebinding before network access", async () => {
@@ -97,6 +111,56 @@ test("rechecks DNS and blocks rebinding before network access", async () => {
   );
   assert.equal(lookupCalls, 2);
   assert.equal(fetchCalls, 0);
+});
+
+test("pins the validated address across a validation/fetch DNS mismatch", async () => {
+  let fetchCalls = 0;
+  let lookupCalls = 0;
+  const lookupChangingHost = async () => {
+    lookupCalls += 1;
+    return lookupCalls <= 2
+      ? [{ address: "93.184.216.34", family: 4 }]
+      : [{ address: "127.0.0.1", family: 4 }];
+  };
+  const result = await fetchHostedUrl("https://changing.example.test/app", {
+    lookup: lookupChangingHost,
+    fetch: async (url, _init, pinnedAddress) => {
+      fetchCalls += 1;
+      assert.equal(url, "https://changing.example.test/app");
+      assert.equal(pinnedAddress, "93.184.216.34");
+      const connectionAddress = (await lookupChangingHost())[0].address;
+      assert.equal(connectionAddress, "127.0.0.1");
+      return response("<!doctype html><title>Pinned</title>");
+    },
+  });
+
+  assert.equal(lookupCalls, 3);
+  assert.equal(fetchCalls, 1);
+  assert.match(result.html, /Pinned/);
+});
+
+test("blocks redirect rebinding before fetching the redirected address", async () => {
+  let lookupCalls = 0;
+  let fetchCalls = 0;
+  await rejectsWith(
+    fetchHostedUrl("https://example.com/start", {
+      lookup: async () => {
+        lookupCalls += 1;
+        if (lookupCalls <= 2) return [{ address: "93.184.216.34", family: 4 }];
+        return lookupCalls === 3
+          ? [{ address: "93.184.216.35", family: 4 }]
+          : [{ address: "127.0.0.1", family: 4 }];
+      },
+      fetch: async (_url, _init, pinnedAddress) => {
+        fetchCalls += 1;
+        assert.equal(pinnedAddress, "93.184.216.34");
+        return response("", { location: "https://redirect.example.test/private" }, 302);
+      },
+    }),
+    "HOSTED_URL_DNS_REBINDING",
+  );
+  assert.equal(lookupCalls, 4);
+  assert.equal(fetchCalls, 1);
 });
 
 test("validates every redirect destination", async () => {

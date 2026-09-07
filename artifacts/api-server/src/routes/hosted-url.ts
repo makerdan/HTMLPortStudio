@@ -1,5 +1,8 @@
 import { lookup as dnsLookup } from "node:dns/promises";
+import { request as httpRequest } from "node:http";
 import { isIP } from "node:net";
+import { Readable } from "node:stream";
+import { request as httpsRequest } from "node:https";
 import { SOURCE_TEXT_MAX_BYTES } from "./source-limits.ts";
 
 export const HOSTED_URL_MAX_REDIRECTS = 5;
@@ -9,7 +12,7 @@ export const HOSTED_URL_TIMEOUT_MS = 10_000;
 type LookupAddress = { address: string; family: number };
 type HostedUrlDependencies = {
   lookup: (hostname: string, options: { all: true; verbatim: true }) => Promise<LookupAddress[]>;
-  fetch: typeof fetch;
+  fetch: (url: string, init: RequestInit, pinnedAddress?: string) => Promise<Response>;
   timeoutMs: number;
 };
 
@@ -152,6 +155,7 @@ function addressIsBlocked(address: string): boolean {
   const isLinkLocal = (first & 0xffc0) === 0xfe80;
   const isDocumentation = first === 0x2001 && second === 0x0db8;
   const isBenchmark = first === 0x2001 && second === 0x0002;
+  const isMulticastOrReserved = (first & 0xff00) === 0xff00;
   const mappedIpv4 = parts.slice(0, 5).every((part) => part === 0) && parts[5] === 0xffff;
   const mappedAddress = `${parts[6] >> 8}.${parts[6] & 255}.${parts[7] >> 8}.${parts[7] & 255}`;
   return (
@@ -160,14 +164,19 @@ function addressIsBlocked(address: string): boolean {
     isLinkLocal ||
     isDocumentation ||
     isBenchmark ||
+    isMulticastOrReserved ||
     (mappedIpv4 && ipv4IsBlocked(mappedAddress))
   );
 }
 
+type ValidatedDestination = {
+  address: string;
+};
+
 async function validateDestination(
   url: URL,
   lookup: HostedUrlDependencies["lookup"],
-): Promise<void> {
+): Promise<ValidatedDestination> {
   const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
   if (
     hostname === "localhost" ||
@@ -221,7 +230,9 @@ async function validateDestination(
         "The hosted page hostname changed its network destination, so the import was blocked. Try again later.",
       );
     }
+    return rechecked[0];
   }
+  return addresses[0];
 }
 
 function portabilityWarnings(html: string): string[] {
@@ -312,13 +323,58 @@ async function readLimitedBody(response: Response, signal: AbortSignal): Promise
   return text;
 }
 
+function requestHeaders(init: RequestInit, url: URL): Record<string, string> {
+  const headers = new Headers(init.headers);
+  headers.set("host", url.host);
+  return Object.fromEntries(headers.entries());
+}
+
+async function fetchPinnedUrl(url: string, init: RequestInit, pinnedAddress: string): Promise<Response> {
+  const parsed = new URL(url);
+  const request = parsed.protocol === "https:" ? httpsRequest : httpRequest;
+  const requestOptions = {
+    hostname: pinnedAddress,
+    port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
+    path: `${parsed.pathname || "/"}${parsed.search}`,
+    method: init.method ?? "GET",
+    headers: requestHeaders(init, parsed),
+    family: isIP(pinnedAddress),
+    ...(parsed.protocol === "https:" ? { servername: parsed.hostname.replace(/^\[|\]$/g, "") } : {}),
+  };
+
+  return new Promise<Response>((resolve, reject) => {
+    const clientRequest = request(requestOptions, (incomingMessage) => {
+      const headers: Record<string, string> = {};
+      for (const [name, value] of Object.entries(incomingMessage.headers)) {
+        if (value !== undefined) headers[name] = Array.isArray(value) ? value.join(", ") : value;
+      }
+      resolve(
+        new Response(Readable.toWeb(incomingMessage) as ReadableStream, {
+          status: incomingMessage.statusCode ?? 502,
+          statusText: incomingMessage.statusMessage,
+          headers,
+        }),
+      );
+    });
+    const signal = init.signal;
+    const abort = () => clientRequest.destroy(new Error("The hosted page request was aborted."));
+    if (signal?.aborted) {
+      abort();
+      return;
+    }
+    signal?.addEventListener("abort", abort, { once: true });
+    clientRequest.once("error", reject);
+  });
+}
+
 export async function fetchHostedUrl(
   input: string,
   overrides: Partial<HostedUrlDependencies> = {},
 ): Promise<HostedUrlResult> {
   const dependencies: HostedUrlDependencies = {
     lookup: (hostname, options) => dnsLookup(hostname, options),
-    fetch,
+    fetch: (url, init, pinnedAddress) =>
+      pinnedAddress ? fetchPinnedUrl(url, init, pinnedAddress) : fetch(url, init),
     timeoutMs: HOSTED_URL_TIMEOUT_MS,
     ...overrides,
   };
@@ -326,17 +382,21 @@ export async function fetchHostedUrl(
   let current = original;
 
   for (let redirectCount = 0; redirectCount <= HOSTED_URL_MAX_REDIRECTS; redirectCount += 1) {
-    await validateDestination(current, dependencies.lookup);
+    const validatedDestination = await validateDestination(current, dependencies.lookup);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), dependencies.timeoutMs);
     let response: Response;
     try {
-      response = await dependencies.fetch(current.toString(), {
-        method: "GET",
-        redirect: "manual",
-        signal: controller.signal,
-        headers: { Accept: "text/html,application/xhtml+xml" },
-      });
+      response = await dependencies.fetch(
+        current.toString(),
+        {
+          method: "GET",
+          redirect: "manual",
+          signal: controller.signal,
+          headers: { Accept: "text/html,application/xhtml+xml" },
+        },
+        validatedDestination.address,
+      );
     } catch (error) {
       if (controller.signal.aborted) {
         throw new HostedUrlError(
