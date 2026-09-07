@@ -1,4 +1,6 @@
 type AnalyticsData = Record<string, string | number | boolean>;
+type SourceImportType = 'github' | 'hosted' | 'playground';
+type SourceImportOutcome = 'cancelled' | 'completed';
 
 declare global {
   interface Window {
@@ -16,4 +18,14 @@ export function trackEvent(name: string, data?: AnalyticsData): void {
   } catch {
     // Analytics must never break the app.
   }
+}
+
+export function trackSourceImportOutcome(
+  sourceType: SourceImportType,
+  outcome: SourceImportOutcome,
+): void {
+  trackEvent('source_import_outcome', {
+    source_type: sourceType,
+    outcome,
+  });
 }

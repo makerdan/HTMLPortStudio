@@ -118,7 +118,7 @@ import {
   sanitizeUntrustedRepairText,
   type CredentialBundleRedaction,
 } from '@/lib/credential-safety';
-import { trackEvent } from '@/lib/analytics';
+import { trackEvent, trackSourceImportOutcome } from '@/lib/analytics';
 import {
   EDITOR_LIMITS,
   applyValidatedClaudePatch,
@@ -2105,6 +2105,7 @@ export default function Home() {
           setGithubImportData(data);
           setGithubCandidates(data.entrypointCandidates);
           setGithubEntrypoint(data.bundle.entrypoint);
+          trackSourceImportOutcome('github', 'completed');
         },
         onError: (error: unknown) => {
           if (githubImportAbortControllerRef.current === abortController) {
@@ -2134,6 +2135,7 @@ export default function Home() {
     githubImportAbortControllerRef.current?.abort();
     githubImportAbortControllerRef.current = null;
     githubImportMutation.reset();
+    trackSourceImportOutcome('github', 'cancelled');
     setGithubError('GitHub snapshot import cancelled. You can retry the same snapshot.');
   };
 
@@ -2200,6 +2202,7 @@ export default function Home() {
           setAnalysisStale(false);
           setHostedImportData(data);
           setHostedError(null);
+          trackSourceImportOutcome('hosted', 'completed');
         },
         onError: (error: unknown) => {
           if (hostedImportAbortControllerRef.current === abortController) {
@@ -2224,6 +2227,7 @@ export default function Home() {
     hostedImportAbortControllerRef.current?.abort();
     hostedImportAbortControllerRef.current = null;
     hostedImportMutation.reset();
+    trackSourceImportOutcome('hosted', 'cancelled');
     setHostedError({ message: 'Hosted import cancelled. You can retry the same URL.' });
   };
 
@@ -2267,6 +2271,7 @@ export default function Home() {
           setAnalysisStale(false);
           setPlaygroundImportData(data);
           setPlaygroundError(null);
+          trackSourceImportOutcome('playground', 'completed');
         },
         onError: (error: unknown) => {
           if (playgroundImportAbortControllerRef.current === abortController) {
@@ -2291,6 +2296,7 @@ export default function Home() {
     playgroundImportAbortControllerRef.current?.abort();
     playgroundImportAbortControllerRef.current = null;
     playgroundImportMutation.reset();
+    trackSourceImportOutcome('playground', 'cancelled');
     setPlaygroundError({ message: 'Playground import cancelled. You can retry the same URL.' });
   };
 
