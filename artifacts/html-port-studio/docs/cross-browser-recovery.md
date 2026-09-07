@@ -7,12 +7,19 @@ critical cross-browser tests so unrelated recovery coverage is not duplicated.
 
 ## Local runtime contract
 
-Install both managed Playwright engines from the Studio package before running
-the browser suite:
+The Studio browser-test command installs both managed Playwright engines before
+launching the suite, so the registered `test-standard` workflow prepares a
+fresh workspace automatically:
 
 ```sh
-pnpm --filter @workspace/html-port-studio exec playwright install chromium firefox
 pnpm --filter @workspace/html-port-studio run test:browser
+```
+
+To prepare the engines without running tests, use the package-local setup
+command:
+
+```sh
+pnpm --filter @workspace/html-port-studio run prepare:browsers
 ```
 
 The browser binaries are stored in the managed Playwright cache and are not

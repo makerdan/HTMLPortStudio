@@ -9,7 +9,8 @@
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:home": "node --experimental-strip-types --test src/pages/home.test.ts",
-    "test:browser": "playwright test"
+    "prepare:browsers": "playwright install chromium firefox",
+    "test:browser": "pnpm run prepare:browsers && playwright test"
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",
