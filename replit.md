@@ -10,6 +10,8 @@ Import pasted, single-file, or public GitHub HTML apps as normalized source bund
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run migrate` — apply committed Drizzle migrations; this is required before deploying or starting a new API release
+- `pnpm workspace-skill:project` — project the explicit `WORKSPACE_SKILLS_SOURCE` into the generated `.agents/skills/.workspace-projections/` tree
+- `pnpm workspace-skill:status -- --skill <skill-id>` — read-only parity check for the disposable runtime mirror
 - Optional env: `POE_API_KEY` — enables live Poe model discovery and the server-side chat bridge
 - Clerk account authentication uses `CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, and `VITE_CLERK_PUBLISHABLE_KEY`. Set these through Replit’s environment/secrets tools; never put the secret key in browser code, imported HTML, source bundles, or logs.
 - Required for project handoff: an attached authorized Replit project-creation connection. From the Studio’s **Set up project creation** screen, Replit’s secure connection console verifies workspace-owner eligibility before authorization; no project-creation URL or token is configured in the browser or source.
@@ -38,6 +40,7 @@ Import pasted, single-file, or public GitHub HTML apps as normalized source bund
 - Poe requests run only on the API server so `POE_API_KEY` never reaches a browser or imported page.
 - Previewed documents run in a sandbox without same-origin access to the Studio itself.
 - Project handoff sends every normalized bundle file byte-for-byte with its explicit entrypoint through the attached server-side Replit connection, then waits for each required setup skill to confirm before starting the next one.
+- Workspace-managed skills flow one way: explicit workspace source → generated project projection → disposable runtime mirror. The mirror is never authoritative and is never provisioned by repository automation.
 - Clerk authentication and Replit project authorization are separate boundaries: Clerk identifies the user and scopes handoff ownership, while the Replit connector independently verifies workspace-owner eligibility and authorizes project creation.
 
 ## Product
