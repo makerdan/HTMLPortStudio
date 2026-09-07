@@ -23,7 +23,7 @@ const STRUCTURED_ANALYSIS_ERRORS: Record<string, string> = {
   BUNDLE_EMPTY:
     'The source is empty. Paste or import a non-empty HTML document, then try again.',
   BUNDLE_TOO_LARGE:
-    `This source bundle is too large to analyze safely. Keep the HTML entrypoint and its files within ${SOURCE_TEXT_LIMIT_LABEL}, then try again.`,
+    `This source bundle is too large to analyze safely. Keep the main HTML file and its files within ${SOURCE_TEXT_LIMIT_LABEL}, then try again.`,
   BUNDLE_FILE_TOO_LARGE:
     `One file in this bundle is too large. Reduce it to ${SOURCE_TEXT_LIMIT_LABEL} or less, then try again.`,
   BUNDLE_TOO_MANY_FILES:
@@ -33,13 +33,13 @@ const STRUCTURED_ANALYSIS_ERRORS: Record<string, string> = {
   BUNDLE_DUPLICATE_PATH:
     'Two bundle files use the same path. Rename or remove the duplicate, then try again.',
   BUNDLE_ENTRYPOINT_MISSING:
-    "The selected entrypoint isn't included in the bundle. Choose an existing HTML entrypoint, then try again.",
+    "The selected main HTML file isn't included in the bundle. Choose an existing HTML file, then try again.",
   BUNDLE_ENTRYPOINT_EMPTY:
-    'The selected entrypoint is empty. Choose a non-empty HTML file, then try again.',
+    'The selected main HTML file is empty. Choose a non-empty HTML file, then try again.',
   SOURCE_CONTAINS_CREDENTIAL:
     'This source contains a service credential. Inspect the redacted finding and move the secret to a server-side environment before continuing.',
   INVALID_SOURCE_BUNDLE:
-    'The source bundle is not valid. Check that it contains a non-empty HTML entrypoint, then try again.',
+    'The source bundle is not valid. Check that it contains a non-empty main HTML file, then try again.',
 };
 
 function getStructuredErrorCode(error: unknown): string | null {

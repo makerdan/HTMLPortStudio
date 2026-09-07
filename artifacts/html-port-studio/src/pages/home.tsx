@@ -1424,7 +1424,7 @@ function SourceEditorPanel({
               >
                 <FileCode className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                 <span className="min-w-0 truncate">{candidate.path}</span>
-                {candidate.path === bundle.entrypoint && <Badge variant="secondary" className="ml-auto shrink-0 text-[10px]">entry</Badge>}
+                {candidate.path === bundle.entrypoint && <Badge variant="secondary" className="ml-auto shrink-0 text-[10px]">main HTML</Badge>}
               </button>
             ))}
           </div>
@@ -2787,13 +2787,19 @@ export default function Home() {
                                    0,
                                  ),
                                )}{' '}
-                               normalized locally
+                                normalized locally
+                                <span className="block mt-1">
+                                  Main HTML file: <span className="font-mono">{sourceBundle.entrypoint}</span>
+                                </span>
                              </p>
                            </div>
                          </div>
                          {sourceBundle.files.filter((file) => /\.(?:html?)$/i.test(file.path)).length > 1 && (
-                           <Select value={sourceBundle.entrypoint} onValueChange={handleEntrypointChange}>
-                             <SelectTrigger className="w-full sm:w-[260px]">
+                            <Select value={sourceBundle.entrypoint} onValueChange={handleEntrypointChange}>
+                              <SelectTrigger
+                                className="w-full sm:w-[260px]"
+                                aria-label="Choose the main HTML file for analysis and preview"
+                              >
                                 <SelectValue placeholder="Choose main HTML file" />
                              </SelectTrigger>
                              <SelectContent>
@@ -2926,11 +2932,11 @@ export default function Home() {
                       {githubCandidates.length > 1 && (
                         <div className="mt-3">
                           <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                            Choose the HTML entrypoint
+                            Choose the main HTML file to analyze and preview
                           </label>
                           <Select value={githubEntrypoint} onValueChange={setGithubEntrypoint}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Choose an HTML file" />
+                            <SelectTrigger aria-label="Choose the main HTML file for analysis and preview">
+                              <SelectValue placeholder="Choose the main HTML file" />
                             </SelectTrigger>
                             <SelectContent>
                               {githubCandidates.map((candidate) => (
@@ -3319,6 +3325,10 @@ export default function Home() {
                   <h2 className="text-xl font-bold tracking-tight text-foreground mb-4">
                     {analysisData.title || 'Untitled App'}
                   </h2>
+                   <p className="mt-1 text-sm text-muted-foreground">
+                     Main HTML file analyzed and previewed:{' '}
+                     <span className="font-mono">{analysisData.entrypoint}</span>
+                   </p>
                   {sourceBundle?.sourceType === 'github_repository' && (
                     <div className="mb-4 rounded-md border border-primary/20 bg-primary/[0.03] px-3 py-2 text-xs text-muted-foreground">
                       <div className="font-medium text-foreground">GitHub source summary</div>

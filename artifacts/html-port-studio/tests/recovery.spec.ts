@@ -420,7 +420,7 @@ test("keeps actionable analysis errors visible in the Studio home alert", async 
   await analyzeImportedHtml(page);
   await expect(page.getByText("Analysis needs attention")).toBeVisible();
   await expect(
-    page.getByText(/selected entrypoint isn't included in the bundle/i),
+    page.getByText(/selected main HTML file isn't included in the bundle/i),
   ).toBeVisible();
   await expect(page.getByText("internal entrypoint details")).not.toBeVisible();
 });

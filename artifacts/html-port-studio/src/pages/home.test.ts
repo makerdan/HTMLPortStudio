@@ -46,7 +46,7 @@ test("keeps source requests scoped to the current import", async () => {
   assert.match(source, /const sessionId = \+\+importSessionRef\.current/);
   assert.match(source, /if \(sessionId !== importSessionRef\.current\) return;/);
   assert.match(source, /importSessionRef\.current \+= 1;\s*analyzeMutation\.reset\(\)/s);
-  assert.match(source, /importSessionRef\.current \+= 1;\s*setHtmlInput\(html\)/s);
+  assert.match(source, /importSessionRef\.current \+= 1;\s*(?:const bundlePath = 'index\.html';\s*)?setHtmlInput\(html\)/s);
   assert.match(source, /<label htmlFor="html-source"/);
   assert.match(source, /<label htmlFor="assistant-prompt"/);
 });
@@ -111,7 +111,7 @@ test("maps structured analysis errors to safe, actionable guidance", () => {
   });
 
   assert.equal(result.title, "Analysis needs attention");
-  assert.match(result.message, /entrypoint/i);
+  assert.match(result.message, /main HTML file/i);
   assert.doesNotMatch(result.message, /internal source details/i);
   assert.equal(result.retryable, false);
 });
@@ -338,7 +338,7 @@ test("allowlists structured assistant and handoff errors", () => {
 
   assert.match(credentialResult, /service credential/i);
   assert.match(connectionResult, /setup screen/i);
-  assert.match(bundleResult, /entrypoint/i);
+  assert.match(bundleResult, /main HTML file/i);
   assert.doesNotMatch(credentialResult, /super-secret-value/i);
   assert.doesNotMatch(connectionResult, /proxy request|upstream response/i);
   assert.doesNotMatch(bundleResult, /source contents|request credentials/i);
@@ -677,15 +677,17 @@ test("keeps hosted URL fetching server-side and shows fetch diagnostics", async 
   assert.doesNotMatch(source, /fetch\(hostedUrl/);
 });
 
-test("offers a local ZIP project flow with explicit entrypoint recovery", async () => {
+test("offers a local ZIP project flow with explicit main HTML file selection", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
 
   assert.match(source, /makeZipSourceBundle/);
   assert.match(source, /accept="\.zip,application\/zip,application\/x-zip-compressed"/);
   assert.match(source, /Choose ZIP project/);
   assert.match(source, /Unpacking ZIP\.\.\./);
-  assert.match(source, /Choose an entrypoint to continue/);
+  assert.match(source, /Choose a main HTML file to continue/);
   assert.match(source, /Multiple HTML entrypoints/);
+  assert.match(source, /Main HTML file:/);
+  assert.match(source, /Choose the main HTML file for analysis and preview/);
   assert.match(source, /Selecting the ZIP only unpacks files locally/);
 });
 
