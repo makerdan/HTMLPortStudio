@@ -1,5 +1,4 @@
 import { expect, test } from "@playwright/test";
-import { zipSync } from "fflate";
 
 const html = "<!doctype html><html><body><main>Imported page</main></body></html>";
 const githubUrl = "https://github.com/acme/demo";
@@ -87,12 +86,6 @@ const playgroundImport = {
   warnings: [],
 };
 
-const multiEntrypointZip = Buffer.from(
-  zipSync({
-    "index.html": new TextEncoder().encode("<main>Primary entrypoint</main>"),
-    "alternate.html": new TextEncoder().encode("<main>Alternate entrypoint</main>"),
-  }),
-);
 const hostedImportFailures = [
   ["HOSTED_URL_INVALID", "The hosted link is invalid.", "Use a complete HTTPS URL."],
   ["HOSTED_URL_UNSUPPORTED_PROTOCOL", "The hosted link uses an unsupported protocol.", "Use HTTPS."],
@@ -255,33 +248,6 @@ test("starting over invalidates a pending GitHub import and permits a fresh impo
   let releaseFirstImport: (() => void) | null = null;
   let firstImportRequest: import("@playwright/test").Request | null = null;
   let firstImportRequestAborted = false;
-
-  const sourceModes = [
-    { value: "paste", name: "Paste HTML" },
-    { value: "html", name: "Upload HTML" },
-    { value: "zip", name: "Upload ZIP" },
-    { value: "github", name: /Import GitHub repository/i },
-    { value: "hosted", name: "Import hosted URL" },
-    { value: "playground", name: /Import CodePen \/ JSFiddle/i },
-  ] as const;
-
-  const sourceModes = [
-    { value: "paste", name: "Paste HTML" },
-    { value: "html", name: "Upload HTML" },
-    { value: "zip", name: "Upload ZIP" },
-    { value: "github", name: /Import GitHub repository/i },
-    { value: "hosted", name: "Import hosted URL" },
-    { value: "playground", name: /Import CodePen \/ JSFiddle/i },
-  ] as const;
-
-  const sourceModes = [
-    { value: "paste", name: "Paste HTML" },
-    { value: "html", name: "Upload HTML" },
-    { value: "zip", name: "Upload ZIP" },
-    { value: "github", name: /Import GitHub repository/i },
-    { value: "hosted", name: "Import hosted URL" },
-    { value: "playground", name: /Import CodePen \/ JSFiddle/i },
-  ] as const;
   let firstImportResponseSettled = false;
   await mockAuth(page);
   page.on("requestfailed", (request) => {
@@ -335,7 +301,7 @@ test("starting over invalidates a pending GitHub import and permits a fresh impo
   expect(importAttempts).toBe(2);
 });
 
-test("cancelling a pending GitHub import aborts the request, ignores its response, and permits retry", async ({ page }) => {
+test("starting over clears a failed GitHub import so it can be retried cleanly", async ({ page }) => {
   let importAttempts = 0;
   await mockAuth(page);
   await page.route("**/api/port/github/repository**", (route) =>
@@ -372,100 +338,192 @@ test("cancelling a pending GitHub import aborts the request, ignores its respons
   expect(importAttempts).toBe(2);
 });
 
-test("cancelling a pending GitHub import aborts the request, ignores its response, and permits retry", async ({ page }) => {
+test("[cross-browser] [mobile] cancelling a pending GitHub import aborts the request, ignores its response, and permits retry", async ({
+  page,
+}) => {
   let importAttempts = 0;
   let releaseFirstImport: (() => void) | null = null;
   let firstImportRequest: import("@playwright/test").Request | null = null;
   let firstImportRequestAborted = false;
+  let firstImportResponseSettled = false;
+  let firstImportFailureText: string | null = null;
+  await mockAuth(page);
+  page.on("requestfailed", (request) => {
+    if (request === firstImportRequest) {
+      firstImportRequestAborted = true;
+      firstImportFailureText = request.failure()?.errorText ?? null;
+    }
+  });
+  await page.route("**/api/port/github/repository**", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(githubRepository) }),
+  );
+  await page.route("**/api/port/github/import", (route) => {
+    importAttempts += 1;
+    if (importAttempts === 1) {
+      firstImportRequest = route.request();
+      return new Promise<void>((resolve) => {
+        releaseFirstImport = () => {
+          void route
+            .fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(githubImport) })
+            .then(() => {
+              firstImportResponseSettled = true;
+              resolve();
+            })
+            .catch(() => {
+              firstImportResponseSettled = true;
+              resolve();
+            });
+        };
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(githubImport),
+    });
+  });
 
-  const sourceModes = [
-    { value: "paste", name: "Paste HTML" },
-    { value: "html", name: "Upload HTML" },
-    { value: "zip", name: "Upload ZIP" },
-    { value: "github", name: /Import GitHub repository/i },
-    { value: "hosted", name: "Import hosted URL" },
-    { value: "playground", name: /Import CodePen \/ JSFiddle/i },
-  ] as const;
+  await page.goto("/");
+  await openGithubImport(page);
+  await page.getByRole("button", { name: "Fetch selected snapshot" }).click();
+  await expect(page.getByRole("button", { name: "Importing snapshot..." })).toBeDisabled();
+  const statusRow = page.getByText("Fetching and checking the GitHub snapshot...").locator("..");
+  const cancelButton = page.getByRole("button", { name: "Cancel" });
+  await expect(statusRow).toBeVisible();
+  await expect(cancelButton).toBeVisible();
+  const statusLayout = await statusRow.evaluate((element) => {
+    const row = element.getBoundingClientRect();
+    const button = element.querySelector("button")?.getBoundingClientRect();
+    return {
+      documentWidth: document.documentElement.scrollWidth,
+      viewportWidth: window.innerWidth,
+      rowRight: row.right,
+      rowWidth: row.width,
+      rowScrollWidth: element.scrollWidth,
+      rowClientWidth: element.clientWidth,
+      buttonRight: button?.right ?? 0,
+    };
+  });
+  expect(statusLayout.documentWidth).toBeLessThanOrEqual(statusLayout.viewportWidth + 1);
+  expect(statusLayout.rowRight).toBeLessThanOrEqual(statusLayout.viewportWidth + 1);
+  expect(statusLayout.rowScrollWidth).toBeLessThanOrEqual(statusLayout.rowClientWidth + 1);
+  expect(statusLayout.buttonRight).toBeLessThanOrEqual(statusLayout.viewportWidth + 1);
 
-  const sourceModes = [
-    { value: "paste", name: "Paste HTML" },
-    { value: "html", name: "Upload HTML" },
-    { value: "zip", name: "Upload ZIP" },
-    { value: "github", name: /Import GitHub repository/i },
-    { value: "hosted", name: "Import hosted URL" },
-    { value: "playground", name: /Import CodePen \/ JSFiddle/i },
-  ] as const;
+  await cancelButton.click();
+  await expect(page.getByText("GitHub snapshot import cancelled. You can retry the same snapshot.")).toBeVisible();
+  await expect.poll(() => firstImportRequestAborted).toBe(true);
+  test.info().annotations.push({
+    type: "AbortController",
+    description: `${test.info().project.name} reported ${firstImportFailureText ?? "a request failure without an error code"} after cancellation; the late response was ignored.`,
+  });
 
-  const sourceModes = [
-    { value: "paste", name: "Paste HTML" },
-    { value: "html", name: "Upload HTML" },
-    { value: "zip", name: "Upload ZIP" },
-    { value: "github", name: /Import GitHub repository/i },
-    { value: "hosted", name: "Import hosted URL" },
-    { value: "playground", name: /Import CodePen \/ JSFiddle/i },
-  ] as const;
+  releaseFirstImport?.();
+  await expect.poll(() => firstImportResponseSettled).toBe(true);
+  await expect(page.getByText("Review this read-only snapshot")).toHaveCount(0);
+  await expect(page.getByText("GitHub import needs attention")).toBeVisible();
+
+  await page.getByRole("button", { name: "Retry snapshot fetch" }).click();
+  await expect(page.getByText("Review this read-only snapshot")).toBeVisible();
+  expect(importAttempts).toBe(2);
+});
+
+test("cancelling a pending hosted import aborts the request and permits retry", async ({ page }) => {
   let importAttempts = 0;
   let releaseFirstImport: (() => void) | null = null;
   let firstImportRequest: import("@playwright/test").Request | null = null;
   let firstImportRequestAborted = false;
+  await mockAuth(page);
+  page.on("requestfailed", (request) => {
+    if (request === firstImportRequest) {
+      firstImportRequestAborted = true;
+    }
+  });
+  await page.route("**/api/port/hosted-url", (route) => {
+    importAttempts += 1;
+    if (importAttempts === 1) {
+      firstImportRequest = route.request();
+      return new Promise<void>((resolve) => {
+        releaseFirstImport = () => {
+          void route
+            .fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(hostedImport) })
+            .then(resolve)
+            .catch(resolve);
+        };
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(hostedImport),
+    });
+  });
 
-  const sourceModes = [
-    { value: "paste", name: "Paste HTML" },
-    { value: "html", name: "Upload HTML" },
-    { value: "zip", name: "Upload ZIP" },
-    { value: "github", name: /Import GitHub repository/i },
-    { value: "hosted", name: "Import hosted URL" },
-    { value: "playground", name: /Import CodePen \/ JSFiddle/i },
-  ] as const;
+  await page.goto("/");
+  await page.getByRole("tab", { name: /Import hosted URL/i }).click();
+  await page.getByRole("textbox", { name: "Hosted page URL" }).fill("https://example.com/app");
+  await page.getByRole("button", { name: "Fetch hosted HTML" }).click();
+  await expect(page.getByRole("button", { name: /Fetching\.\.\./ })).toBeDisabled();
 
-  const sourceModes = [
-    { value: "paste", name: "Paste HTML" },
-    { value: "html", name: "Upload HTML" },
-    { value: "zip", name: "Upload ZIP" },
-    { value: "github", name: /Import GitHub repository/i },
-    { value: "hosted", name: "Import hosted URL" },
-    { value: "playground", name: /Import CodePen \/ JSFiddle/i },
-  ] as const;
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByText("Hosted import cancelled. You can retry the same URL.")).toBeVisible();
+  await expect.poll(() => firstImportRequestAborted).toBe(true);
 
-  const sourceModes = [
-    { value: "paste", name: "Paste HTML" },
-    { value: "html", name: "Upload HTML" },
-    { value: "zip", name: "Upload ZIP" },
-    { value: "github", name: /Import GitHub repository/i },
-    { value: "hosted", name: "Import hosted URL" },
-    { value: "playground", name: /Import CodePen \/ JSFiddle/i },
-  ] as const;
+  await page.getByRole("button", { name: "Retry hosted import" }).click();
+  await expect(page.getByText("Hosted page fetched safely")).toBeVisible();
+  expect(importAttempts).toBe(2);
+
+  releaseFirstImport?.();
+});
+
+test("cancelling a pending playground import aborts the request and permits retry", async ({ page }) => {
   let importAttempts = 0;
   let releaseFirstImport: (() => void) | null = null;
   let firstImportRequest: import("@playwright/test").Request | null = null;
   let firstImportRequestAborted = false;
+  await mockAuth(page);
+  page.on("requestfailed", (request) => {
+    if (request === firstImportRequest) {
+      firstImportRequestAborted = true;
+    }
+  });
+  await page.route("**/api/port/playground/import", (route) => {
+    importAttempts += 1;
+    if (importAttempts === 1) {
+      firstImportRequest = route.request();
+      return new Promise<void>((resolve) => {
+        releaseFirstImport = () => {
+          void route
+            .fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(playgroundImport) })
+            .then(resolve)
+            .catch(resolve);
+        };
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(playgroundImport),
+    });
+  });
 
-  const sourceModes = [
-    { value: "paste", name: "Paste HTML" },
-    { value: "html", name: "Upload HTML" },
-    { value: "zip", name: "Upload ZIP" },
-    { value: "github", name: /Import GitHub repository/i },
-    { value: "hosted", name: "Import hosted URL" },
-    { value: "playground", name: /Import CodePen \/ JSFiddle/i },
-  ] as const;
+  await page.goto("/");
+  await page.getByRole("tab", { name: /Import CodePen \/ JSFiddle/i }).click();
+  await page.getByRole("textbox", { name: "Public CodePen or JSFiddle URL" }).fill("https://codepen.io/alice/pen/demo");
+  await page.getByRole("button", { name: "Import playground" }).click();
+  await expect(page.getByRole("button", { name: "Importing..." })).toBeDisabled();
 
-  const sourceModes = [
-    { value: "paste", name: "Paste HTML" },
-    { value: "html", name: "Upload HTML" },
-    { value: "zip", name: "Upload ZIP" },
-    { value: "github", name: /Import GitHub repository/i },
-    { value: "hosted", name: "Import hosted URL" },
-    { value: "playground", name: /Import CodePen \/ JSFiddle/i },
-  ] as const;
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByText("Playground import cancelled. You can retry the same URL.")).toBeVisible();
+  await expect.poll(() => firstImportRequestAborted).toBe(true);
 
-  const sourceModes = [
-    { value: "paste", name: "Paste HTML" },
-    { value: "html", name: "Upload HTML" },
-    { value: "zip", name: "Upload ZIP" },
-    { value: "github", name: /Import GitHub repository/i },
-    { value: "hosted", name: "Import hosted URL" },
-    { value: "playground", name: /Import CodePen \/ JSFiddle/i },
-  ] as const;
+  await page.getByRole("button", { name: "Retry playground import" }).click();
+  await expect(page.getByText("CodePen source normalized safely")).toBeVisible();
+  expect(importAttempts).toBe(2);
+
+  releaseFirstImport?.();
+});
+
+test("shows safe recovery details for every hosted and playground import failure", async ({ page }) => {
   let hostedFailure = hostedImportFailures[0];
   let playgroundFailure = playgroundImportFailures[0];
   await mockAuth(page);
@@ -984,40 +1042,6 @@ test("updates the sandbox preview from an edited entrypoint only after the edito
 
   await page.getByRole("tab", { name: "Source Editor" }).click();
   const editor = page.getByRole("textbox", { name: "Edit source file index.html" });
-
-  const prepareSource = async (source: (typeof sourceModes)[number]) => {
-    await page.getByRole("tab", { name: source.name }).click();
-    if (source.value === "paste") {
-      await page.getByPlaceholder(/paste your html/i).fill("<main>Paste source</main>");
-    } else if (source.value === "html") {
-      await htmlFileInput.setInputFiles({
-        name: "uploaded.html",
-        mimeType: "text/html",
-        buffer: Buffer.from("<main>Uploaded HTML source</main>"),
-      });
-      await expect(page.getByText(/uploaded\.html|normalized locally/i).first()).toBeVisible();
-    } else if (source.value === "zip") {
-      await zipFileInput.setInputFiles({
-        name: "multi-entrypoint.zip",
-        mimeType: "application/zip",
-        buffer: multiEntrypointZip,
-      });
-      await expect(page.getByText(/Multiple HTML entrypoints/i)).toBeVisible();
-      await expect(
-        page.getByRole("combobox", { name: "Choose the main HTML file for analysis and preview" }),
-      ).toBeVisible();
-    } else if (source.value === "hosted") {
-      await page.getByRole("textbox", { name: "Hosted page URL" }).fill(hostedImport.originalUrl);
-      await page.getByRole("button", { name: "Fetch hosted HTML" }).click();
-      await expect(page.getByText("Hosted page fetched safely")).toBeVisible();
-    } else if (source.value === "playground") {
-      await page
-        .getByRole("textbox", { name: "Public CodePen or JSFiddle URL" })
-        .fill(playgroundImport.originalUrl);
-      await page.getByRole("button", { name: "Import playground" }).click();
-      await expect(page.getByText("CodePen source normalized safely")).toBeVisible();
-    }
-  };
   await editor.fill("<main id=\"preview-marker\">After</main>");
   await expect(page.getByText("Analysis is out of date")).toBeVisible();
   await page.getByRole("tab", { name: "Safe Preview" }).click();
@@ -1028,40 +1052,6 @@ test("clears replaced editor feedback after re-analysis makes the report current
   await openEditor(page);
 
   const editor = page.getByRole("textbox", { name: "Edit source file index.html" });
-
-  const prepareSource = async (source: (typeof sourceModes)[number]) => {
-    await page.getByRole("tab", { name: source.name }).click();
-    if (source.value === "paste") {
-      await page.getByPlaceholder(/paste your html/i).fill("<main>Paste source</main>");
-    } else if (source.value === "html") {
-      await htmlFileInput.setInputFiles({
-        name: "uploaded.html",
-        mimeType: "text/html",
-        buffer: Buffer.from("<main>Uploaded HTML source</main>"),
-      });
-      await expect(page.getByText(/uploaded\.html|normalized locally/i).first()).toBeVisible();
-    } else if (source.value === "zip") {
-      await zipFileInput.setInputFiles({
-        name: "multi-entrypoint.zip",
-        mimeType: "application/zip",
-        buffer: multiEntrypointZip,
-      });
-      await expect(page.getByText(/Multiple HTML entrypoints/i)).toBeVisible();
-      await expect(
-        page.getByRole("combobox", { name: "Choose the main HTML file for analysis and preview" }),
-      ).toBeVisible();
-    } else if (source.value === "hosted") {
-      await page.getByRole("textbox", { name: "Hosted page URL" }).fill(hostedImport.originalUrl);
-      await page.getByRole("button", { name: "Fetch hosted HTML" }).click();
-      await expect(page.getByText("Hosted page fetched safely")).toBeVisible();
-    } else if (source.value === "playground") {
-      await page
-        .getByRole("textbox", { name: "Public CodePen or JSFiddle URL" })
-        .fill(playgroundImport.originalUrl);
-      await page.getByRole("button", { name: "Import playground" }).click();
-      await expect(page.getByText("CodePen source normalized safely")).toBeVisible();
-    }
-  };
   await editor.fill("<main>Edited</main>\n<p>Edited</p>");
   await expect(page.getByText("Unsaved source change is held in this browser tab.")).toBeVisible();
 
@@ -1117,40 +1107,6 @@ test("keeps stale editor feedback through a failed re-analysis and clears it aft
   await page.getByRole("tab", { name: "Source Editor" }).click();
 
   const editor = page.getByRole("textbox", { name: "Edit source file index.html" });
-
-  const prepareSource = async (source: (typeof sourceModes)[number]) => {
-    await page.getByRole("tab", { name: source.name }).click();
-    if (source.value === "paste") {
-      await page.getByPlaceholder(/paste your html/i).fill("<main>Paste source</main>");
-    } else if (source.value === "html") {
-      await htmlFileInput.setInputFiles({
-        name: "uploaded.html",
-        mimeType: "text/html",
-        buffer: Buffer.from("<main>Uploaded HTML source</main>"),
-      });
-      await expect(page.getByText(/uploaded\.html|normalized locally/i).first()).toBeVisible();
-    } else if (source.value === "zip") {
-      await zipFileInput.setInputFiles({
-        name: "multi-entrypoint.zip",
-        mimeType: "application/zip",
-        buffer: multiEntrypointZip,
-      });
-      await expect(page.getByText(/Multiple HTML entrypoints/i)).toBeVisible();
-      await expect(
-        page.getByRole("combobox", { name: "Choose the main HTML file for analysis and preview" }),
-      ).toBeVisible();
-    } else if (source.value === "hosted") {
-      await page.getByRole("textbox", { name: "Hosted page URL" }).fill(hostedImport.originalUrl);
-      await page.getByRole("button", { name: "Fetch hosted HTML" }).click();
-      await expect(page.getByText("Hosted page fetched safely")).toBeVisible();
-    } else if (source.value === "playground") {
-      await page
-        .getByRole("textbox", { name: "Public CodePen or JSFiddle URL" })
-        .fill(playgroundImport.originalUrl);
-      await page.getByRole("button", { name: "Import playground" }).click();
-      await expect(page.getByText("CodePen source normalized safely")).toBeVisible();
-    }
-  };
   await editor.fill("<main>Edited</main>\n<p>Edited</p>");
   await expect(page.getByText("Unsaved source change is held in this browser tab.")).toBeVisible();
   await page.getByRole("button", { name: "Re-analyze source" }).click();
@@ -1358,40 +1314,6 @@ test("[cross-browser] withholds malformed Claude patches and rejects a response 
   await expect.poll(() => Boolean(resolveChat)).toBe(true);
   await page.getByRole("tab", { name: "Source Editor" }).click();
   const editor = page.getByRole("textbox", { name: "Edit source file index.html" });
-
-  const prepareSource = async (source: (typeof sourceModes)[number]) => {
-    await page.getByRole("tab", { name: source.name }).click();
-    if (source.value === "paste") {
-      await page.getByPlaceholder(/paste your html/i).fill("<main>Paste source</main>");
-    } else if (source.value === "html") {
-      await htmlFileInput.setInputFiles({
-        name: "uploaded.html",
-        mimeType: "text/html",
-        buffer: Buffer.from("<main>Uploaded HTML source</main>"),
-      });
-      await expect(page.getByText(/uploaded\.html|normalized locally/i).first()).toBeVisible();
-    } else if (source.value === "zip") {
-      await zipFileInput.setInputFiles({
-        name: "multi-entrypoint.zip",
-        mimeType: "application/zip",
-        buffer: multiEntrypointZip,
-      });
-      await expect(page.getByText(/Multiple HTML entrypoints/i)).toBeVisible();
-      await expect(
-        page.getByRole("combobox", { name: "Choose the main HTML file for analysis and preview" }),
-      ).toBeVisible();
-    } else if (source.value === "hosted") {
-      await page.getByRole("textbox", { name: "Hosted page URL" }).fill(hostedImport.originalUrl);
-      await page.getByRole("button", { name: "Fetch hosted HTML" }).click();
-      await expect(page.getByText("Hosted page fetched safely")).toBeVisible();
-    } else if (source.value === "playground") {
-      await page
-        .getByRole("textbox", { name: "Public CodePen or JSFiddle URL" })
-        .fill(playgroundImport.originalUrl);
-      await page.getByRole("button", { name: "Import playground" }).click();
-      await expect(page.getByText("CodePen source normalized safely")).toBeVisible();
-    }
-  };
   await editor.fill("<main>Changed while Claude worked</main>");
   resolveChat?.();
   await expect(editor).toHaveValue("<main>Changed while Claude worked</main>");
@@ -1429,41 +1351,21 @@ test("[cross-browser] requires Claude review and explicit apply, then supports u
   await page.getByRole("button", { name: "Request Claude patch" }).click();
   await expect(page.getByRole("heading", { name: "Review Claude's untrusted patch" })).toBeVisible();
   const editor = page.getByRole("textbox", { name: "Edit source file index.html" });
-
-  const prepareSource = async (source: (typeof sourceModes)[number]) => {
-    await page.getByRole("tab", { name: source.name }).click();
-    if (source.value === "paste") {
-      await page.getByPlaceholder(/paste your html/i).fill("<main>Paste source</main>");
-    } else if (source.value === "html") {
-      await htmlFileInput.setInputFiles({
-        name: "uploaded.html",
-        mimeType: "text/html",
-        buffer: Buffer.from("<main>Uploaded HTML source</main>"),
-      });
-      await expect(page.getByText(/uploaded\.html|normalized locally/i).first()).toBeVisible();
-    } else if (source.value === "zip") {
-      await zipFileInput.setInputFiles({
-        name: "multi-entrypoint.zip",
-        mimeType: "application/zip",
-        buffer: multiEntrypointZip,
-      });
-      await expect(page.getByText(/Multiple HTML entrypoints/i)).toBeVisible();
-      await expect(
-        page.getByRole("combobox", { name: "Choose the main HTML file for analysis and preview" }),
-      ).toBeVisible();
-    } else if (source.value === "hosted") {
-      await page.getByRole("textbox", { name: "Hosted page URL" }).fill(hostedImport.originalUrl);
-      await page.getByRole("button", { name: "Fetch hosted HTML" }).click();
-      await expect(page.getByText("Hosted page fetched safely")).toBeVisible();
-    } else if (source.value === "playground") {
-      await page
-        .getByRole("textbox", { name: "Public CodePen or JSFiddle URL" })
-        .fill(playgroundImport.originalUrl);
-      await page.getByRole("button", { name: "Import playground" }).click();
-      await expect(page.getByText("CodePen source normalized safely")).toBeVisible();
-    }
-  };
-
-  const htmlFileInput = page.locator('input[type="file"][accept=".html,.htm,text/html"]');
-
-  const zipFileInput = page.locator('input[type="file"][accept=".zip,application/zip,application/x-zip-compressed"]');
+  await page.getByRole("tab", { name: "Source Editor" }).click();
+  await expect(editor).toHaveValue(original);
+  await page.getByRole("tab", { name: "Safe Preview" }).click();
+  await page.getByRole("tab", { name: "Source Editor" }).click();
+  await page.getByRole("button", { name: "Fix with Claude" }).click();
+  await page.getByRole("button", { name: "Review and apply patch" }).click();
+  await expect(page.getByRole("alertdialog", { name: "Confirm Claude patch" })).toBeVisible();
+  await page.getByRole("button", { name: "Keep reviewing" }).click();
+  await expect(editor).toHaveValue(original);
+  await page.getByRole("button", { name: "Review and apply patch" }).click();
+  await page.getByRole("button", { name: "Confirm apply" }).click();
+  await expect(page.getByText("Analysis is out of date")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Edit source file index.html" })).toHaveValue("<main>Patched</main>");
+  await page.getByRole("button", { name: "Undo and restore original" }).click();
+  await expect(page.getByRole("tab", { name: "Source Editor" })).toBeVisible();
+  await page.getByRole("tab", { name: "Source Editor" }).click();
+  await expect(page.getByRole("textbox", { name: "Edit source file index.html" })).toHaveValue(original);
+});

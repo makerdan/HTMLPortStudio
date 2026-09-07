@@ -24,5 +24,11 @@ export default defineConfig({
       workers: 1,
       use: { ...devices["Desktop Firefox"] },
     },
+    {
+      name: "mobile-recovery",
+      grep: /\[mobile\]/,
+      workers: 1,
+      use: { ...devices["Pixel 5"] },
+    },
   ],
 });
