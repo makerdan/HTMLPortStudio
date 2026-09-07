@@ -5,6 +5,7 @@ import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import test from "node:test";
 import { validatePlanText } from "./lib/failure-gate.mjs";
+import { loadTierRegistry, readPlanTier } from "./lib/tier-lock-check.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const checker = path.join(root, "scripts/check-failure-gate.mjs");
@@ -52,6 +53,23 @@ function withCatalog(records, callback) {
 
 test("accepts a valid plan", () => {
   assert.deepEqual(validatePlanText(valid, "valid plan"), []);
+});
+
+test("resolves a valid plan to the registered test-standard command", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "failure-gate-lock-"));
+  const file = path.join(directory, "plan.md");
+  fs.writeFileSync(file, valid);
+
+  try {
+    const registeredTier = loadTierRegistry().get("test-standard");
+    const resolved = readPlanTier(file);
+
+    assert.equal(resolved.tierName, "test-standard");
+    assert.deepEqual(resolved.tier, registeredTier);
+    assert.equal(resolved.tier.command, registeredTier.command);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("rejects a plan missing required sections", () => {
