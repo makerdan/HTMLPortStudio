@@ -158,6 +158,27 @@ test("clears every import method without changing the selected import card", asy
   );
 });
 
+test("clears the previous source bundle and editor when switching import cards", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+  const handlerStart = source.indexOf("const handleSourceChange");
+  const handlerEnd = source.indexOf("const handleGithubInspect", handlerStart);
+  const handler = source.slice(handlerStart, handlerEnd);
+
+  assert.notEqual(handlerStart, -1);
+  assert.notEqual(handlerEnd, -1);
+  assert.match(handler, /importSessionRef\.current \+= 1/);
+  assert.match(handler, /githubImportAbortControllerRef\.current\?\.abort/);
+  assert.match(handler, /hostedImportAbortControllerRef\.current\?\.abort/);
+  assert.match(handler, /playgroundImportAbortControllerRef\.current\?\.abort/);
+  assert.match(handler, /setHtmlInput\(''\)/);
+  assert.match(handler, /setSourceBundle\(null\)/);
+  assert.match(handler, /setAnalysisData\(null\)/);
+  assert.match(handler, /bumpSourceRevision\(\)/);
+  assert.match(handler, /setAnalyzedRevision\(null\)/);
+  assert.match(handler, /setAnalysisStale\(false\)/);
+  assert.match(handler, /setSelectedSource\(nextSource\)/);
+});
+
 test("opens the HTML file picker when the upload panel background is clicked", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
   const panelStart = source.indexOf("className=\"cursor-pointer rounded-lg border border-dashed");
