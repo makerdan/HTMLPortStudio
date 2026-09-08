@@ -180,6 +180,7 @@ export async function fetchPinnedUrl(
   url: string,
   init: RequestInit,
   pinnedAddress: string,
+  tlsOptions: { ca?: string } = {},
 ): Promise<Response> {
   const parsed = new URL(url);
   const request = parsed.protocol === "https:" ? httpsRequest : httpRequest;
@@ -193,6 +194,7 @@ export async function fetchPinnedUrl(
     ...(parsed.protocol === "https:"
       ? { servername: parsed.hostname.replace(/^\[|\]$/g, "") }
       : {}),
+    ...tlsOptions,
   };
 
   return new Promise<Response>((resolve, reject) => {
@@ -217,5 +219,6 @@ export async function fetchPinnedUrl(
     }
     signal?.addEventListener("abort", abort, { once: true });
     clientRequest.once("error", reject);
+    clientRequest.end();
   });
 }

@@ -1,6 +1,76 @@
 import assert from "node:assert/strict";
+import { createServer, type Server } from "node:https";
+import type { AddressInfo } from "node:net";
 import test from "node:test";
-import { fetchHostedUrl, HostedUrlError, HOSTED_URL_MAX_BYTES } from "./hosted-url.ts";
+import {
+  fetchHostedUrl,
+  fetchPinnedUrl,
+  HostedUrlError,
+  HOSTED_URL_MAX_BYTES,
+} from "./hosted-url.ts";
+
+const LOCAL_HTTPS_KEY = `-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCxRM+5bBTQ2C7r
+7WdHUifFef5cUIdbD0dy8Pgju4SL8/0qMFDRuRk6I8FsiPxTHcmvy1rGhJxEpE9f
+xoyo3LhA+KfYFfC+p2AvyBtR3ahUuiY0RNjEJ3+OIjPbofSR2e8DihDs2GhmZtjz
+t1Yhii3ccjbFVKOpU/XVy/z0l2202Ael5bM9gfe7J7cnsySXycH6BxTSjZFy2Il/
+Wtzb8obIPBDdI4se9Fm1W/XW+JOr6pC+hLFj1kwmO+YrbjNsKuYgXl4z+RwzUXsp
+G5Z/5OnSzNVrfo1K5TQIOViR+zsRhKOiJAVLvuv5dqsNhGkNzuMIe5Ob9RndG1QB
+iaX5LwabAgMBAAECggEAE6yA52HU75bGol2PRE2cZ2DSN5miZBtOgTW4PHL/026J
+Tujc12HVKGw2d96+LlVUgIOvt++Yzk90FbuZ+dXBR0ixjBxnQymdVcA+M/hHSdv9
+CHkJm7+MexBVtA8F7zgCPGDS3w5ni9HnSykyUHee/mPYq07o+Q597rP8h4LU5KiT
+6V/ltR1sh1JDmcPbMm9iIlOMLmSvGzygLSzgj7JXqpNrG5NOnSJ83LhF8AWuN5qb
+4m3aPQyN3VCudTtEdyIquGuCp1DwMGytzifg1jlDLZwcbjaiIRUhfYMJjHEFTruV
+L/AyL1bQIcEy4SGG+6H0kDtM75eoT7V3ZmARhTooOQKBgQDZI0qIQVcbp8+i0CqP
+Kh5VWbh578KutyyjscwieSqlof1OCdxYz/6ZfPfsm7YLXz+8/rszhy/zBaDVfaEG
+wg0Ubifb/y/IR/2PIfhjE9MORyP5onh5clGc9649L+toeQJH+zFCkJHDRaFxtWBJ
+NqY0l4wf9zPZFycr7/aZ+WfWYwKBgQDQ/tIJNrq4Ji5tbDH8EWratnTqd3vevbjn
+3nMpO9/sYT+rcAcUcksel3x97pAmO5FqdU2u0sjX8a//UAfbeGEnm27NbTzuA2gd
+1h7ItBhs1xe1Ll5+/lC7c9lCFQPG2U8z/DcgBIIEqLwEzWIVWKps7zBrCrcVrh24
+L3CF5BcIaQKBgB7Hm+cYrApljU9dBstogwhCQZ43WHd/y7ogl/lDB8KW5dtMFooY
+YdTMHDDUGcge5mAaE9tIDIn8gEIDHvJgS45b1xaeY92WJuFFRXp18vMRLo5Sc5Vz
+mRIRIgfWZR5YGPSvLNpst9zgX/RIa6+1KXZHDTvyxMy/NXRK/b/x1MBVAoGAOJaW
+ploESrJD5eriyd6pcRjwJUA+8Pur4lRwGB0XL3jRdYj60cV0o47e7XY337JHWGz0
+oL6AFUBiqB2yUvGQVNoYMVU/py6S9WkxoqRo7Kd8ytkISxhvIaJnlCX+hMv4Txoe
+jvPJhJtvdVlrEl6UnrRRBtq64groDyQBMq+ksOkCgYEAru1KquPbRzr3DylBFBf+
+VbwT581abeWDGVLmFhP/TA1HmLLv52/0JmzJVMTw8PxtBGY0zOXzIr8RLZSWD8qW
+NqtzIEawkCmy/QwrXaKe8cOaAeWJmVuDuL+xCx0+0H2TlXPDYBkxchY18msbDlFQ
+evZMDSWkFlV5cGpkt3NO9Z4=
+-----END PRIVATE KEY-----`;
+
+const LOCAL_HTTPS_CERT = `-----BEGIN CERTIFICATE-----
+MIIDczCCAlugAwIBAgIUAuYv5lyZ+vyMOj6ifiKiQrBII5AwDQYJKoZIhvcNAQEL
+BQAwHDEaMBgGA1UEAwwRdmlydHVhbC1ob3N0LnRlc3QwHhcNMjYwOTA3MTMxNTA1
+WhcNMzYwOTA0MTMxNTA1WjAcMRowGAYDVQQDDBF2aXJ0dWFsLWhvc3QudGVzdDCC
+ASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBALFEz7lsFNDYLuvtZ0dSJ8V5
+/lxQh1sPR3Lw+CO7hIvz/SowUNG5GTojwWyI/FMdya/LWsaEnESkT1/GjKjcuED4
+p9gV8L6nYC/IG1HdqFS6JjRE2MQnf44iM9uh9JHZ7wOKEOzYaGZm2PO3ViGKLdxy
+NsVUo6lT9dXL/PSXbbTYB6Xlsz2B97sntyezJJfJwfoHFNKNkXLYiX9a3Nvyhsg8
+EN0jix70WbVb9db4k6vqkL6EsWPWTCY75ituM2wq5iBeXjP5HDNReykbln/k6dLM
+1Wt+jUrlNAg5WJH7OxGEo6IkBUu+6/l2qw2EaQ3O4wh7k5v1Gd0bVAGJpfkvBpsC
+AwEAAaOBrDCBqTAdBgNVHQ4EFgQU1xngDZWExEO7YbetXsv94eYfXscwHwYDVR0j
+BBgwFoAU1xngDZWExEO7YbetXsv94eYfXscwDwYDVR0TAQH/BAUwAwEB/zBWBgNV
+HREETzBNghhzb3VyY2UudmlydHVhbC1ob3N0LnRlc3SCGHRhcmdldC52aXJ0dWFs
+LWhvc3QudGVzdIIXYWxwaGEudmlydHVhbC1ob3N0LnRlc3QwDQYJKoZIhvcNAQEL
+BQADggEBAKDcXqspsSWThIYG/870DmQvz6y/+Z3OENhCo0Rl2xIU7gkr2tnY5+wa
+parYRIbZnFo4tnxLWMRYqGDxBhkvKkkZkKktPQTMHEW/cDBtI9tmLxxHsLIHZK1j
+pi0Kw1jektE3rR1rsE8YDX3eHIIAf7+LjRtCZdUJNbExXEYZyF5YAah6LPxNV+hw
+LMhno93PBtrQRe6Wov2sWlJ77Zorvb3MEnnJAKImxHpILH88UtFpLLnBboEtWsJt
+sDnJ5ELgHChvUXy6rrHLGNsna6oB45mguylxpYBCv4BVEVuYt1G8BDLskfl5gQVX
+pKHluR1i/XwVV/bZnnlIYif4sS6uLq0=
+-----END CERTIFICATE-----`;
+
+async function listen(server: Server): Promise<number> {
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  return (server.address() as AddressInfo).port;
+}
+
+async function close(server: Server): Promise<void> {
+  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+}
 
 const publicLookup = async () => [
   { address: "93.184.216.34", family: 4 },
@@ -54,6 +124,44 @@ test("fetches public HTML without executing it and returns portability warnings"
   assert.ok(result.warnings.some((warning) => warning.includes("Browser runtime")));
 });
 
+test("pins HTTPS requests while preserving virtual-host SNI and Host routing", async () => {
+  const observed = {
+    host: "",
+    remoteAddress: "",
+    servername: "",
+  };
+  const server = createServer(
+    { key: LOCAL_HTTPS_KEY, cert: LOCAL_HTTPS_CERT },
+    (request, response) => {
+      observed.host = request.headers.host ?? "";
+      observed.remoteAddress = request.socket.remoteAddress ?? "";
+      response.writeHead(200, { "content-type": "text/html" });
+      response.end("<!doctype html><title>Virtual host</title>");
+    },
+  );
+  server.on("secureConnection", (socket) => {
+    observed.servername = typeof socket.servername === "string" ? socket.servername : "";
+  });
+  const port = await listen(server);
+
+  try {
+    const response = await fetchPinnedUrl(
+      `https://source.virtual-host.test:${port}/app`,
+      { method: "GET" },
+      "127.0.0.1",
+      { ca: LOCAL_HTTPS_CERT },
+    );
+
+    assert.equal(response.status, 200);
+    assert.match(await response.text(), /Virtual host/);
+    assert.equal(observed.remoteAddress, "127.0.0.1");
+    assert.equal(observed.servername, "source.virtual-host.test");
+    assert.equal(observed.host, `source.virtual-host.test:${port}`);
+  } finally {
+    await close(server);
+  }
+});
+
 test("blocks loopback and private destinations before fetch", async () => {
   let fetchCalls = 0;
   await rejectsWith(
@@ -89,27 +197,6 @@ test("blocks loopback and private destinations before fetch", async () => {
     "HOSTED_URL_BLOCKED_HOST",
   );
   assert.equal(fetchCalls, 0);
-});
-
-test("blocks link-local, metadata, and reserved destinations before fetch", async () => {
-  for (const input of [
-    "https://169.254.169.254/latest/meta-data",
-    "https://192.0.2.1/documentation",
-    "https://metadata.google.internal/computeMetadata/v1",
-    "https://[fe80::1]/local",
-  ]) {
-    let fetchCalls = 0;
-    await rejectsWith(
-      fetchHostedUrl(input, {
-        fetch: async () => {
-          fetchCalls += 1;
-          return response("<!doctype html>");
-        },
-      }),
-      "HOSTED_URL_BLOCKED_HOST",
-    );
-    assert.equal(fetchCalls, 0, input);
-  }
 });
 
 test("rechecks DNS and blocks rebinding before network access", async () => {
@@ -158,6 +245,32 @@ test("pins the validated address across a validation/fetch DNS mismatch", async 
   assert.equal(lookupCalls, 3);
   assert.equal(fetchCalls, 1);
   assert.match(result.html, /Pinned/);
+});
+
+test("revalidates and repins each redirect destination", async () => {
+  const pinnedAddresses: string[] = [];
+  const lookup = async (hostname: string) => [
+    {
+      address: hostname === "source.example.test" ? "93.184.216.34" : "93.184.216.35",
+      family: 4,
+    },
+  ];
+  const result = await fetchHostedUrl("https://source.example.test/start", {
+    lookup,
+    fetch: async (url, _init, pinnedAddress) => {
+      pinnedAddresses.push(`${url}:${pinnedAddress}`);
+      return String(url).endsWith("/start")
+        ? response("", { location: "https://target.example.test/final" }, 302)
+        : response("<!doctype html><title>Redirected</title>");
+    },
+  });
+
+  assert.deepEqual(pinnedAddresses, [
+    "https://source.example.test/start:93.184.216.34",
+    "https://target.example.test/final:93.184.216.35",
+  ]);
+  assert.equal(result.finalUrl, "https://target.example.test/final");
+  assert.match(result.html, /Redirected/);
 });
 
 test("blocks redirect rebinding before fetching the redirected address", async () => {

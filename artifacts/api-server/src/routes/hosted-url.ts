@@ -7,6 +7,8 @@ import {
   type UrlLookup,
 } from "./server-url.ts";
 
+export { fetchPinnedUrl } from "./server-url.ts";
+
 export const HOSTED_URL_MAX_REDIRECTS = 5;
 export const HOSTED_URL_MAX_BYTES = SOURCE_TEXT_MAX_BYTES;
 export const HOSTED_URL_TIMEOUT_MS = 10_000;
