@@ -22,6 +22,13 @@
       "when": 1788836034888,
       "tag": "0002_poe_chat_rate_limits",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788838072433,
+      "tag": "0003_poe_chat_rate_limit_cleanup",
+      "breakpoints": true
     }
   ]
 }

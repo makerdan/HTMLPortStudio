@@ -5,6 +5,55 @@ export type PoeChatRateLimitDecision = {
   retryAfterSeconds?: number;
 };
 
+const POE_CHAT_RATE_LIMIT_CLEANUP_BATCH_SIZE = 100;
+const POE_CHAT_RATE_LIMIT_CLEANUP_INTERVAL_MS = 60_000;
+
+let nextPoeChatRateLimitCleanupAt = 0;
+let poeChatRateLimitCleanupInFlight: Promise<void> | null = null;
+
+export async function cleanupExpiredPoeChatRateLimits(
+  windowMs: number,
+  batchSize = POE_CHAT_RATE_LIMIT_CLEANUP_BATCH_SIZE,
+): Promise<number> {
+  const result = await pool.query(
+    `
+      WITH "expired" AS (
+        SELECT "client_ip"
+        FROM "poe_chat_rate_limits"
+        WHERE "window_started_at" <=
+          CURRENT_TIMESTAMP - ($1 * INTERVAL '1 millisecond')
+        ORDER BY "window_started_at", "client_ip"
+        LIMIT $2
+        FOR UPDATE SKIP LOCKED
+      )
+      DELETE FROM "poe_chat_rate_limits" AS "limits"
+      USING "expired"
+      WHERE "limits"."client_ip" = "expired"."client_ip"
+      RETURNING "limits"."client_ip"
+    `,
+    [windowMs, batchSize],
+  );
+
+  return result.rowCount ?? result.rows.length;
+}
+
+function schedulePoeChatRateLimitCleanup(windowMs: number): void {
+  const now = Date.now();
+  if (now < nextPoeChatRateLimitCleanupAt || poeChatRateLimitCleanupInFlight) {
+    return;
+  }
+
+  nextPoeChatRateLimitCleanupAt = now + POE_CHAT_RATE_LIMIT_CLEANUP_INTERVAL_MS;
+  poeChatRateLimitCleanupInFlight = cleanupExpiredPoeChatRateLimits(windowMs)
+    .then(
+      () => undefined,
+      () => undefined,
+    )
+    .finally(() => {
+      poeChatRateLimitCleanupInFlight = null;
+    });
+}
+
 export async function takePoeChatRateLimit(
   clientIp: string,
   windowMs: number,
@@ -42,6 +91,8 @@ export async function takePoeChatRateLimit(
     `,
     [clientIp, windowMs, maxRequests],
   );
+
+  schedulePoeChatRateLimitCleanup(windowMs);
 
   const row = result.rows[0];
   if (!row) {

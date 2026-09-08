@@ -380,9 +380,8 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
       );
       return;
     }
-
-    response.writeHead(404, { "Content-Type": "application/json" });
-    response.end(JSON.stringify({ error: "not found" }));
+    response.writeHead(404);
+    response.end();
   });
   const poePort = await listen(poe);
   const apiPort = await unusedPort();
@@ -489,6 +488,7 @@ test("fails closed when Poe rate-limit storage is unavailable", async () => {
   const confirmedModel = "Claude-Sonnet-4.6";
   let providerRequests = 0;
   const poe = http.createServer(async (request, response) => {
+    const path = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
     providerRequests += 1;
     await readBody(request);
     response.writeHead(200, { "Content-Type": "application/json" });
@@ -498,6 +498,8 @@ test("fails closed when Poe rate-limit storage is unavailable", async () => {
         choices: [{ message: { content: "provider response" } }],
       }),
     );
+    response.writeHead(404);
+    response.end();
   });
   const poePort = await listen(poe);
   const unavailableDatabasePort = await unusedPort();
@@ -610,6 +612,21 @@ test("bounds public Poe traffic before provider forwarding and caches models", a
   let restartedApi: ChildProcess | undefined;
   const abuseIp = `198.51.100.${(Number.parseInt(randomUUID().slice(0, 2), 16) % 254) + 1}`;
 
+  const staleIp = testClientIp();
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  await pool.query(
+    `
+      INSERT INTO "poe_chat_rate_limits"
+        ("client_ip", "window_started_at", "request_count")
+      VALUES ($1, CURRENT_TIMESTAMP - INTERVAL '5 minutes', 6)
+      ON CONFLICT ("client_ip") DO UPDATE
+      SET
+        "window_started_at" = EXCLUDED."window_started_at",
+        "request_count" = EXCLUDED."request_count"
+    `,
+    [staleIp],
+  );
+
   try {
     const baseUrl = `http://127.0.0.1:${apiPort}/api`;
     await waitFor(async () => {
@@ -681,11 +698,25 @@ test("bounds public Poe traffic before provider forwarding and caches models", a
         messages: [{ role: "user", content: "request-7" }],
       }),
     });
+
     assert.equal(blocked.status, 429);
     assert.equal(blocked.body.code, "POE_RATE_LIMITED");
     assert.match(blocked.headers.get("retry-after") ?? "", /^[1-9]\d*$/);
     assert.equal(completionRequests, 6);
 
+    await waitFor(async () => {
+      const stale = await pool.query(
+        `SELECT 1 FROM "poe_chat_rate_limits" WHERE "client_ip" = $1`,
+        [staleIp],
+      );
+      return stale.rowCount === 0;
+    }, "expired Poe quota row was not cleaned up");
+
+    const activeQuota = await pool.query(
+      `SELECT "request_count" FROM "poe_chat_rate_limits" WHERE "client_ip" = $1`,
+      [abuseIp],
+    );
+    assert.equal(activeQuota.rows[0]?.request_count, 7);
     const secondApiPort = await unusedPort();
     secondApi = startApi(secondApiPort);
     const secondBaseUrl = `http://127.0.0.1:${secondApiPort}/api`;
@@ -737,6 +768,11 @@ test("bounds public Poe traffic before provider forwarding and caches models", a
     await stopApi(api);
     await stopApi(secondApi);
     await stopApi(restartedApi);
+    await pool.query(
+      `DELETE FROM "poe_chat_rate_limits" WHERE "client_ip" IN ($1, $2)`,
+      [staleIp, abuseIp],
+    );
+    await pool.end();
     await new Promise<void>((resolve) => poe.close(() => resolve()));
   }
 });
