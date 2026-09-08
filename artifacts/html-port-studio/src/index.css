@@ -119,4 +119,17 @@
     border-color: #000;
   }
 
+  .source-mode-choice {
+    min-width: 0;
+    width: 100%;
+    white-space: normal;
+  }
+
+  .source-mode-choice__label {
+    display: block;
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
 }

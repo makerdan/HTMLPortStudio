@@ -51,8 +51,8 @@ inspect third-party implementation details.
 
 | Browser | Viewport / effective zoom | Result |
 | --- | --- | --- |
-| Chromium | 375 × 812 | **Product defect:** the source-mode grid has `scrollWidth=412` and clips the GitHub and CodePen/JSFiddle labels at the right edge. |
-| Firefox | 375 × 900 | **Product defect:** reproduces the same horizontal overflow. |
+| Chromium | 375 × 812 | Pass after the source-choice wrapping fix; no document overflow and the GitHub and CodePen/JSFiddle labels remain readable. |
+| Firefox | 375 × 900 | Pass after the source-choice wrapping fix; no document overflow and the GitHub and CodePen/JSFiddle labels remain readable. |
 | Chromium | 768 × 900 | Pass; no document overflow. |
 | Firefox | 768 × 900 | Pass; no document overflow. |
 | Chromium | 1280 × 900 | Pass; no document overflow. |
@@ -64,6 +64,11 @@ The managed headless browsers do not expose browser chrome, so the 75% and
 150% rows use the equivalent CSS viewport widths rather than claiming a
 physical browser-zoom change. A real headed-browser pass should repeat those
 two rows before release.
+
+The automated `[cross-browser]` source-choice regression in
+`tests/source-focus.spec.ts` checks document width and the rendered bounds of
+the GitHub and CodePen/JSFiddle labels at 375, 768, and 1280 CSS pixels in
+Chromium and Firefox.
 
 Keyboard and focus checks passed for the source analysis flow, the Claude
 consent dialog, Escape dismissal, and Start Over. The Claude dialog returned

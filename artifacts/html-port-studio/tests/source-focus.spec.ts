@@ -16,6 +16,41 @@ async function assertSourceEntrypointFocus(page: import("@playwright/test").Page
   }
 }
 
+test("[cross-browser] keeps source choices readable without document overflow at supported widths", async ({
+  page,
+}) => {
+  await page.route("**/__clerk/**", (route) => route.abort());
+  await page.goto("/");
+
+  for (const viewport of [
+    { width: 375, height: 812 },
+    { width: 768, height: 900 },
+    { width: 1280, height: 900 },
+  ]) {
+    await page.setViewportSize(viewport);
+
+    const documentWidth = await page.evaluate(() => ({
+      body: document.body.scrollWidth,
+      document: document.documentElement.scrollWidth,
+      viewport: document.documentElement.clientWidth,
+    }));
+    expect(documentWidth.body).toBeLessThanOrEqual(documentWidth.viewport + 1);
+    expect(documentWidth.document).toBeLessThanOrEqual(documentWidth.viewport + 1);
+
+    for (const label of ["Import GitHub repository", "Import CodePen / JSFiddle"]) {
+      const tab = page.getByRole("tab", { name: new RegExp(label, "i") });
+      await expect(tab).toBeVisible();
+      const labelBox = tab.locator(".source-mode-choice__label").first();
+      await expect(labelBox).toContainText(label);
+      await expect
+        .poll(() =>
+          labelBox.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+        )
+        .toBe(true);
+    }
+  }
+});
+
 test.describe("source entrypoint focus on desktop", () => {
   test.use({ viewport: { width: 1280, height: 800 } });
 
