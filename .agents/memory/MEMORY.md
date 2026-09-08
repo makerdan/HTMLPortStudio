@@ -12,3 +12,4 @@
 - [Desktop connector setup](desktop-connector-setup.md) — Replit docs do not guarantee macOS app connector deep links; retain browser, copy-link, and manual recheck paths.
 - [Server URL fetch boundaries](server-url-fetch-boundaries.md) — User-selected outbound URLs must use shared DNS pinning and manual redirect validation; fixed provider origins need an explicit audit boundary.
 - [Drizzle migration history](drizzle-migration-history.md) — In this project, additive schema changes need a narrowly scoped migration because generation may recreate existing tables.
+- [GitHub action pin review](github-action-pin-review.md) — Resolve reviewed release tags to full upstream SHAs and verify pin/comment pairs before validation.
