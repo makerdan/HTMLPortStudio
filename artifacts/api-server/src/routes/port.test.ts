@@ -53,11 +53,13 @@ async function waitFor(
 async function jsonRequest(url: string, init?: RequestInit): Promise<{
   status: number;
   body: Json;
+  headers: Headers;
 }> {
   const response = await fetch(url, init);
   return {
     status: response.status,
     body: (await response.json()) as Json,
+    headers: response.headers,
   };
 }
 
@@ -591,6 +593,7 @@ test("bounds public Poe traffic before provider forwarding and caches models", a
     });
     assert.equal(blocked.status, 429);
     assert.equal(blocked.body.code, "POE_RATE_LIMITED");
+    assert.match(blocked.headers.get("retry-after") ?? "", /^[1-9]\d*$/);
     assert.equal(completionRequests, 6);
   } finally {
     if (!api.killed) {

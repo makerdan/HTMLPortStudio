@@ -640,6 +640,54 @@ test("uses concise fallbacks for unknown, transport, and non-JSON errors", () =>
   assert.match(PROJECT_HANDOFF_RECOVERY_EXPIRED, /status is no longer available/i);
 });
 
+test("exposes a bounded Poe retry countdown without exposing server details", () => {
+  const response = new Response(
+    JSON.stringify({
+      code: "POE_RATE_LIMITED",
+      error: "provider and proxy details that must not be shown",
+    }),
+    {
+      status: 429,
+      headers: {
+        "Content-Type": "application/json",
+        "Retry-After": "17",
+      },
+    },
+  );
+  const apiError = new ApiError(
+    response,
+    {
+      code: "POE_RATE_LIMITED",
+      error: "provider and proxy details that must not be shown",
+    },
+    { method: "POST", url: "/api/port/poe/chat" },
+  );
+
+  const presentation = getStudioErrorPresentation(
+    apiError,
+    "The assistant could not answer.",
+  );
+
+  assert.equal(
+    presentation.message,
+    "The assistant is temporarily rate limited. Wait a moment, then try again.",
+  );
+  assert.equal(presentation.retryAfterSeconds, 17);
+  assert.doesNotMatch(presentation.message, /provider|proxy|details/i);
+});
+
+test("keeps every Poe-backed assistant request retryable during cooldown", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /function useRateLimitCountdown/);
+  assert.match(source, /You can try again in/);
+  assert.match(source, /Retry in \$\{rateLimitRemainingSeconds\}s/);
+  assert.ok((source.match(/getStudioErrorPresentation\(/g) ?? []).length >= 3);
+  assert.ok((source.match(/setRateLimitRetryAt\(/g) ?? []).length >= 3);
+  assert.match(source, /setPrompt\(submittedPrompt\)/);
+  assert.match(source, /setPendingPrompt\(message\)/);
+});
+
 test("does not render raw server error fields in non-analysis surfaces", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
 

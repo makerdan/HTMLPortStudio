@@ -4,6 +4,7 @@ import { getApiErrorPayload } from '../../../../lib/api-client-react/src/custom-
 export type StudioErrorPresentation = {
   message: string;
   action?: string;
+  retryAfterSeconds?: number;
 };
 
 export const STUDIO_ERROR_MESSAGES = {
@@ -162,6 +163,37 @@ function getStructuredErrorData(error: unknown): {
   };
 }
 
+function getRetryAfterSeconds(error: unknown): number | undefined {
+  if (typeof error !== 'object' || error === null || !('headers' in error)) {
+    return undefined;
+  }
+
+  const headers = (error as { headers?: unknown }).headers;
+  if (
+    typeof headers !== 'object' ||
+    headers === null ||
+    !('get' in headers) ||
+    typeof (headers as { get?: unknown }).get !== 'function'
+  ) {
+    return undefined;
+  }
+
+  const headerValue = (headers as { get: (name: string) => string | null }).get(
+    'retry-after',
+  );
+  const normalizedHeaderValue = headerValue?.trim() ?? '';
+  if (!/^\d+$/.test(normalizedHeaderValue)) {
+    return undefined;
+  }
+
+  const seconds = Number(normalizedHeaderValue);
+  if (!Number.isInteger(seconds) || seconds <= 0) {
+    return undefined;
+  }
+
+  return Math.min(seconds, 60 * 60);
+}
+
 export function getStudioErrorPresentation(
   error: unknown,
   fallback: string,
@@ -182,6 +214,8 @@ export function getStudioErrorPresentation(
       ? serverAction ||
         STUDIO_ERROR_ACTIONS[code as keyof typeof STUDIO_ERROR_ACTIONS]
       : undefined,
+    retryAfterSeconds:
+      code === 'POE_RATE_LIMITED' ? getRetryAfterSeconds(error) : undefined,
   };
 }
 

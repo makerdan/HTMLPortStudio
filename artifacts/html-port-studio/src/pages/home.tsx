@@ -200,6 +200,36 @@ function validateHostedUrl(value: string): string | null {
   }
 }
 
+function useRateLimitCountdown(retryAt: number | null): number {
+  const [remainingSeconds, setRemainingSeconds] = useState(0);
+
+  useEffect(() => {
+    if (!retryAt) {
+      setRemainingSeconds(0);
+      return;
+    }
+
+    const updateRemaining = () => {
+      setRemainingSeconds(Math.max(0, Math.ceil((retryAt - Date.now()) / 1000)));
+    };
+    updateRemaining();
+    const interval = setInterval(updateRemaining, 1000);
+    return () => clearInterval(interval);
+  }, [retryAt]);
+
+  return remainingSeconds;
+}
+
+function RateLimitCountdown({ remainingSeconds }: { remainingSeconds: number }) {
+  if (!remainingSeconds) return null;
+
+  return (
+    <p role="status" className="mt-2 text-sm">
+      You can try again in {remainingSeconds} second{remainingSeconds === 1 ? '' : 's'}.
+    </p>
+  );
+}
+
 // ----------------------------------------------------------------------
 // Sub-components
 // ----------------------------------------------------------------------
@@ -285,10 +315,12 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [prompt, setPrompt] = useState('');
   const [chatError, setChatError] = useState<string | null>(null);
+  const [rateLimitRetryAt, setRateLimitRetryAt] = useState<number | null>(null);
   const [chatHistory, setChatHistory] = useState<PoeMessage[]>([
     { role: 'assistant', content: "Hello! I can help you port this HTML to Replit. What issue are you facing?" }
   ]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const rateLimitRemainingSeconds = useRateLimitCountdown(rateLimitRetryAt);
   const documentContainsCredential = containsCredential(html);
   const availableModels = poeData?.configured ? poeData.models : [];
   const selectedModelConfirmed = availableModels.includes(selectedModel);
@@ -313,6 +345,7 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
       !prompt.trim() ||
       !selectedModelConfirmed ||
       chatMutation.isPending ||
+      rateLimitRemainingSeconds > 0 ||
       documentContainsCredential
     ) return;
 
@@ -334,12 +367,22 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
     }, {
       onSuccess: (res: PoeChatResponse) => {
         setPrompt('');
+        setRateLimitRetryAt(null);
         setChatHistory(prev => [...prev, { role: 'assistant', content: res.content }]);
       },
       onError: (error: unknown) => {
         setChatHistory(prev => prev.filter((message, index) => index !== prev.length - 1));
         setPrompt(submittedPrompt);
-        setChatError(getStudioErrorMessage(error, 'The assistant could not answer. Your prompt is ready to retry.'));
+        const presentation = getStudioErrorPresentation(
+          error,
+          'The assistant could not answer. Your prompt is ready to retry.',
+        );
+        setChatError(presentation.message);
+        setRateLimitRetryAt(
+          presentation.retryAfterSeconds
+            ? Date.now() + presentation.retryAfterSeconds * 1000
+            : null,
+        );
       }
     });
   };
@@ -477,15 +520,18 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
             <AlertTitle>Assistant request failed</AlertTitle>
             <AlertDescription>
               {chatError}
+              <RateLimitCountdown remainingSeconds={rateLimitRemainingSeconds} />
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
                 className="mt-3"
                 onClick={() => handleSend()}
-                disabled={chatMutation.isPending}
+                disabled={chatMutation.isPending || rateLimitRemainingSeconds > 0}
               >
-                Retry request
+                {rateLimitRemainingSeconds > 0
+                  ? `Retry in ${rateLimitRemainingSeconds}s`
+                  : 'Retry request'}
               </Button>
             </AlertDescription>
           </Alert>
@@ -500,7 +546,7 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder="Ask Poe how to fix a blocker..."
-            disabled={chatMutation.isPending || !selectedModelConfirmed}
+            disabled={chatMutation.isPending || !selectedModelConfirmed || rateLimitRemainingSeconds > 0}
             className="flex-1"
           />
           <Button
@@ -508,7 +554,12 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
             size="icon"
             aria-label="Send prompt to Poe Assistant"
             title="Send prompt to Poe Assistant"
-            disabled={!prompt.trim() || chatMutation.isPending || !selectedModelConfirmed}
+            disabled={
+              !prompt.trim() ||
+              chatMutation.isPending ||
+              !selectedModelConfirmed ||
+              rateLimitRemainingSeconds > 0
+            }
           >
             <Send aria-hidden="true" className="h-4 w-4" />
           </Button>
@@ -1543,6 +1594,7 @@ function ClaudeRepairPanel({
   const [proposalError, setProposalError] = useState<string | null>(null);
   const [applyConfirmationOpen, setApplyConfirmationOpen] = useState(false);
   const [requestError, setRequestError] = useState<string | null>(null);
+  const [rateLimitRetryAt, setRateLimitRetryAt] = useState<number | null>(null);
   const [promptSizeError, setPromptSizeError] = useState<string | null>(null);
   const confirmedModel = poeData?.configured
     ? poeData.models.find((model: string) => model === CLAUDE_REPAIR_MODEL)
@@ -1558,6 +1610,7 @@ function ClaudeRepairPanel({
     }
   }, [analysis, bundle]);
   const remainingAttempts = Math.max(0, EDITOR_LIMITS.maxRepairAttempts - attempts);
+  const rateLimitRemainingSeconds = useRateLimitCountdown(rateLimitRetryAt);
 
   useEffect(() => {
     if (!open) return;
@@ -1576,6 +1629,7 @@ function ClaudeRepairPanel({
       !prompt ||
       !confirmedModel ||
       chatMutation.isPending ||
+      rateLimitRemainingSeconds > 0 ||
       attempts >= EDITOR_LIMITS.maxRepairAttempts
     ) {
       if (!prompt) setPromptSizeError(`This source and report are too large for the bounded Claude repair request (${EDITOR_LIMITS.maxRepairPromptBytes.toLocaleString()} bytes).`);
@@ -1583,6 +1637,7 @@ function ClaudeRepairPanel({
     }
     setAttempts((count) => count + 1);
     setRequestError(null);
+    setRateLimitRetryAt(null);
     setProposalError(null);
     setProposal(null);
     setApplyConfirmationOpen(false);
@@ -1600,6 +1655,7 @@ function ClaudeRepairPanel({
       },
     }, {
       onSuccess: (response: PoeChatResponse) => {
+          setRateLimitRetryAt(null);
         const result = validateClaudePatchResponse(response.content, bundle, analysis.findings);
         if (!result.ok) {
           setProposalError(result.error);
@@ -1608,7 +1664,16 @@ function ClaudeRepairPanel({
         setProposal(result.edits);
       },
       onError: (error: unknown) => {
-        setRequestError(getStudioErrorMessage(error, 'Claude could not prepare a repair proposal. Nothing was changed.'));
+        const presentation = getStudioErrorPresentation(
+          error,
+          'Claude could not prepare a repair proposal. Nothing was changed.',
+        );
+        setRequestError(presentation.message);
+        setRateLimitRetryAt(
+          presentation.retryAfterSeconds
+            ? Date.now() + presentation.retryAfterSeconds * 1000
+            : null,
+        );
       },
     });
   };
@@ -1617,6 +1682,7 @@ function ClaudeRepairPanel({
     Boolean(confirmedModel) &&
     Boolean(prompt) &&
     !chatMutation.isPending &&
+    rateLimitRemainingSeconds === 0 &&
     remainingAttempts > 0 &&
     !modelsLoading &&
     !modelsError;
@@ -1673,7 +1739,12 @@ function ClaudeRepairPanel({
           </Alert>
         )}
         {promptSizeError && <p className="text-sm text-destructive" role="alert">{promptSizeError}</p>}
-        {requestError && <p className="text-sm text-destructive" role="alert">{requestError}</p>}
+        {requestError && (
+          <div className="text-sm text-destructive" role="alert">
+            <p>{requestError}</p>
+            <RateLimitCountdown remainingSeconds={rateLimitRemainingSeconds} />
+          </div>
+        )}
         {proposalError && (
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
@@ -1682,7 +1753,15 @@ function ClaudeRepairPanel({
           </Alert>
         )}
         <Button type="button" onClick={requestRepair} disabled={!canRequest}>
-          {chatMutation.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Claude is preparing a bounded patch…</> : proposal ? 'Request another proposal' : 'Request Claude patch'}
+          {chatMutation.isPending ? (
+            <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Claude is preparing a bounded patch…</>
+          ) : rateLimitRemainingSeconds > 0 ? (
+            `Retry in ${rateLimitRemainingSeconds}s`
+          ) : proposal ? (
+            'Request another proposal'
+          ) : (
+            'Request Claude patch'
+          )}
         </Button>
         {proposal && (
           <section className="space-y-3 rounded-md border bg-card p-3" aria-labelledby="claude-patch-review-title">
@@ -3818,6 +3897,7 @@ function PoeRepairPanel({
   const chatMutation = useChatWithPoe();
   const [prompt, setPrompt] = useState('');
   const [chatError, setChatError] = useState<string | null>(null);
+  const [rateLimitRetryAt, setRateLimitRetryAt] = useState<number | null>(null);
   const [hasStarted, setHasStarted] = useState(false);
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
   const [chatHistory, setChatHistory] = useState<PoeMessage[]>([]);
@@ -3837,6 +3917,7 @@ function PoeRepairPanel({
         .join('\n\n')
     : html;
   const initialPrompt = buildRepairPrompt(html);
+  const rateLimitRemainingSeconds = useRateLimitCountdown(rateLimitRetryAt);
   const confirmedGeminiModel = poeData?.configured
     ? poeData.models.find((model: string) => model === GEMINI_REPAIR_MODEL)
     : undefined;
@@ -3861,6 +3942,7 @@ function PoeRepairPanel({
     if (
       !submittedPrompt.trim() ||
       chatMutation.isPending ||
+      rateLimitRemainingSeconds > 0 ||
       (documentContainsCredential && (!credentialRedaction.safe || !shareConfirmed)) ||
       !poeData?.configured ||
       !(documentContainsCredential ? confirmedClaudeModel : confirmedGeminiModel)
@@ -3903,6 +3985,7 @@ function PoeRepairPanel({
           const safeResponse = sanitizeUntrustedRepairText(res.content);
           setPrompt('');
           setPendingPrompt(null);
+          setRateLimitRetryAt(null);
           setChatHistory((prev) => [...prev, { role: 'assistant', content: safeResponse }]);
           if (documentContainsCredential) {
             setProposal(parseRepairProposal(safeResponse, bundle));
@@ -3912,11 +3995,15 @@ function PoeRepairPanel({
           setChatHistory((prev) => prev.filter((_message, index) => index !== prev.length - 1));
           setPrompt(message);
           setPendingPrompt(message);
-          setChatError(
-            getStudioErrorMessage(
-              error,
-              `${documentContainsCredential ? 'Claude' : 'Gemini'} could not answer. Your request is ready to retry.`,
-            ),
+          const presentation = getStudioErrorPresentation(
+            error,
+            `${documentContainsCredential ? 'Claude' : 'Gemini'} could not answer. Your request is ready to retry.`,
+          );
+          setChatError(presentation.message);
+          setRateLimitRetryAt(
+            presentation.retryAfterSeconds
+              ? Date.now() + presentation.retryAfterSeconds * 1000
+              : null,
           );
         },
       },
@@ -4181,16 +4268,19 @@ function PoeRepairPanel({
               <AlertTitle>Repair request failed safely</AlertTitle>
               <AlertDescription>
                 {chatError}
+                <RateLimitCountdown remainingSeconds={rateLimitRemainingSeconds} />
                 <br />
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
                   className="mt-3"
-                  disabled={!canRequestRepair || !retryPrompt}
+                  disabled={!canRequestRepair || !retryPrompt || rateLimitRemainingSeconds > 0}
                   onClick={() => submitRepairPrompt(retryPrompt)}
                 >
-                  Retry redacted request
+                  {rateLimitRemainingSeconds > 0
+                    ? `Retry in ${rateLimitRemainingSeconds}s`
+                    : 'Retry redacted request'}
                 </Button>
               </AlertDescription>
             </Alert>
@@ -4465,6 +4555,7 @@ function PoeRepairPanel({
               <AlertTitle>Repair request failed</AlertTitle>
               <AlertDescription>
                 {chatError}
+                <RateLimitCountdown remainingSeconds={rateLimitRemainingSeconds} />
                 <br />
                 <Button
                   type="button"
@@ -4472,9 +4563,11 @@ function PoeRepairPanel({
                   variant="outline"
                   className="mt-3"
                   onClick={() => submitRepairPrompt(retryPrompt, retryPrompt === initialPrompt)}
-                  disabled={chatMutation.isPending || !retryPrompt}
+                  disabled={chatMutation.isPending || !retryPrompt || rateLimitRemainingSeconds > 0}
                 >
-                  Retry request
+                  {rateLimitRemainingSeconds > 0
+                    ? `Retry in ${rateLimitRemainingSeconds}s`
+                    : 'Retry request'}
                 </Button>
               </AlertDescription>
             </Alert>
