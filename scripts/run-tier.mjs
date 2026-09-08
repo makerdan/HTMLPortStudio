@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { loadTierRegistry } from "./lib/tier-lock-check.mjs";
+import { loadTierRegistry, TIER_REGISTRY_LABEL } from "./lib/tier-lock-check.mjs";
 
 export function runTier(tierName, { env = process.env } = {}) {
   const tier = loadTierRegistry().get(tierName);
-  if (!tier) throw new Error(`Unknown validation tier "${tierName}".`);
+  if (!tier) {
+    throw new Error(`Validation-tier registry ${TIER_REGISTRY_LABEL} does not define requested tier "${tierName}"; check the registered tiers in ${TIER_REGISTRY_LABEL}.`);
+  }
   console.log(`[VALIDATION] Running tier "${tierName}": ${tier.command}`);
   const result = spawnSync(tier.command, { cwd: process.cwd(), env, shell: true, stdio: "inherit" });
   if (result.error) throw result.error;

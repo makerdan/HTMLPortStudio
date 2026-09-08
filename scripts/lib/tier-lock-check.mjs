@@ -4,27 +4,27 @@ import { fileURLToPath } from "node:url";
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 export const TIER_REGISTRY_FILE = path.join(ROOT, "docs/validation/validation-tiers.json");
+export const TIER_REGISTRY_LABEL = path.relative(ROOT, TIER_REGISTRY_FILE);
 
 export function loadTierRegistry() {
-  const registryLabel = path.relative(ROOT, TIER_REGISTRY_FILE);
   let parsed;
   try {
     parsed = JSON.parse(fs.readFileSync(TIER_REGISTRY_FILE, "utf8"));
   } catch (error) {
-    throw new Error(`Cannot read validation-tier registry ${registryLabel}: ${error.message}`);
+    throw new Error(`Cannot read validation-tier registry ${TIER_REGISTRY_LABEL}: ${error.message}`);
   }
   if (!Array.isArray(parsed?.tiers) || parsed.tiers.length === 0) {
-    throw new Error(`Validation-tier registry ${registryLabel} has malformed tier data: expected a non-empty "tiers" array.`);
+    throw new Error(`Validation-tier registry ${TIER_REGISTRY_LABEL} has malformed tier data: expected a non-empty "tiers" array.`);
   }
   const tiers = new Map();
   for (const [index, tier] of parsed.tiers.entries()) {
     if (!tier || typeof tier !== "object" || Array.isArray(tier) ||
         typeof tier.name !== "string" || !tier.name.trim() ||
         typeof tier.command !== "string" || !tier.command.trim()) {
-      throw new Error(`Validation-tier registry ${registryLabel} has malformed tier at index ${index}: expected an object with non-empty string "name" and "command".`);
+      throw new Error(`Validation-tier registry ${TIER_REGISTRY_LABEL} has malformed tier at index ${index}: expected an object with non-empty string "name" and "command".`);
     }
     if (tiers.has(tier.name)) {
-      throw new Error(`Validation-tier registry ${registryLabel} has duplicate tier name "${tier.name}" at index ${index}.`);
+      throw new Error(`Validation-tier registry ${TIER_REGISTRY_LABEL} has duplicate tier name "${tier.name}" at index ${index}.`);
     }
     tiers.set(tier.name, tier);
   }
@@ -75,7 +75,7 @@ export function readPlanTier(planFile) {
   }
   const tier = tiers.get(tierName);
   if (!tier) {
-    throw new Error(`TIER-LOCK VIOLATION: ${planLabel} requests unknown validation tier "${tierName}" via Validation **Command:**; check the registered tiers in ${path.relative(ROOT, TIER_REGISTRY_FILE)}.`);
+    throw new Error(`TIER-LOCK VIOLATION: ${planLabel} requests unknown validation tier "${tierName}" via Validation **Command:**; check the registered tiers in ${TIER_REGISTRY_LABEL}.`);
   }
   return { planFile: resolved, planText: text, tierName, tier };
 }

@@ -9,6 +9,7 @@ import { TIER_REGISTRY_FILE, loadTierRegistry, readPlanTier } from "./lib/tier-l
 
 const root = path.resolve(import.meta.dirname, "..");
 const checker = path.join(root, "scripts/check-failure-gate.mjs");
+const directRunner = path.join(root, "scripts/run-tier.mjs");
 const runner = path.join(root, "scripts/run-locked-tier.mjs");
 const baselineFile = path.join(root, "docs/validation/failure-baseline.json");
 const valid = `# Valid
@@ -266,6 +267,42 @@ test("locked runner explains malformed registry data and stops before running", 
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, new RegExp(`${path.relative(root, file)}.*validation tier "test-standard".*malformed tier at index 1`));
   assert.doesNotMatch(result.stderr, /\[VALIDATION\] Running tier/);
+  assert.equal(fs.existsSync(marker), false);
+  fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test("direct runner explains an unknown tier with the registry context", () => {
+  const result = spawnSync(process.execPath, [directRunner, "not-a-registered-tier"], {
+    cwd: root,
+    env: process.env,
+    encoding: "utf8",
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Validation-tier registry .*does not define requested tier "not-a-registered-tier"/);
+  assert.match(result.stderr, /check the registered tiers in docs\/validation\/validation-tiers\.json/);
+  assert.doesNotMatch(result.stdout, /\[VALIDATION\] Running tier/);
+});
+
+test("direct runner explains malformed registry data and stops before running", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "failure-gate-direct-"));
+  const marker = path.join(directory, "validation-ran");
+  const result = withTierRegistry({
+    version: 1,
+    tiers: [
+      {
+        name: "test-standard",
+        command: `node -e "require('fs').writeFileSync('${marker}', 'ran')"`,
+      },
+      { name: "malformed-tier" },
+    ],
+  }, () => spawnSync(process.execPath, [directRunner, "test-standard"], {
+    cwd: root,
+    env: process.env,
+    encoding: "utf8",
+  }));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Validation-tier registry .*malformed tier at index 1/);
+  assert.doesNotMatch(result.stdout, /\[VALIDATION\] Running tier/);
   assert.equal(fs.existsSync(marker), false);
   fs.rmSync(directory, { recursive: true, force: true });
 });
