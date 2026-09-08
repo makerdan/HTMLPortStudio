@@ -13,6 +13,7 @@ Import pasted, single-file, or public GitHub HTML apps as normalized source bund
 - `pnpm workspace-skill:project` — project the explicit `WORKSPACE_SKILLS_SOURCE` into the generated `.agents/skills/.workspace-projections/` tree
 - `pnpm workspace-skill:status -- --skill <skill-id>` — read-only parity check for the disposable runtime mirror
 - Optional env: `POE_API_KEY` — enables live Poe model discovery and the server-side chat bridge
+- GitHub remote validation is documented in `docs/validation/github-actions.md`; the tracked workflow preserves `test-standard` as the primary check and runs `validate:api` separately.
 - Clerk account authentication uses `CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, and `VITE_CLERK_PUBLISHABLE_KEY`. Set these through Replit’s environment/secrets tools; never put the secret key in browser code, imported HTML, source bundles, or logs.
 - Required for project handoff: an attached authorized Replit project-creation connection. From the Studio’s **Set up project creation** screen, Replit’s secure connection console verifies workspace-owner eligibility before authorization; no project-creation URL or token is configured in the browser or source.
 
@@ -122,6 +123,7 @@ ignore` and `## Validation`, and before `## Relevant files`:
 
 ```markdown
 ## Regression Guard
+
 **Covers:** <concrete scenario, boundary, invariant, lifecycle, reliability property, or contract>
 **Test location:** <specific test file in the layer where the wrong behavior lives>
 **What it checks:** <specific assertion or observable behavior that fails if it returns>
