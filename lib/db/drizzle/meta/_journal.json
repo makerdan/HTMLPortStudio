@@ -15,6 +15,13 @@
       "when": 1766793600000,
       "tag": "0001_source_bundle",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788836034888,
+      "tag": "0002_poe_chat_rate_limits",
+      "breakpoints": true
     }
   ]
 }

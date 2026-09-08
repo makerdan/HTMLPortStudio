@@ -5,6 +5,7 @@ import {
   db,
   handoffJobsTable,
   handoffStepsTable,
+  takePoeChatRateLimit as takeSharedPoeChatRateLimit,
   type HandoffJobRow,
   type HandoffStepRow,
 } from "@workspace/db";
@@ -239,17 +240,11 @@ const POE_CHAT_RATE_LIMIT_MAX_REQUESTS = 6;
 const POE_MODEL_CATALOGUE_CACHE_TTL_MS = 30_000;
 const POE_MODEL_CATALOGUE_FAILURE_CACHE_TTL_MS = 5_000;
 
-type PoeRateLimitEntry = {
-  windowStartedAt: number;
-  requestCount: number;
-};
-
 type PoeModelCatalogueCache = {
   value: PoeModelCatalogue;
   expiresAt: number;
 };
 
-const poeChatRateLimits = new Map<string, PoeRateLimitEntry>();
 let poeModelCatalogueCache: PoeModelCatalogueCache | null = null;
 let poeModelCatalogueInFlight: Promise<PoeModelCatalogue> | null = null;
 
@@ -257,43 +252,23 @@ function poeClientKey(req: Request): string {
   return req.ip || req.socket.remoteAddress || "unknown";
 }
 
-function takePoeChatRateLimit(req: Request): {
+async function takePoeChatRateLimit(req: Request): Promise<{
   allowed: boolean;
   retryAfterSeconds?: number;
-} {
-  const now = Date.now();
-  for (const [key, entry] of poeChatRateLimits) {
-    if (now - entry.windowStartedAt >= POE_CHAT_RATE_LIMIT_WINDOW_MS) {
-      poeChatRateLimits.delete(key);
-    }
-  }
-
-  const key = poeClientKey(req);
-  const existing = poeChatRateLimits.get(key);
-  if (
-    !existing ||
-    now - existing.windowStartedAt >= POE_CHAT_RATE_LIMIT_WINDOW_MS
-  ) {
-    poeChatRateLimits.set(key, { windowStartedAt: now, requestCount: 1 });
-    return { allowed: true };
-  }
-
-  if (existing.requestCount >= POE_CHAT_RATE_LIMIT_MAX_REQUESTS) {
+  storageUnavailable?: boolean;
+}> {
+  try {
+    return await takeSharedPoeChatRateLimit(
+      poeClientKey(req),
+      POE_CHAT_RATE_LIMIT_WINDOW_MS,
+      POE_CHAT_RATE_LIMIT_MAX_REQUESTS,
+    );
+  } catch {
     return {
       allowed: false,
-      retryAfterSeconds: Math.max(
-        1,
-        Math.ceil(
-          (POE_CHAT_RATE_LIMIT_WINDOW_MS -
-            (now - existing.windowStartedAt)) /
-            1000,
-        ),
-      ),
+      storageUnavailable: true,
     };
   }
-
-  existing.requestCount += 1;
-  return { allowed: true };
 }
 
 async function loadPoeModelCatalogue(): Promise<PoeModelCatalogue> {
@@ -1104,8 +1079,16 @@ router.get("/port/poe/models", async (_req, res): Promise<void> => {
 });
 
 router.post("/port/poe/chat", async (req, res): Promise<void> => {
-  const rateLimit = takePoeChatRateLimit(req);
+  const rateLimit = await takePoeChatRateLimit(req);
   if (!rateLimit.allowed) {
+    if (rateLimit.storageUnavailable) {
+      req.log.error("Poe rate-limit storage is unavailable");
+      res.status(503).json({
+        error: "Poe protection is temporarily unavailable. Try again later.",
+        code: "POE_RATE_LIMIT_UNAVAILABLE",
+      });
+      return;
+    }
     res
       .set("Retry-After", String(rateLimit.retryAfterSeconds))
       .status(429)

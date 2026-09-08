@@ -436,6 +436,7 @@ test("keeps every assistant and handoff API code mapped to safe Studio copy", as
     "POE_CHAT_REQUEST_TOO_LARGE",
     "POE_MODEL_UNAVAILABLE",
     "POE_RATE_LIMITED",
+    "POE_RATE_LIMIT_UNAVAILABLE",
     "POE_TOKEN_LIMIT_EXCEEDED",
     "PROJECT_CREATION_CONNECTION_UNAVAILABLE",
     "PROJECT_HANDOFF_NOT_FOUND",

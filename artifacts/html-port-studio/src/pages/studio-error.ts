@@ -36,6 +36,8 @@ export const STUDIO_ERROR_MESSAGES = {
     'The requested Poe model is no longer available. Refresh model availability, then try again.',
   POE_RATE_LIMITED:
     'The assistant is temporarily rate limited. Wait a moment, then try again.',
+  POE_RATE_LIMIT_UNAVAILABLE:
+    'The assistant protection service is temporarily unavailable. Wait a moment, then try again.',
   POE_TOKEN_LIMIT_EXCEEDED:
     'This assistant request asks for too many completion tokens. Reduce the request and try again.',
   INVALID_PROJECT_HANDOFF:

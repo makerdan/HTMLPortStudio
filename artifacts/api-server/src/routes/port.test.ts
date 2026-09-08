@@ -15,6 +15,11 @@ const { Pool } = requireFromDb("pg");
 
 type Json = Record<string, unknown>;
 
+function testClientIp(): string {
+  const value = randomUUID().replaceAll("-", "");
+  return `198.18.${Number.parseInt(value.slice(0, 2), 16)}.${Number.parseInt(value.slice(2, 4), 16)}`;
+}
+
 function readBody(request: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -294,6 +299,7 @@ test("requires an exact live Poe model confirmation before chat forwarding", asy
 
 test("forwards confirmed Claude repairs unchanged and hides Poe failure details", async () => {
   const confirmedModel = "Claude-Sonnet-4.6";
+  const clientIp = testClientIp();
   const redactedMessages = [
     {
       role: "system",
@@ -408,7 +414,7 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
 
     const successfulChat = await jsonRequest(`${baseUrl}/port/poe/chat`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-Forwarded-For": clientIp },
       body: JSON.stringify({
         model: confirmedModel,
         messages: redactedMessages,
@@ -436,7 +442,7 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
     returnFailure = true;
     const failedChat = await jsonRequest(`${baseUrl}/port/poe/chat`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-Forwarded-For": clientIp },
       body: JSON.stringify({
         model: confirmedModel,
         messages: redactedMessages,
@@ -456,7 +462,7 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
     returnMalformedCompletion = true;
     const malformedChat = await jsonRequest(`${baseUrl}/port/poe/chat`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-Forwarded-For": clientIp },
       body: JSON.stringify({
         model: confirmedModel,
         messages: redactedMessages,
@@ -507,18 +513,29 @@ test("bounds public Poe traffic before provider forwarding and caches models", a
     response.end();
   });
   const poePort = await listen(poe);
+  const apiEnvironment = {
+    ...process.env,
+    POE_API_KEY: "test-poe-key",
+    POE_API_BASE_URL: `http://127.0.0.1:${poePort}/v1`,
+    NODE_ENV: "test",
+  };
+  const startApi = (port: number) =>
+    spawn(process.execPath, ["--enable-source-maps", "dist/index.mjs"], {
+      cwd: new URL("../../", import.meta.url).pathname,
+      env: { ...apiEnvironment, PORT: String(port) },
+      stdio: "ignore",
+    });
+  const stopApi = async (api: ChildProcess | undefined) => {
+    if (api && !api.killed) {
+      api.kill("SIGTERM");
+      await once(api, "exit").catch(() => undefined);
+    }
+  };
   const apiPort = await unusedPort();
-  const api = spawn(process.execPath, ["--enable-source-maps", "dist/index.mjs"], {
-    cwd: new URL("../../", import.meta.url).pathname,
-    env: {
-      ...process.env,
-      PORT: String(apiPort),
-      POE_API_KEY: "test-poe-key",
-      POE_API_BASE_URL: `http://127.0.0.1:${poePort}/v1`,
-      NODE_ENV: "test",
-    },
-    stdio: "ignore",
-  });
+  const api = startApi(apiPort);
+  let secondApi: ChildProcess | undefined;
+  let restartedApi: ChildProcess | undefined;
+  const abuseIp = `198.51.100.${(Number.parseInt(randomUUID().slice(0, 2), 16) % 254) + 1}`;
 
   try {
     const baseUrl = `http://127.0.0.1:${apiPort}/api`;
@@ -570,7 +587,7 @@ test("bounds public Poe traffic before provider forwarding and caches models", a
 
     const abuseHeaders = {
       "Content-Type": "application/json",
-      "X-Forwarded-For": "198.51.100.10",
+      "X-Forwarded-For": abuseIp,
     };
     for (let attempt = 0; attempt < 6; attempt += 1) {
       const allowed = await jsonRequest(`${baseUrl}/port/poe/chat`, {
@@ -595,11 +612,58 @@ test("bounds public Poe traffic before provider forwarding and caches models", a
     assert.equal(blocked.body.code, "POE_RATE_LIMITED");
     assert.match(blocked.headers.get("retry-after") ?? "", /^[1-9]\d*$/);
     assert.equal(completionRequests, 6);
+
+    const secondApiPort = await unusedPort();
+    secondApi = startApi(secondApiPort);
+    const secondBaseUrl = `http://127.0.0.1:${secondApiPort}/api`;
+    await waitFor(async () => {
+      try {
+        return (await fetch(`${secondBaseUrl}/healthz`)).ok;
+      } catch {
+        return false;
+      }
+    }, "Second API server did not start");
+
+    const blockedOnSecondApi = await jsonRequest(`${secondBaseUrl}/port/poe/chat`, {
+      method: "POST",
+      headers: abuseHeaders,
+      body: JSON.stringify({
+        model: confirmedModel,
+        messages: [{ role: "user", content: "second-instance-request" }],
+      }),
+    });
+    assert.equal(blockedOnSecondApi.status, 429);
+    assert.equal(blockedOnSecondApi.body.code, "POE_RATE_LIMITED");
+    assert.equal(completionRequests, 6);
+
+    await stopApi(api);
+    await stopApi(secondApi);
+    const restartedApiPort = await unusedPort();
+    restartedApi = startApi(restartedApiPort);
+    const restartedBaseUrl = `http://127.0.0.1:${restartedApiPort}/api`;
+    await waitFor(async () => {
+      try {
+        return (await fetch(`${restartedBaseUrl}/healthz`)).ok;
+      } catch {
+        return false;
+      }
+    }, "Restarted API server did not start");
+
+    const blockedAfterRestart = await jsonRequest(`${restartedBaseUrl}/port/poe/chat`, {
+      method: "POST",
+      headers: abuseHeaders,
+      body: JSON.stringify({
+        model: confirmedModel,
+        messages: [{ role: "user", content: "restart-request" }],
+      }),
+    });
+    assert.equal(blockedAfterRestart.status, 429);
+    assert.equal(blockedAfterRestart.body.code, "POE_RATE_LIMITED");
+    assert.equal(completionRequests, 6);
   } finally {
-    if (!api.killed) {
-      api.kill("SIGTERM");
-      await once(api, "exit").catch(() => undefined);
-    }
+    await stopApi(api);
+    await stopApi(secondApi);
+    await stopApi(restartedApi);
     await new Promise<void>((resolve) => poe.close(() => resolve()));
   }
 });
@@ -689,6 +753,7 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
     const browserOrigin = `http://127.0.0.1:${apiPort}`;
     const ownerHeaders = { "x-test-clerk-user-id": ownerId };
     const otherOwnerHeaders = { "x-test-clerk-user-id": otherOwnerId };
+    const credentialTestIp = testClientIp();
     await waitFor(async () => {
       try {
         return (await fetch(`${baseUrl}/healthz`)).ok;
@@ -699,7 +764,10 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
 
     const blockedChat = await jsonRequest(`${baseUrl}/port/poe/chat`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Forwarded-For": credentialTestIp,
+      },
       body: JSON.stringify({
         model: "Claude-Sonnet-4.6",
         messages: [
@@ -716,7 +784,7 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Forwarded-For": `198.51.100.${credentialIndex + 20}`,
+          "X-Forwarded-For": testClientIp(),
         },
         body: JSON.stringify({
           model: "Claude-Sonnet-4.6",
