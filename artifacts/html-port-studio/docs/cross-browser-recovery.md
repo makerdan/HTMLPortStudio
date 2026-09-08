@@ -91,13 +91,37 @@ The saved reference captures are
 - The anonymous Replit handoff button redirected to the Clerk sign-in screen.
 - Direct anonymous access to `/api/port/replit-project-connection` returned
   `401 Unauthorized` with the safe `AUTHENTICATION_REQUIRED` code.
-- A real account sign-in, sign-up completion, callback completion, logout, and
-  expiry/revocation cycle was **environment-limited**: no test account may be
-  created or credentials entered by this verification run. These need a
-  controlled Clerk test session, not a mocked browser identity.
 - Firefox sign-in text did not stabilize in the headless run while sign-up
   rendered; this is classified as a browser/provider timing limitation, not a
   confirmed product defect.
+
+
+### Controlled Clerk lifecycle session — 2026-09-07
+
+The focused live run used a temporary Clerk development user and a temporary
+test inbox created inside the verification process. The address, password,
+provider token, and session material were never written to source, logs, or
+chat, and the temporary Clerk identity was removed after each run.
+
+| Flow | Result | Classification |
+| --- | --- | --- |
+| Sign-in with email and password | **Pass**; Clerk client-trust email code completed and returned the browser to `/`. | Product/provider pass |
+| Anonymous protected connection read | **Pass**; `401 AUTHENTICATION_REQUIRED`. | Product pass |
+| Anonymous protected handoff creation | **Pass**; rejected with `401 AUTHENTICATION_REQUIRED`. | Product pass |
+| Authenticated owner connection read | **Pass**; `200` with `setup_required`. | Product pass; no project-creation connector is attached |
+| Authenticated handoff creation | Authenticated boundary passed, then returned `503 PROJECT_CREATION_CONNECTION_UNAVAILABLE`. | Integration-limited, not an authorization failure |
+| Authenticated reload recovery | **Pass**; the signed-in owner and protected `200` boundary recovered after reload. | Product pass |
+| Callback return | **Pass**; callback-style navigation returned to `/` while the session remained active. | Product pass |
+| Logout | **Pass**; the header returned to signed-out state and the protected API returned `401`. | Product pass |
+| Session revocation recovery | **Not completed**; a separate controlled attempt did not receive the provider’s client-trust email code within the polling window. | Provider email-delivery limitation; no product failure established |
+| Sign-up completion | **Not completed**; the real sign-up surface rendered, but provider email verification was required and the controlled verification code was not available in the run. | Provider verification limitation; no product failure established |
+
+The successful sign-in run had no Clerk asset or request outage: the
+development client, environment, and UI assets returned successfully. The
+revocation and sign-up gaps are therefore kept separate from the product
+passes above. Completing project creation itself requires connecting the
+authorized Replit project-creation capability; this run did not add or
+modify an integration.
 
 ### Live provider matrix
 

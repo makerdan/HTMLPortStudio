@@ -14,3 +14,14 @@ This workspace intentionally pins React 19.1.0 for Expo compatibility; Clerk’s
 **Why:** Upgrading React just to silence Clerk’s peer warning can break the mobile toolchain and unrelated workspace packages.
 
 **How to apply:** Use the repository’s pnpm peer-version allowance for Clerk while preserving the shared React pin, then verify the install is warning-free.
+
+Managed development users can still encounter Clerk’s email-based client-trust
+challenge on a fresh browser/device, even when the backend-created email is
+already provider-verified.
+
+**Why:** A successful management API user-creation response does not prove
+that a headless browser session can complete the interactive sign-in flow.
+
+**How to apply:** For controlled lifecycle verification, keep a real,
+runtime-only test inbox available for client-trust and sign-up codes; classify
+missing or delayed provider mail separately from app authentication failures.
