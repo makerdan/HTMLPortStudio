@@ -706,8 +706,17 @@ test("stops handoff polling after an error and only resumes on retry", async ({ 
 });
 
 test("[cross-browser] recovers an in-progress authenticated handoff after reload", async ({ page }) => {
-    const jobId = new URL(route.request().url()).pathname.split("/").pop() ?? "";
-    const status = statuses.get(jobId);
+  const jobId = "123e4567-e89b-12d3-a456-426614174019";
+  const status = {
+    jobId,
+    status: "running",
+    projectId: null,
+    projectUrl: null,
+    projectName: "Imported page",
+    currentStep: "Port Authority",
+    steps: [],
+    error: null,
+  };
   let statusChecks = 0;
 
   await mockAuthenticatedAuth(page);
@@ -910,7 +919,7 @@ test("[cross-browser] clears or surfaces completed, failed, stale, and foreign h
   );
   await page.getByRole("button", { name: "Start with a new source" }).click();
   await expect(page.getByRole("heading", { name: "Project setup status unavailable" })).not.toBeVisible();
-  await expect(page.getByRole("tab", { name: "Paste HTML" })).toHaveAttribute("data-state", "active");
+  await expect(page.getByRole("tab", { name: "Paste HTML" })).toHaveAttribute("aria-selected", "true");
   await expect
     .poll(() => page.evaluate(() => sessionStorage.getItem("html-port-studio:handoff-recovery")))
     .toBeNull();
@@ -1021,7 +1030,8 @@ test("keeps credential recovery analytics coarse across every browser outcome", 
   await page.goto("/");
   await page.getByPlaceholder(/paste your html/i).fill(credentialHtml);
   await page.getByRole("button", { name: /analyze/i }).click();
-  await expect(page.getByText("Private finding marker")).toBeVisible();
+  const readinessFindings = page.getByRole("heading", { name: "Readiness Findings:" }).locator("..").locator("..");
+  await expect(readinessFindings.getByText("Private finding marker", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Fix Code safely" }).click();
   await expect(page.getByRole("heading", { name: "Request a reviewed Claude proposal" })).toBeVisible();

@@ -114,28 +114,25 @@ No third-party internals were audited. Provider failures were kept separate
 from product failures, and source content remained available after each failed
 import.
 
-### Validation evidence and known harness failures
 
-After installing the managed Chromium and Firefox engines, the registered
-`test-standard` run reached 24 passing browser tests and four repeatable
-test-harness failures (six browser cases):
+### Validation evidence
 
-1. `recovery.spec.ts:340` references an undefined
-   `firstImportResponseSettled` value in the GitHub cancellation test.
-2. `recovery.spec.ts:615` references out-of-scope `route`/`statuses` values in
-   the authenticated handoff recovery test.
-3. `recovery.spec.ts:674` expects `data-state="active"` although the rendered
-   tab exposes `aria-selected="true"`.
-4. `recovery.spec.ts:850` uses a strict `getByText` locator for a finding that
-   is intentionally rendered in two readiness contexts.
+The pre-fix browser baseline reproduced four test-harness defects: an
+out-of-scope GitHub cancellation fixture, an authenticated handoff fixture
+using undeclared route/status values, a tab assertion checking `data-state`
+instead of the rendered `aria-selected` contract, and an unscoped credential
+finding locator. The handoff and tab failures reproduced in both Chromium and
+Firefox.
 
-The isolated checks for the handoff, tab-state, and analytics cases failed 3/3;
-the full run also reproduced the GitHub fixture failure. The handoff and
-tab-state failures occur in both Chromium and Firefox.
+After installing the managed Chromium and Firefox engines with
+`pnpm --filter @workspace/html-port-studio run prepare:browsers`, the complete
+Studio browser phase passed 27 tests across Chromium and the tagged Firefox
+recovery project. The authenticated handoff, tab-state, credential-recovery,
+and GitHub cancellation checks pass in their supported browser projects.
 
-These are validation/harness defects, not live product failures, and are
+These were validation/harness defects, not live product failures, and remain
 separate from the 375px overflow above. The clean-workspace browser-install
-limitation observed before engine installation is also an environment issue.
+limitation observed before engine installation is an environment issue.
 The separate `validate:api` completion check regenerated the API sources but
 reported committed React-client declaration drift against its isolated
 comparison output; no generated source change was made by this verification
