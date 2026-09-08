@@ -30,6 +30,10 @@ import {
   redactCredentialSource,
   sanitizeUntrustedRepairText,
 } from "../lib/credential-safety.ts";
+import {
+  trackEvent,
+  trackSourceImportOutcome,
+} from "../lib/analytics.ts";
 
 function makeStorage(initial: Record<string, string> = {}) {
   const values = new Map(Object.entries(initial));
@@ -40,6 +44,46 @@ function makeStorage(initial: Record<string, string> = {}) {
     value: (key: string) => values.get(key) ?? null,
   };
 }
+
+test("keeps analytics optional and non-blocking when the tracker is missing or fails", () => {
+  const originalWindow = (globalThis as { window?: unknown }).window;
+
+  try {
+    Reflect.deleteProperty(globalThis, "window");
+    assert.doesNotThrow(() => {
+      trackEvent("source_import_outcome", { source_type: "hosted", outcome: "cancelled" });
+      trackSourceImportOutcome("hosted", "cancelled");
+    });
+
+    let trackerCalls = 0;
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: {
+        umami: {
+          track() {
+            trackerCalls += 1;
+            throw new Error("analytics is unavailable");
+          },
+        },
+      },
+    });
+
+    assert.doesNotThrow(() => {
+      trackEvent("source_import_outcome", { source_type: "hosted", outcome: "completed" });
+      trackSourceImportOutcome("hosted", "completed");
+    });
+    assert.equal(trackerCalls, 2);
+  } finally {
+    if (originalWindow === undefined) {
+      Reflect.deleteProperty(globalThis, "window");
+    } else {
+      Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        value: originalWindow,
+      });
+    }
+  }
+});
 
 test("keeps source requests scoped to the current import", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");

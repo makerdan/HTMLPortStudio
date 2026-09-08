@@ -475,6 +475,63 @@ test("cancelling a pending hosted import aborts the request and permits retry", 
   releaseFirstImport?.();
 });
 
+test("keeps import recovery working when analytics is missing or throws", async ({ page }) => {
+  let importAttempts = 0;
+  let releaseFirstImport: (() => void) | null = null;
+  await page.addInitScript(() => {
+    delete (window as typeof window & { umami?: unknown }).umami;
+  });
+  await mockAuth(page);
+  await page.route("**/api/port/hosted-url", (route) => {
+    importAttempts += 1;
+    if (importAttempts === 1) {
+      return new Promise<void>((resolve) => {
+        releaseFirstImport = () => {
+          void route
+            .fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(hostedImport) })
+            .then(resolve)
+            .catch(resolve);
+        };
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(hostedImport),
+    });
+  });
+
+  await page.goto("/");
+  await page.getByRole("tab", { name: /Import hosted URL/i }).click();
+  await page.getByRole("textbox", { name: "Hosted page URL" }).fill("https://example.com/app");
+  await page.getByRole("button", { name: "Fetch hosted HTML" }).click();
+  await expect(page.getByRole("button", { name: /Fetching\.\.\./ })).toBeDisabled();
+
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByText("Hosted import cancelled. You can retry the same URL.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Retry hosted import" })).toBeVisible();
+
+  await page.evaluate(() => {
+    const testWindow = window as typeof window & {
+      umami?: {
+        track(name: string, data?: Record<string, string | number | boolean>): void;
+      };
+    };
+    testWindow.umami = {
+      track() {
+        throw new Error("analytics is unavailable");
+      },
+    };
+  });
+
+  await page.getByRole("button", { name: "Retry hosted import" }).click();
+  await expect(page.getByText("Hosted page fetched safely")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Retry hosted import" })).toHaveCount(0);
+  expect(importAttempts).toBe(2);
+
+  releaseFirstImport?.();
+});
+
 test("cancelling a pending playground import aborts the request and permits retry", async ({ page }) => {
   let importAttempts = 0;
   let releaseFirstImport: (() => void) | null = null;
