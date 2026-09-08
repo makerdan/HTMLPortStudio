@@ -103,3 +103,35 @@ explanations still fail. Typecheck and build failures are task failures, not
 pre-existing test baselines. A passing retry proves intermittency only; an
 unlisted failure needs two-factor provenance before it can be classified as
 pre-existing.
+
+### Regression Guard
+
+Regression Guard is additive to Failure Gate. Classify by substance, not
+keywords: it applies to bug fixes, changes to existing behavior or error
+paths, and material security/privacy, data-integrity, concurrency/lifecycle,
+performance/reliability, or compatibility/contract changes. It does not apply
+to purely additive features, pure hardening, DELETE-prefixed work, copy-only
+changes, or genuinely non-material internal edits.
+
+Before the first plan heading, announce the exact classification and guard:
+
+`[REGRESSION-GUARD] Classification: <classification>. Guard: <covered — test file | N/A — reason | self-satisfying>.`
+
+Qualifying plans must place this section after `## Pre-existing failures to
+ignore` and `## Validation`, and before `## Relevant files`:
+
+```markdown
+## Regression Guard
+**Covers:** <concrete scenario, boundary, invariant, lifecycle, reliability property, or contract>
+**Test location:** <specific test file in the layer where the wrong behavior lives>
+**What it checks:** <specific assertion or observable behavior that fails if it returns>
+```
+
+The permitted exceptions are: a race condition requiring real timing, an
+unmockable external API behavior, a visual regression with no screenshot
+infrastructure, or a fix that removes the feature entirely. Each N/A must say
+`**N/A**` and give a specific `**Why N/A:**` reason. A guard-writing task may
+instead declare `**Self-satisfying**` and identify its guard or test
+deliverable. Placeholder, vague, wrong-layer, and misplaced declarations fail
+strict validation. Regression Guard never replaces Failure Gate or raises the
+plan's validation ceiling.

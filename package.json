@@ -5,7 +5,7 @@
   "scripts": {
     "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
-    "test-standard": "pnpm run validate:failure-gate && pnpm run typecheck && pnpm run validate:clerk-skill && node --test scripts/validate-api-codegen.test.mjs && node --test scripts/check-failure-gate.test.mjs && node --test scripts/workspace-skill.test.mjs && pnpm --filter @workspace/api-server run test:port && node --experimental-strip-types --test artifacts/html-port-studio/src/pages/home.test.ts artifacts/html-port-studio/src/lib/source-adapters.test.ts artifacts/html-port-studio/src/lib/source-editor.test.ts && pnpm --filter @workspace/html-port-studio run test:browser",
+    "test-standard": "pnpm run validate:failure-gate && pnpm run typecheck && pnpm run validate:clerk-skill && node --test scripts/validate-api-codegen.test.mjs && node --test scripts/check-failure-gate.test.mjs scripts/check-regression-guard.test.mjs && node --test scripts/workspace-skill.test.mjs && pnpm --filter @workspace/api-server run test:port && node --experimental-strip-types --test artifacts/html-port-studio/src/pages/home.test.ts artifacts/html-port-studio/src/lib/source-adapters.test.ts artifacts/html-port-studio/src/lib/source-editor.test.ts && pnpm --filter @workspace/html-port-studio run test:browser",
     "validate:api": "node ./scripts/validate-api-codegen.mjs",
     "validate:clerk-skill": "node ./scripts/check-clerk-for-dan.mjs",
     "validate:failure-gate": "node ./scripts/validation-steps.mjs",

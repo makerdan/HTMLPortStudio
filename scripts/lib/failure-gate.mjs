@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { ROOT, extractSectionBody, loadTierRegistry, resolvePlanFile } from "./tier-lock-check.mjs";
+import { ROOT, extractSectionBody, loadTierRegistry, validatePlanPath } from "./tier-lock-check.mjs";
 
 const BASELINE_FILE = path.join(ROOT, "docs/validation/failure-baseline.json");
 const REQUIRED_SECTIONS = ["Pre-existing failures to ignore", "Validation"];
@@ -146,8 +146,7 @@ export function addMissingStubs(text) {
 }
 
 export function inspectPlanFile(planFile) {
-  const resolved = resolvePlanFile(planFile);
-  if (!resolved) throw new Error("TASK_PLAN_FILE is not set; ad-hoc validation has no plan to lint.");
+  const resolved = validatePlanPath(planFile);
   let text;
   try {
     text = fs.readFileSync(resolved, "utf8");

@@ -37,6 +37,18 @@ export function resolvePlanFile(planFile) {
   return path.resolve(ROOT, value);
 }
 
+export function validatePlanPath(planFile) {
+  const resolved = resolvePlanFile(planFile);
+  if (!resolved) throw new Error("TASK_PLAN_FILE is not set; ad-hoc validation has no plan to lint.");
+  if (!resolved.endsWith(".md")) {
+    throw new Error(`Task plan path must end in .md: ${path.relative(ROOT, resolved) || resolved}.`);
+  }
+  if (!fs.existsSync(resolved)) {
+    throw new Error(`Task plan does not exist: ${path.relative(ROOT, resolved) || resolved}.`);
+  }
+  return resolved;
+}
+
 export function extractSectionBody(planText, heading) {
   const lines = planText.split(/\r?\n/);
   const headingIndex = lines.findIndex((line) => line.trim() === `## ${heading}`);

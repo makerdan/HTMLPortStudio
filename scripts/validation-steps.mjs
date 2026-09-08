@@ -20,5 +20,14 @@ function run(args) {
 
 // Remediation is deliberately scoped to the current plan. Strict validation
 // still runs afterward so placeholders and invalid tiers fail closed.
+const regressionGuard = (args) => spawnSync(process.execPath, [path.join(root, "scripts/check-regression-guard.mjs"), ...args], {
+  cwd: root,
+  env: process.env,
+  stdio: "inherit",
+}).status ?? 1;
+
 run(["--fix-stub", "--plan", plan]);
-process.exit(run(["--strict", "--plan", plan]));
+regressionGuard(["--fix-stub", "--plan", plan]);
+const failureStatus = run(["--strict", "--plan", plan]);
+const regressionStatus = regressionGuard(["--strict", "--plan", plan]);
+process.exit(failureStatus || regressionStatus ? 1 : 0);

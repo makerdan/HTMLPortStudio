@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ROOT, loadTierRegistry } from "./lib/tier-lock-check.mjs";
 import { validatePlanText } from "./lib/failure-gate.mjs";
+import { REGRESSION_GUARD_STUB } from "./lib/regression-guard.mjs";
 
 const args = process.argv.slice(2);
 function option(name, fallback = undefined) {
@@ -73,7 +74,8 @@ ${observations.length ? `\n## Task-local environment observations\n${observation
 **Command:** \`${tierName}\`
 **Why:** ${why}
 **Do not escalate:** Run exactly this command. Pre-existing, intermittent, or environment-limited failures are not a reason to run a heavier tier.
-`;
+
+${REGRESSION_GUARD_STUB}`;
 const errors = validatePlanText(plan, path.relative(ROOT, output));
 if (errors.length) fail(errors.join("\n"));
 fs.mkdirSync(path.dirname(output), { recursive: true });
