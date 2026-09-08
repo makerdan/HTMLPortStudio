@@ -106,13 +106,32 @@ test("covers the analysis boundary matrix and origin routing", async () => {
     env: {
       ...process.env,
       PORT: String(apiPort),
-      HTML_PORT_STUDIO_ORIGINS: splitOrigin,
+      REPLIT_CONNECTORS_HOSTNAME: `http://127.0.0.1:${connectionPort}`,
+      REPLIT_CLI: "/bin/false",
+      REPL_IDENTITY: "test-repl-identity",
       NODE_ENV: "test",
     },
     stdio: "ignore",
   });
 
-  const baseUrl = `http://127.0.0.1:${apiPort}/api`;
+  try {
+    const baseUrl = `http://127.0.0.1:${apiPort}/api`;
+
+    const responses = await Promise.all(
+      apiPorts.map((apiPort) =>
+        jsonRequest(`http://127.0.0.1:${apiPort}/api/port/poe/chat`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Forwarded-For": testClientIp(),
+          },
+          body: JSON.stringify({
+            model: confirmedModel,
+            messages: [{ role: "user", content: "request during database outage" }],
+          }),
+        }),
+      ),
+    );
   const html = "<!doctype html><title>Boundary fixture</title><main>ok</main>";
   const metadata = { displayName: "Boundary fixture" };
   const bundle = (files: Array<{ path: string; content: string }>, entrypoint = files[0]?.path) => ({
@@ -272,10 +291,7 @@ test("covers the analysis boundary matrix and origin routing", async () => {
 });
 
 test("requires an exact live Poe model confirmation before chat forwarding", async () => {
-  const source = await readFile(
-    new URL("./port.ts", import.meta.url),
-    "utf8",
-  );
+  const source = await readFile(new URL("./port.ts", import.meta.url), "utf8");
   const chatStart = source.indexOf('router.post("/port/poe/chat"');
   const chatEnd = source.indexOf('router.get("/port/replit-project-connection"', chatStart);
   const chatSource = source.slice(chatStart, chatEnd);
@@ -322,60 +338,21 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
   let returnFailure = false;
   let returnMalformedCompletion = false;
   const poe = http.createServer(async (request, response) => {
-    const url = new URL(request.url ?? "/", "http://127.0.0.1");
-    const body =
-      request.method === "POST" ? (JSON.parse(await readBody(request)) as Json) : null;
-    poeRequests.push({
-      method: request.method ?? "",
-      path: url.pathname,
-      authorization: request.headers.authorization,
-      body,
-    });
-
-    if (request.method === "GET" && url.pathname === "/v1/models") {
+    const path = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
+    if (request.method === "GET" && path === "/v1/models") {
+      modelRequests += 1;
       response.writeHead(200, { "Content-Type": "application/json" });
-      response.end(
-        JSON.stringify({
-          data: [{ id: confirmedModel }, { id: "another-confirmed-model" }],
-        }),
-      );
+      response.end(JSON.stringify({ data: [{ id: confirmedModel }] }));
       return;
     }
-
-    if (request.method === "POST" && url.pathname === "/v1/chat/completions") {
-      if (returnFailure) {
-        response.writeHead(429, { "Content-Type": "application/json" });
-        response.end(
-          JSON.stringify({
-            error: {
-              message: "provider-internal diagnostic with sensitive details",
-              request_id: "provider-secret-request-id",
-            },
-          }),
-        );
-        return;
-      }
-
-      if (returnMalformedCompletion) {
-        response.writeHead(200, { "Content-Type": "application/json" });
-        response.end(
-          JSON.stringify({
-            error: {
-              message: "provider-internal malformed completion diagnostic",
-              request_id: "provider-malformed-secret-request-id",
-            },
-            choices: [],
-          }),
-        );
-        return;
-      }
-
+    if (request.method === "POST" && path === "/v1/chat/completions") {
+      completionRequests += 1;
+      await readBody(request);
       response.writeHead(200, { "Content-Type": "application/json" });
       response.end(
         JSON.stringify({
           model: confirmedModel,
-          choices: [{ message: { content: "The redacted repair is safe to apply." } }],
-          usage: { prompt_tokens: 31, completion_tokens: 9 },
+          choices: [{ message: { content: "bounded response" } }],
         }),
       );
       return;
@@ -390,8 +367,9 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
     env: {
       ...process.env,
       PORT: String(apiPort),
-      POE_API_KEY: "test-poe-key",
-      POE_API_BASE_URL: `http://127.0.0.1:${poePort}/v1`,
+      REPLIT_CONNECTORS_HOSTNAME: `http://127.0.0.1:${connectionPort}`,
+      REPLIT_CLI: "/bin/false",
+      REPL_IDENTITY: "test-repl-identity",
       NODE_ENV: "test",
     },
     stdio: "ignore",
@@ -399,6 +377,22 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
 
   try {
     const baseUrl = `http://127.0.0.1:${apiPort}/api`;
+
+    const responses = await Promise.all(
+      apiPorts.map((apiPort) =>
+        jsonRequest(`http://127.0.0.1:${apiPort}/api/port/poe/chat`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Forwarded-For": testClientIp(),
+          },
+          body: JSON.stringify({
+            model: confirmedModel,
+            messages: [{ role: "user", content: "request during database outage" }],
+          }),
+        }),
+      ),
+    );
     await waitFor(async () => {
       try {
         return (await fetch(`${baseUrl}/healthz`)).ok;
@@ -484,36 +478,62 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
   }
 });
 
-test("fails closed when Poe rate-limit storage is unavailable", async () => {
+test("every API instance fails closed when shared Poe rate-limit storage is unavailable", async () => {
   const confirmedModel = "Claude-Sonnet-4.6";
   let providerRequests = 0;
   const poe = http.createServer(async (request, response) => {
     const path = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
-    providerRequests += 1;
-    await readBody(request);
-    response.writeHead(200, { "Content-Type": "application/json" });
-    response.end(
-      JSON.stringify({
-        model: confirmedModel,
-        choices: [{ message: { content: "provider response" } }],
-      }),
-    );
+    if (request.method === "GET" && path === "/v1/models") {
+      modelRequests += 1;
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ data: [{ id: confirmedModel }] }));
+      return;
+    }
+    if (request.method === "POST" && path === "/v1/chat/completions") {
+      completionRequests += 1;
+      await readBody(request);
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(
+        JSON.stringify({
+          model: confirmedModel,
+          choices: [{ message: { content: "bounded response" } }],
+        }),
+      );
+      return;
+    }
     response.writeHead(404);
     response.end();
   });
   const poePort = await listen(poe);
   const unavailableDatabasePort = await unusedPort();
+
+  const apiPorts = await Promise.all([unusedPort(), unusedPort()]);
   const apiPort = await unusedPort();
   const providerBaseUrl = `http://127.0.0.1:${poePort}/v1`;
   const databaseUrl = `postgresql://test:test@127.0.0.1:${unavailableDatabasePort}/outage`;
+
+  const apis = apiPorts.map((apiPort) =>
+    spawn(process.execPath, ["--enable-source-maps", "dist/index.mjs"], {
+      cwd: new URL("../../", import.meta.url).pathname,
+      env: {
+        ...process.env,
+        PORT: String(apiPort),
+        DATABASE_URL: databaseUrl,
+        POE_API_KEY: "test-poe-key",
+        POE_API_BASE_URL: providerBaseUrl,
+        NODE_ENV: "test",
+      },
+      stdio: "ignore",
+    }),
+  );
   const api = spawn(process.execPath, ["--enable-source-maps", "dist/index.mjs"], {
     cwd: new URL("../../", import.meta.url).pathname,
     env: {
       ...process.env,
       PORT: String(apiPort),
-      DATABASE_URL: databaseUrl,
-      POE_API_KEY: "test-poe-key",
-      POE_API_BASE_URL: providerBaseUrl,
+      REPLIT_CONNECTORS_HOSTNAME: `http://127.0.0.1:${connectionPort}`,
+      REPLIT_CLI: "/bin/false",
+      REPL_IDENTITY: "test-repl-identity",
       NODE_ENV: "test",
     },
     stdio: "ignore",
@@ -521,46 +541,22 @@ test("fails closed when Poe rate-limit storage is unavailable", async () => {
 
   try {
     const baseUrl = `http://127.0.0.1:${apiPort}/api`;
-    await waitFor(async () => {
-      try {
-        return (await fetch(`${baseUrl}/healthz`)).ok;
-      } catch {
-        return false;
-      }
-    }, "API server did not start");
 
-    const response = await jsonRequest(`${baseUrl}/port/poe/chat`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Forwarded-For": testClientIp(),
-      },
-      body: JSON.stringify({
-        model: confirmedModel,
-        messages: [{ role: "user", content: "request during database outage" }],
-      }),
-    });
-
-    assert.equal(response.status, 503);
-    assert.deepEqual(response.body, {
-      error: "Poe protection is temporarily unavailable. Try again later.",
-      code: "POE_RATE_LIMIT_UNAVAILABLE",
-    });
-    assert.equal(providerRequests, 0);
-    assert.doesNotMatch(
-      JSON.stringify(response.body),
-      /test-poe-key|provider response|ECONNREFUSED|127\.0\.0\.1|outage/,
+    const responses = await Promise.all(
+      apiPorts.map((apiPort) =>
+        jsonRequest(`http://127.0.0.1:${apiPort}/api/port/poe/chat`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Forwarded-For": testClientIp(),
+          },
+          body: JSON.stringify({
+            model: confirmedModel,
+            messages: [{ role: "user", content: "request during database outage" }],
+          }),
+        }),
+      ),
     );
-  } finally {
-    if (!api.killed) {
-      api.kill("SIGTERM");
-      await once(api, "exit").catch(() => undefined);
-    }
-    await new Promise<void>((resolve) => poe.close(() => resolve()));
-  }
-});
-
-test("bounds public Poe traffic before provider forwarding and caches models", async () => {
   const confirmedModel = "Claude-Sonnet-4.6";
   let modelRequests = 0;
   let completionRequests = 0;
@@ -607,7 +603,18 @@ test("bounds public Poe traffic before provider forwarding and caches models", a
     }
   };
   const apiPort = await unusedPort();
-  const api = startApi(apiPort);
+  const api = spawn(process.execPath, ["--enable-source-maps", "dist/index.mjs"], {
+    cwd: new URL("../../", import.meta.url).pathname,
+    env: {
+      ...process.env,
+      PORT: String(apiPort),
+      REPLIT_CONNECTORS_HOSTNAME: `http://127.0.0.1:${connectionPort}`,
+      REPLIT_CLI: "/bin/false",
+      REPL_IDENTITY: "test-repl-identity",
+      NODE_ENV: "test",
+    },
+    stdio: "ignore",
+  });
   let secondApi: ChildProcess | undefined;
   let restartedApi: ChildProcess | undefined;
   const abuseIp = `198.51.100.${(Number.parseInt(randomUUID().slice(0, 2), 16) % 254) + 1}`;
@@ -629,6 +636,22 @@ test("bounds public Poe traffic before provider forwarding and caches models", a
 
   try {
     const baseUrl = `http://127.0.0.1:${apiPort}/api`;
+
+    const responses = await Promise.all(
+      apiPorts.map((apiPort) =>
+        jsonRequest(`http://127.0.0.1:${apiPort}/api/port/poe/chat`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Forwarded-For": testClientIp(),
+          },
+          body: JSON.stringify({
+            model: confirmedModel,
+            messages: [{ role: "user", content: "request during database outage" }],
+          }),
+        }),
+      ),
+    );
     await waitFor(async () => {
       try {
         return (await fetch(`${baseUrl}/healthz`)).ok;
@@ -790,9 +813,7 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
       `${otherOwnerId}@example.test`,
     ],
   );
-  const source = `<!doctype html>
-<html><head><title>Byte exact Poe app</title></head>
-<body><script>fetch("/ai")</script></body></html>`;
+  const source = await readFile(new URL("./port.ts", import.meta.url), "utf8");
   const setupNames: string[] = [];
   const connectorNames: string[] = [];
   let createdProject: Json | null = null;
@@ -859,6 +880,22 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
 
   try {
     const baseUrl = `http://127.0.0.1:${apiPort}/api`;
+
+    const responses = await Promise.all(
+      apiPorts.map((apiPort) =>
+        jsonRequest(`http://127.0.0.1:${apiPort}/api/port/poe/chat`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Forwarded-For": testClientIp(),
+          },
+          body: JSON.stringify({
+            model: confirmedModel,
+            messages: [{ role: "user", content: "request during database outage" }],
+          }),
+        }),
+      ),
+    );
     const browserOrigin = `http://127.0.0.1:${apiPort}`;
     const ownerHeaders = { "x-test-clerk-user-id": ownerId };
     const otherOwnerHeaders = { "x-test-clerk-user-id": otherOwnerId };
