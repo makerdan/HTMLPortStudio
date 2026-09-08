@@ -356,11 +356,12 @@ export function isPoeModelConfirmed(models: readonly string[], requestedModel: s
 }
 
 const SETUP_STEPS = [
-  { name: "Poe Setup", slug: "poe-setup" },
   { name: "Port Authority", slug: "port-authority" },
   { name: "Failure Gate", slug: "failure-gate" },
-  { name: "Harden Bug Fixes", slug: "harden-bug-fixes" },
-  { name: "Skill Install Confirmation", slug: "skill-install-confirmation" },
+  { name: "Regression Guard", slug: "regression-guard" },
+  { name: "Skill Mirror Sync", slug: "skill-mirror-sync" },
+  { name: "App Support Ops", slug: "app-support-ops" },
+  { name: "Poe Setup", slug: "poe-setup" },
 ] as const;
 
 type SetupStepName = (typeof SETUP_STEPS)[number]["name"];

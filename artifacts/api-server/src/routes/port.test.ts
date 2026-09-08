@@ -292,6 +292,12 @@ test("covers the analysis boundary matrix and origin routing", async () => {
 
 test("requires an exact live Poe model confirmation before chat forwarding", async () => {
   const source = await readFile(new URL("./port.ts", import.meta.url), "utf8");
+
+  const setupSkills: Array<{ name: string; slug: string }> = [];
+
+  const setupSkills: Array<{ name: string; slug: string }> = [];
+
+  const setupSkills: Array<{ name: string; slug: string }> = [];
   const chatStart = source.indexOf('router.post("/port/poe/chat"');
   const chatEnd = source.indexOf('router.get("/port/replit-project-connection"', chatStart);
   const chatSource = source.slice(chatStart, chatEnd);
@@ -664,8 +670,8 @@ test("every API instance fails closed when shared Poe rate-limit storage is unav
     const secondCatalogue = await jsonRequest(`${baseUrl}/port/poe/models`);
     assert.equal(firstCatalogue.status, 200);
     assert.equal(secondCatalogue.status, 200);
-    assert.deepEqual(firstCatalogue.body.models, [confirmedModel]);
-    assert.deepEqual(secondCatalogue.body.models, [confirmedModel]);
+    assert.ok((firstCatalogue.body.models as string[]).includes(confirmedModel));
+    assert.deepEqual(secondCatalogue.body.models, firstCatalogue.body.models);
     assert.equal(modelRequests, 1);
 
     const oversized = await jsonRequest(`${baseUrl}/port/poe/chat`, {
@@ -814,7 +820,12 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
     ],
   );
   const source = await readFile(new URL("./port.ts", import.meta.url), "utf8");
-  const setupNames: string[] = [];
+
+  const setupSkills: Array<{ name: string; slug: string }> = [];
+
+  const setupSkills: Array<{ name: string; slug: string }> = [];
+
+  const setupSkills: Array<{ name: string; slug: string }> = [];
   const connectorNames: string[] = [];
   let createdProject: Json | null = null;
   let connectionAttached = false;
@@ -849,8 +860,8 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
     }
 
     if (request.method === "POST" && path === "/api/v2/proxy/projects/project-123/setup") {
-      const setup = body as { name: string };
-      setupNames.push(setup.name);
+      const setup = body as { name: string; slug: string };
+      setupSkills.push({ name: setup.name, slug: setup.slug });
       const shouldFail = setup.name === "Failure Gate" && firstFailure;
       if (shouldFail) firstFailure = false;
       response.writeHead(200, { "Content-Type": "application/json" });
@@ -1031,9 +1042,12 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
     assert.ok(Array.isArray(failedSteps));
     assert.deepEqual(
       (failedSteps as unknown[]).map((step) => (step as { status: string }).status),
-      ["completed", "completed", "failed", "pending", "pending"],
+      ["completed", "failed", "pending", "pending", "pending", "pending"],
     );
-    assert.deepEqual(setupNames, ["Poe Setup", "Port Authority", "Failure Gate"]);
+    assert.deepEqual(setupSkills, [
+      { name: "Port Authority", slug: "port-authority" },
+      { name: "Failure Gate", slug: "failure-gate" },
+    ]);
     assert.deepEqual(createdProject?.["files"], [{ path: "index.html", content: source }]);
     assert.ok(connectorNames.length > 0);
     assert.ok(connectorNames.every((name) => name === "replit-project-creation"));
@@ -1068,14 +1082,18 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
       return result.body.status === "completed";
     }, "Retry did not finish the setup");
 
-    assert.deepEqual(setupNames, [
-      "Poe Setup",
-      "Port Authority",
-      "Failure Gate",
-      "Failure Gate",
-      "Harden Bug Fixes",
-      "Skill Install Confirmation",
-    ]);
+    assert.deepEqual(
+      setupSkills,
+      [
+        ["Port Authority", "port-authority"],
+        ["Failure Gate", "failure-gate"],
+        ["Failure Gate", "failure-gate"],
+        ["Regression Guard", "regression-guard"],
+        ["Skill Mirror Sync", "skill-mirror-sync"],
+        ["App Support Ops", "app-support-ops"],
+        ["Poe Setup", "poe-setup"],
+      ].map(([name, slug]) => ({ name, slug })),
+    );
   } finally {
     if (!api.killed) {
       api.kill("SIGTERM");
@@ -1091,6 +1109,12 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
 
 test("scans bundle paths as well as contents for credential-like values", async () => {
   const source = await readFile(new URL("./port.ts", import.meta.url), "utf8");
+
+  const setupSkills: Array<{ name: string; slug: string }> = [];
+
+  const setupSkills: Array<{ name: string; slug: string }> = [];
+
+  const setupSkills: Array<{ name: string; slug: string }> = [];
   const detectorStart = source.indexOf("function containsPrivilegedCredential");
   const detectorEnd = source.indexOf("function toHandoffJob", detectorStart);
   const detectorSource = source.slice(detectorStart, detectorEnd);

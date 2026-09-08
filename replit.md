@@ -53,7 +53,7 @@ Import pasted, single-file, or public GitHub HTML apps as normalized source bund
 - Receive a compact readiness report for scripts, external assets, browser-side requests, and likely AI calls.
 - Preview the document in a sandbox, then follow a tailored migration checklist.
 - When `POE_API_KEY` is configured, choose a live Poe model and ask for targeted porting help.
-- After analysis, sign in, then use **Create Replit Project** to create a separate runnable HTML project. The setup status is shown step-by-step in this order: Poe Setup, Port Authority, Failure Gate, Harden Bug Fixes, then Skill Install Confirmation. A failed step can be retried without repeating completed steps, including after a server restart.
+- After analysis, sign in, then use **Create Replit Project** to create a separate runnable HTML project. The setup status is shown step-by-step in this order: Port Authority, Failure Gate, Regression Guard, Skill Mirror Sync, App Support Ops, then Poe Setup. Each step is resolved by canonical workspace skill identity through the authorized project-creation connection, so new projects receive the latest workspace version rather than repository copies or disposable mirrors. A failed step can be retried without repeating completed steps, including after a server restart.
 
 ## User preferences
 

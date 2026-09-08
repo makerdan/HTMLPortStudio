@@ -480,9 +480,9 @@ export const CreateReplitProjectResponse = zod.object({
   "projectId": zod.string().nullable(),
   "projectUrl": zod.string().nullable(),
   "projectName": zod.string().nullable(),
-  "currentStep": zod.enum(['Poe Setup', 'Port Authority', 'Failure Gate', 'Harden Bug Fixes', 'Skill Install Confirmation']).nullable(),
+  "currentStep": zod.enum(['Port Authority', 'Failure Gate', 'Regression Guard', 'Skill Mirror Sync', 'App Support Ops', 'Poe Setup']).nullable(),
   "steps": zod.array(zod.object({
-  "name": zod.enum(['Poe Setup', 'Port Authority', 'Failure Gate', 'Harden Bug Fixes', 'Skill Install Confirmation']),
+  "name": zod.enum(['Port Authority', 'Failure Gate', 'Regression Guard', 'Skill Mirror Sync', 'App Support Ops', 'Poe Setup']),
   "status": zod.enum(['pending', 'running', 'completed', 'failed']),
   "error": zod.string().nullable()
 })),
@@ -506,9 +506,9 @@ export const GetReplitProjectStatusResponse = zod.object({
   "projectId": zod.string().nullable(),
   "projectUrl": zod.string().nullable(),
   "projectName": zod.string().nullable(),
-  "currentStep": zod.enum(['Poe Setup', 'Port Authority', 'Failure Gate', 'Harden Bug Fixes', 'Skill Install Confirmation']).nullable(),
+  "currentStep": zod.enum(['Port Authority', 'Failure Gate', 'Regression Guard', 'Skill Mirror Sync', 'App Support Ops', 'Poe Setup']).nullable(),
   "steps": zod.array(zod.object({
-  "name": zod.enum(['Poe Setup', 'Port Authority', 'Failure Gate', 'Harden Bug Fixes', 'Skill Install Confirmation']),
+  "name": zod.enum(['Port Authority', 'Failure Gate', 'Regression Guard', 'Skill Mirror Sync', 'App Support Ops', 'Poe Setup']),
   "status": zod.enum(['pending', 'running', 'completed', 'failed']),
   "error": zod.string().nullable()
 })),
@@ -532,9 +532,9 @@ export const RetryReplitProjectSetupResponse = zod.object({
   "projectId": zod.string().nullable(),
   "projectUrl": zod.string().nullable(),
   "projectName": zod.string().nullable(),
-  "currentStep": zod.enum(['Poe Setup', 'Port Authority', 'Failure Gate', 'Harden Bug Fixes', 'Skill Install Confirmation']).nullable(),
+  "currentStep": zod.enum(['Port Authority', 'Failure Gate', 'Regression Guard', 'Skill Mirror Sync', 'App Support Ops', 'Poe Setup']).nullable(),
   "steps": zod.array(zod.object({
-  "name": zod.enum(['Poe Setup', 'Port Authority', 'Failure Gate', 'Harden Bug Fixes', 'Skill Install Confirmation']),
+  "name": zod.enum(['Port Authority', 'Failure Gate', 'Regression Guard', 'Skill Mirror Sync', 'App Support Ops', 'Poe Setup']),
   "status": zod.enum(['pending', 'running', 'completed', 'failed']),
   "error": zod.string().nullable()
 })),

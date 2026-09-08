@@ -379,11 +379,12 @@ export type ReplitProjectStepName = typeof ReplitProjectStepName[keyof typeof Re
 
 
 export const ReplitProjectStepName = {
-  Poe_Setup: 'Poe Setup',
   Port_Authority: 'Port Authority',
   Failure_Gate: 'Failure Gate',
-  Harden_Bug_Fixes: 'Harden Bug Fixes',
-  Skill_Install_Confirmation: 'Skill Install Confirmation',
+  Regression_Guard: 'Regression Guard',
+  Skill_Mirror_Sync: 'Skill Mirror Sync',
+  App_Support_Ops: 'App Support Ops',
+  Poe_Setup: 'Poe Setup',
 } as const;
 
 export type ReplitProjectStepStatusStatus = typeof ReplitProjectStepStatusStatus[keyof typeof ReplitProjectStepStatusStatus];

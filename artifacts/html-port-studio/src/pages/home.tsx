@@ -1038,7 +1038,7 @@ function ReplitProjectHandoffPanel({
             <CardTitle className="text-base">Create a Replit Project</CardTitle>
             <CardDescription className="mt-1">
               Send this exact HTML into a runnable Replit project and install the
-              required setup skills in order. Your source stays only in this browser
+              latest canonical workspace skills in order. Your source stays only in this browser
               tab until you start; a reload loses the source and analysis, while only
               the signed-in handoff status can be recovered.
             </CardDescription>

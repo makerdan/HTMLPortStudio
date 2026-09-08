@@ -902,11 +902,12 @@ components:
     ReplitProjectStepName:
       type: string
       enum:
-        - Poe Setup
         - Port Authority
         - Failure Gate
-        - Harden Bug Fixes
-        - Skill Install Confirmation
+        - Regression Guard
+        - Skill Mirror Sync
+        - App Support Ops
+        - Poe Setup
     ReplitProjectStepStatus:
       type: object
       properties:
