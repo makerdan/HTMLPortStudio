@@ -1128,8 +1128,9 @@ function ReplitProjectHandoffPanel({
             <div>
               <p className="font-medium">Set up Replit project creation</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Replit checks workspace-owner eligibility before authorizing this server-side connection.
-                No credential is shown to the Studio or added to your imported HTML.
+                Open this workspace&apos;s Replit Integrations panel and add the project-creation
+                capability if it is available in the catalog. No credential is shown to the Studio
+                or added to your imported HTML.
               </p>
             </div>
             {connectionQuery.data?.status === 'connected' ? (
@@ -1154,7 +1155,7 @@ function ReplitProjectHandoffPanel({
                         target="_blank"
                         rel="noopener noreferrer"
                       >
-                        Open Replit connection setup
+                        Open Replit Integrations
                       </a>
                     </Button>
                     <Button type="button" size="sm" variant="outline" onClick={() => void handleCopySetupLink()}>
@@ -1171,9 +1172,10 @@ function ReplitProjectHandoffPanel({
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    In a browser, setup opens in a new tab. In the Replit desktop app on Mac,
-                    it may open in your default browser. If it does not, copy the setup link,
-                    finish there, then return and check the connection.
+                    Select this project in Replit, open Connectors from the Project Editor sidebar,
+                    and choose Add new integration. If Replit project creation is not listed, the
+                    capability is not available for this workspace and the handoff cannot be enabled.
+                    In the Replit desktop app on Mac, the link may open in your default browser.
                   </p>
                 </div>
               ) : (

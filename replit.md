@@ -15,7 +15,7 @@ Import pasted, single-file, or public GitHub HTML apps as normalized source bund
 - Optional env: `POE_API_KEY` — enables live Poe model discovery and the server-side chat bridge
 - GitHub remote validation is documented in `docs/validation/github-actions.md`; the tracked workflow preserves `test-standard` as the primary check and runs `validate:api` separately.
 - Clerk account authentication uses `CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, and `VITE_CLERK_PUBLISHABLE_KEY`. Set these through Replit’s environment/secrets tools; never put the secret key in browser code, imported HTML, source bundles, or logs.
-- Required for project handoff: an attached authorized Replit project-creation connection. From the Studio’s **Set up project creation** screen, Replit’s secure connection console verifies workspace-owner eligibility before authorization; no project-creation URL or token is configured in the browser or source.
+- Required for project handoff: an attached authorized Replit project-creation connection. The Studio’s **Set up project creation** screen opens Replit’s supported Integrations surface; the capability must be available in the workspace catalog. No project-creation URL or token is configured in the browser or source.
 
 ## Stack
 
@@ -42,7 +42,7 @@ Import pasted, single-file, or public GitHub HTML apps as normalized source bund
 - Previewed documents run in a sandbox without same-origin access to the Studio itself.
 - Project handoff sends every normalized bundle file byte-for-byte with its explicit entrypoint through the attached server-side Replit connection, then waits for each required setup skill to confirm before starting the next one.
 - Workspace-managed skills flow one way: explicit workspace source → generated project projection → disposable runtime mirror. The mirror is never authoritative and is never provisioned by repository automation.
-- Clerk authentication and Replit project authorization are separate boundaries: Clerk identifies the user and scopes handoff ownership, while the Replit connector independently verifies workspace-owner eligibility and authorizes project creation.
+- Clerk authentication and Replit project authorization are separate boundaries: Clerk identifies the user and scopes handoff ownership, while an attached Replit connector independently authorizes project creation.
 
 ## Product
 

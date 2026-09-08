@@ -369,6 +369,9 @@ test("keeps Replit connection setup usable from browsers and the Mac desktop app
   assert.match(source, /rel="noopener noreferrer"/);
   assert.match(source, /navigator\.clipboard\.writeText\(setupUrl\)/);
   assert.match(source, /Copy setup link/);
+  assert.match(source, /Open Replit Integrations/);
+  assert.match(source, /open Connectors from the Project Editor sidebar/);
+  assert.match(source, /capability is not available for this workspace/);
   assert.match(source, /Replit desktop app on Mac/);
   assert.match(source, /I connected it — check again/);
   assert.match(source, /window\.addEventListener\('focus', refreshConnection\)/);

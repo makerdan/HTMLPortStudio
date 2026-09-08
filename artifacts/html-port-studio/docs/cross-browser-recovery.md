@@ -94,6 +94,15 @@ The saved reference captures are
 - Firefox sign-in text did not stabilize in the headless run while sign-up
   rendered; this is classified as a browser/provider timing limitation, not a
   confirmed product defect.
+- Project-creation setup links to `https://replit.com/integrations`, the
+  supported Replit integrations surface. The former
+  `connectors.replit.com/console/connector-config` deep link redirects to
+  `/unauthorized` and is not a supported setup route.
+- The current Replit integration catalog does not list
+  `replit-project-creation`. Until that first-party capability is made
+  available to this workspace, live handoff creation cannot be enabled or
+  verified; mocked API and browser coverage does not establish provider
+  availability.
 
 
 ### Controlled Clerk lifecycle session — 2026-09-07

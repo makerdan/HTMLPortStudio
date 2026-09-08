@@ -426,13 +426,7 @@ async function hasProjectCreationConnection(): Promise<boolean> {
 }
 
 function projectConnectionSetupUrl(): string {
-  const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME ?? "connectors.replit.com";
-  const baseUrl = hostname.startsWith("http://") || hostname.startsWith("https://")
-    ? hostname
-    : `https://${hostname}`;
-  const setupUrl = new URL("/console/connector-config", baseUrl);
-  setupUrl.searchParams.set("connector", PROJECT_CREATION_CONNECTOR);
-  return setupUrl.toString();
+  return "https://replit.com/integrations";
 }
 
 async function projectConnectionRequest(
