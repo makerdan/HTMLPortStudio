@@ -485,6 +485,79 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
   }
 });
 
+test("fails closed when Poe rate-limit storage is unavailable", async () => {
+  const confirmedModel = "Claude-Sonnet-4.6";
+  let providerRequests = 0;
+  const poe = http.createServer(async (request, response) => {
+    providerRequests += 1;
+    await readBody(request);
+    response.writeHead(200, { "Content-Type": "application/json" });
+    response.end(
+      JSON.stringify({
+        model: confirmedModel,
+        choices: [{ message: { content: "provider response" } }],
+      }),
+    );
+  });
+  const poePort = await listen(poe);
+  const unavailableDatabasePort = await unusedPort();
+  const apiPort = await unusedPort();
+  const providerBaseUrl = `http://127.0.0.1:${poePort}/v1`;
+  const databaseUrl = `postgresql://test:test@127.0.0.1:${unavailableDatabasePort}/outage`;
+  const api = spawn(process.execPath, ["--enable-source-maps", "dist/index.mjs"], {
+    cwd: new URL("../../", import.meta.url).pathname,
+    env: {
+      ...process.env,
+      PORT: String(apiPort),
+      DATABASE_URL: databaseUrl,
+      POE_API_KEY: "test-poe-key",
+      POE_API_BASE_URL: providerBaseUrl,
+      NODE_ENV: "test",
+    },
+    stdio: "ignore",
+  });
+
+  try {
+    const baseUrl = `http://127.0.0.1:${apiPort}/api`;
+    await waitFor(async () => {
+      try {
+        return (await fetch(`${baseUrl}/healthz`)).ok;
+      } catch {
+        return false;
+      }
+    }, "API server did not start");
+
+    const response = await jsonRequest(`${baseUrl}/port/poe/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Forwarded-For": testClientIp(),
+      },
+      body: JSON.stringify({
+        model: confirmedModel,
+        messages: [{ role: "user", content: "request during database outage" }],
+      }),
+    });
+
+    assert.equal(response.status, 503);
+    assert.deepEqual(response.body, {
+      error: "Poe protection is temporarily unavailable. Try again later.",
+      code: "POE_RATE_LIMIT_UNAVAILABLE",
+    });
+    assert.equal(providerRequests, 0);
+    assert.doesNotMatch(
+      JSON.stringify(response.body),
+      /test-poe-key|provider response|ECONNREFUSED|127\.0\.0\.1|outage/,
+    );
+  } finally {
+    if (!api.killed) {
+      api.kill("SIGTERM");
+      await once(api, "exit").catch(() => undefined);
+    }
+    await new Promise<void>((resolve) => poe.close(() => resolve()));
+  }
+});
+
 test("bounds public Poe traffic before provider forwarding and caches models", async () => {
   const confirmedModel = "Claude-Sonnet-4.6";
   let modelRequests = 0;
