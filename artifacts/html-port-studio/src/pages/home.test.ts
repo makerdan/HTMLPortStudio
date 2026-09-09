@@ -958,6 +958,8 @@ test("exposes the reload boundary, owner reconciliation, and lifecycle cleanup",
   assert.match(authSource, /ClerkProvider/);
   assert.match(authSource, /SignIn/);
   assert.match(authSource, /SignUp/);
+  assert.match(authSource, /session\?\.id/);
+  assert.match(authSource, /forceRedirectUrl=\{basePath \|\| "\/"\}/);
 });
 
 test("exposes both Clerk sign-in entry points without coupling import state to auth", async () => {

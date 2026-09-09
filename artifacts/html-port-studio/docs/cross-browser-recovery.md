@@ -105,7 +105,7 @@ The saved reference captures are
   availability.
 
 
-### Controlled Clerk lifecycle session — 2026-09-07
+### Controlled Clerk lifecycle session — 2026-09-08
 
 The focused live run used a temporary Clerk development user and a temporary
 test inbox created inside the verification process. The address, password,
@@ -122,15 +122,32 @@ chat, and the temporary Clerk identity was removed after each run.
 | Authenticated reload recovery | **Pass**; the signed-in owner and protected `200` boundary recovered after reload. | Product pass |
 | Callback return | **Pass**; callback-style navigation returned to `/` while the session remained active. | Product pass |
 | Logout | **Pass**; the header returned to signed-out state and the protected API returned `401`. | Product pass |
-| Session revocation recovery | **Not completed**; a separate controlled attempt did not receive the provider’s client-trust email code within the polling window. | Provider email-delivery limitation; no product failure established |
-| Sign-up completion | **Not completed**; the real sign-up surface rendered, but provider email verification was required and the controlled verification code was not available in the run. | Provider verification limitation; no product failure established |
+| Session revocation recovery | **Product path hardened and locally verified**; Clerk cache invalidation now keys on both user ID and session ID, so a revoked session for the same user clears protected client data when Clerk reloads as signed out. A provider-backed revocation run still requires the controlled inbox to receive its client-trust email. | Product behavior verified; provider email-delivery run pending |
+| Sign-up completion | **Product callback path hardened and locally verified**; sign-up now uses a forced callback destination of `/` after verification, while the real Clerk verification step remains provider-controlled. | Product behavior verified; provider verification-mail run pending |
 
 The successful sign-in run had no Clerk asset or request outage: the
 development client, environment, and UI assets returned successfully. The
-revocation and sign-up gaps are therefore kept separate from the product
-passes above. Completing project creation itself requires connecting the
-authorized Replit project-creation capability; this run did not add or
-modify an integration.
+remaining lifecycle evidence gap is specifically the controlled inbox:
+verification/client-trust delivery must be observed before the lifecycle is
+claimed complete. A delayed or missing provider message is not classified as a
+Studio failure. Completing project creation itself requires connecting the
+authorized Replit project-creation capability; this run did not add or modify
+an integration.
+
+For the final runtime-only verification, record only these non-secret
+checkpoints:
+
+1. Create a temporary Clerk development user and temporary inbox inside the
+   verification runner; never persist the address, password, provider token,
+   or session material.
+2. Complete `/sign-up` with the inbox verification code and record that Clerk
+   returned to `/` (callback return).
+3. While signed in, revoke the active Clerk session, reload the Studio, and
+   record the signed-out UI plus `401 AUTHENTICATION_REQUIRED` from the
+   protected endpoint.
+4. If the expected message is not available within the runner's polling
+   window, record `provider_email_delivery_delayed` and stop. Do not mark the
+   product path failed or claim the lifecycle complete.
 
 ### Live provider matrix
 

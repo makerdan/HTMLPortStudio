@@ -90,18 +90,27 @@ function stripBase(path: string): string {
 function ClerkQueryClientCacheInvalidator() {
   const { addListener } = useClerk();
   const queryClient = useQueryClient();
-  const prevUserIdRef = useRef<string | null | undefined>(undefined);
+  const prevAuthIdentityRef = useRef<
+    { sessionId: string | null; userId: string | null } | undefined
+  >(undefined);
 
   useEffect(() => {
-    const unsubscribe = addListener(({ user }) => {
-      const userId = user?.id ?? null;
+    const unsubscribe = addListener(({ session, user }) => {
+      const authIdentity = {
+        sessionId: session?.id ?? null,
+        userId: user?.id ?? null,
+      };
       if (
-        prevUserIdRef.current !== undefined &&
-        prevUserIdRef.current !== userId
+        prevAuthIdentityRef.current !== undefined &&
+        (prevAuthIdentityRef.current.sessionId !== authIdentity.sessionId ||
+          prevAuthIdentityRef.current.userId !== authIdentity.userId)
       ) {
+        // A revoked session can belong to the same user. Clear on session
+        // changes as well as user changes so protected data cannot survive
+        // reload/revocation and be shown after Clerk reports signed-out.
         queryClient.clear();
       }
-      prevUserIdRef.current = userId;
+      prevAuthIdentityRef.current = authIdentity;
     });
     return unsubscribe;
   }, [addListener, queryClient]);
@@ -291,6 +300,7 @@ function ClerkSignIn() {
       routing="path"
       path={`${basePath}/sign-in`}
       signUpUrl={`${basePath}/sign-up`}
+      forceRedirectUrl={basePath || "/"}
       fallbackRedirectUrl={basePath || "/"}
     />
   );
@@ -302,6 +312,7 @@ function ClerkSignUp() {
       routing="path"
       path={`${basePath}/sign-up`}
       signInUrl={`${basePath}/sign-in`}
+      forceRedirectUrl={basePath || "/"}
       fallbackRedirectUrl={basePath || "/"}
     />
   );

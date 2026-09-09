@@ -107,12 +107,15 @@ test("covers the analysis boundary matrix and origin routing", async () => {
       ...process.env,
       PORT: String(apiPort),
       HTML_PORT_STUDIO_ORIGINS: splitOrigin,
+      REPLIT_CLI: "/bin/false",
+      REPL_IDENTITY: "test-repl-identity",
       NODE_ENV: "test",
     },
     stdio: "ignore",
   });
 
-  const baseUrl = `http://127.0.0.1:${apiPort}/api`;
+  try {
+    const baseUrl = `http://127.0.0.1:${apiPort}/api`;
   const html = "<!doctype html><title>Boundary fixture</title><main>ok</main>";
   const metadata = { displayName: "Boundary fixture" };
   const bundle = (files: Array<{ path: string; content: string }>, entrypoint = files[0]?.path) => ({
@@ -129,7 +132,6 @@ test("covers the analysis boundary matrix and origin routing", async () => {
       body: JSON.stringify(body),
     });
 
-  try {
     await waitFor(async () => {
       try {
         return (await fetch(`${baseUrl}/healthz`)).ok;
@@ -297,6 +299,8 @@ test("requires an exact live Poe model confirmation before chat forwarding", asy
 test("forwards confirmed Claude repairs unchanged and hides Poe failure details", async () => {
   const confirmedModel = "Claude-Sonnet-4.6";
   const clientIp = testClientIp();
+
+  let providerRequests = 0;
   const redactedMessages = [
     {
       role: "system",
@@ -316,6 +320,8 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
     authorization: string | undefined;
     body: Json | null;
   }> = [];
+  let modelRequests = 0;
+  let completionRequests = 0;
   let returnFailure = false;
   let returnMalformedCompletion = false;
   const poe = http.createServer(async (request, response) => {
@@ -328,8 +334,8 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
       authorization: request.headers.authorization,
       body,
     });
-
     if (request.method === "GET" && url.pathname === "/v1/models") {
+      modelRequests += 1;
       response.writeHead(200, { "Content-Type": "application/json" });
       response.end(
         JSON.stringify({
@@ -338,35 +344,18 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
       );
       return;
     }
-
     if (request.method === "POST" && url.pathname === "/v1/chat/completions") {
+      completionRequests += 1;
       if (returnFailure) {
         response.writeHead(429, { "Content-Type": "application/json" });
-        response.end(
-          JSON.stringify({
-            error: {
-              message: "provider-internal diagnostic with sensitive details",
-              request_id: "provider-secret-request-id",
-            },
-          }),
-        );
+        response.end(JSON.stringify({ error: { message: "provider-internal diagnostic with sensitive details", request_id: "provider-secret-request-id" } }));
         return;
       }
-
       if (returnMalformedCompletion) {
         response.writeHead(200, { "Content-Type": "application/json" });
-        response.end(
-          JSON.stringify({
-            error: {
-              message: "provider-internal malformed completion diagnostic",
-              request_id: "provider-malformed-secret-request-id",
-            },
-            choices: [],
-          }),
-        );
+        response.end(JSON.stringify({ error: { message: "provider-internal malformed completion diagnostic", request_id: "provider-malformed-secret-request-id" }, choices: [] }));
         return;
       }
-
       response.writeHead(200, { "Content-Type": "application/json" });
       response.end(
         JSON.stringify({
@@ -389,6 +378,8 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
       PORT: String(apiPort),
       POE_API_KEY: "test-poe-key",
       POE_API_BASE_URL: `http://127.0.0.1:${poePort}/v1`,
+      REPLIT_CLI: "/bin/false",
+      REPL_IDENTITY: "test-repl-identity",
       NODE_ENV: "test",
     },
     stdio: "ignore",
@@ -403,7 +394,6 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
         return false;
       }
     }, "API server did not start");
-
     const catalogue = await jsonRequest(`${baseUrl}/port/poe/models`);
     assert.equal(catalogue.status, 200);
     assert.deepEqual(catalogue.body.models, [confirmedModel, "another-confirmed-model"]);
@@ -528,7 +518,19 @@ test("bounds public Poe traffic before provider forwarding and caches models", a
     }
   };
   const apiPort = await unusedPort();
-  const api = startApi(apiPort);
+  const api = spawn(process.execPath, ["--enable-source-maps", "dist/index.mjs"], {
+    cwd: new URL("../../", import.meta.url).pathname,
+    env: {
+      ...process.env,
+      PORT: String(apiPort),
+      POE_API_KEY: "test-poe-key",
+      POE_API_BASE_URL: `http://127.0.0.1:${poePort}/v1`,
+      REPLIT_CLI: "/bin/false",
+      REPL_IDENTITY: "test-repl-identity",
+      NODE_ENV: "test",
+    },
+    stdio: "ignore",
+  });
   let secondApi: ChildProcess | undefined;
   let restartedApi: ChildProcess | undefined;
   const abuseIp = `198.51.100.${(Number.parseInt(randomUUID().slice(0, 2), 16) % 254) + 1}`;
@@ -713,10 +715,8 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
     ],
   );
   const source = `<!doctype html>
-<html>
-  <head><title>Project handoff fixture</title></head>
-  <body><main>Source must remain unchanged.</main></body>
-</html>`;
+<html><head><title>Byte exact Poe app</title></head>
+<body><script>fetch("/ai")</script></body></html>`;
 
   const setupSkills: Array<{ name: string; slug: string }> = [];
   const connectorNames: string[] = [];
@@ -892,7 +892,8 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
       assert.equal(matrixHandoff.body.code, "SOURCE_CONTAINS_CREDENTIAL", credential.name);
     }
 
-    const created = await jsonRequest(`${baseUrl}/port/replit-projects`, {
+  connectionAttached = true;
+  const created = await jsonRequest(`${baseUrl}/port/replit-projects`, {
       method: "POST",
       headers: {
         ...ownerHeaders,
