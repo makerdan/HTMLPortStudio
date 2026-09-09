@@ -4,14 +4,18 @@ Import pasted, single-file, or public GitHub HTML apps as normalized source bund
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm --filter @workspace/html-port-studio run dev` — run the HTML Port Studio web app
+- `PORT=8080 pnpm --filter @workspace/api-server run dev` — run the API server; its health route is `/api/healthz`
+- `PORT=23332 BASE_PATH=/ pnpm --filter @workspace/html-port-studio run dev` — run the HTML Port Studio web app
+- `PORT=8081 BASE_PATH=/__mockup pnpm --filter @workspace/mockup-sandbox run dev` — run the Canvas component preview
+- `PLAYWRIGHT_PORT=5173 pnpm --filter @workspace/html-port-studio run test:browser` — run browser tests on the same configurable port used by their web server and URL
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run migrate` — apply committed Drizzle migrations; this is required before deploying or starting a new API release
 - `pnpm workspace-skill:project` — project the explicit `WORKSPACE_SKILLS_SOURCE` into the generated `.agents/skills/.workspace-projections/` tree
 - `pnpm workspace-skill:status -- --skill <skill-id>` — read-only parity check for the disposable runtime mirror
+- Runtime port ownership is explicit: API `8080`, Studio `23332`, Canvas `8081`, and Playwright `5173` by default. Development startup runs `scripts/free-ports.mjs` for its owned port before launching; `PORT` is always supplied by the artifact/workflow environment.
+- `pnpm run test-fast` is typecheck-only, `pnpm run test-standard-plus` runs the complete non-browser checks, `pnpm run test-standard` preserves the registered full application check including Playwright, and `pnpm run test-heavy` is the explicit full-suite command. This workspace has one browser suite, so it does not use Port Authority Heavy locking.
 - Optional env: `POE_API_KEY` — enables live Poe model discovery and the server-side chat bridge
 - GitHub remote validation is documented in `docs/validation/github-actions.md`; the tracked workflow preserves `test-standard` as the primary check and runs `validate:api` separately.
 - Clerk account authentication uses `CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, and `VITE_CLERK_PUBLISHABLE_KEY`. Set these through Replit’s environment/secrets tools; never put the secret key in browser code, imported HTML, source bundles, or logs.
@@ -105,23 +109,21 @@ pre-existing test baselines. A passing retry proves intermittency only; an
 unlisted failure needs two-factor provenance before it can be classified as
 pre-existing.
 
-### Regression Guard
+## Regression Guard
 
-Regression Guard is additive to Failure Gate. Classify by substance, not
-keywords: it applies to bug fixes, changes to existing behavior or error
-paths, and material security/privacy, data-integrity, concurrency/lifecycle,
-performance/reliability, or compatibility/contract changes. It does not apply
-to purely additive features, pure hardening, DELETE-prefixed work, copy-only
-changes, or genuinely non-material internal edits.
+**Covers:** <concrete scenario, boundary, invariant, lifecycle, reliability property, or contract>
+**Test location:** <specific test file in the layer where the wrong behavior lives>
+**What it checks:** <specific assertion or observable behavior that fails if it returns>
+```
 
-Before the first plan heading, announce the exact classification and guard:
-
-`[REGRESSION-GUARD] Classification: <classification>. Guard: <covered — test file | N/A — reason | self-satisfying>.`
-
-Qualifying plans must place this section after `## Pre-existing failures to
-ignore` and `## Validation`, and before `## Relevant files`:
-
-```markdown
+The permitted exceptions are: a race condition requiring real timing, an
+unmockable external API behavior, a visual regression with no screenshot
+infrastructure, or a fix that removes the feature entirely. Each N/A must say
+`**N/A**` and give a specific `**Why N/A:**` reason. A guard-writing task may
+instead declare `**Self-satisfying**` and identify its guard or test
+deliverable. Placeholder, vague, wrong-layer, and misplaced declarations fail
+strict validation. Regression Guard never replaces Failure Gate or raises the
+plan's validation ceiling.
 ## Regression Guard
 
 **Covers:** <concrete scenario, boundary, invariant, lifecycle, reliability property, or contract>

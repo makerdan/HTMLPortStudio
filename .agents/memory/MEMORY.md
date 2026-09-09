@@ -16,3 +16,4 @@
 - [GitHub action pin review](github-action-pin-review.md) — Resolve reviewed release tags to full upstream SHAs and verify pin/comment pairs before validation.
 - [GitHub validation evidence](github-validation-evidence.md) — Local workflow files do not prove remote activation; plan limits can block branch protection.
 - [Ephemeral PostgreSQL tests](ephemeral-postgres-tests.md) — Local clusters need an explicit socket directory and use the initdb-created OS role.
+- [Replit development runtime guards](replit-development-runtime.md) — Treat REPLIT_DEV_DOMAIN as the development marker even when the shell reports REPLIT_ENVIRONMENT=production.

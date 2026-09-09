@@ -26,3 +26,4 @@ to = "/index.html"
 [services.env]
 PORT = "23332"
 BASE_PATH = "/"
+PLAYWRIGHT_PORT = "5173"

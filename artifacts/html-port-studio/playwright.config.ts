@@ -1,16 +1,23 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const rawPort = process.env.PLAYWRIGHT_PORT ?? "5173";
+const port = Number(rawPort);
+
+if (!Number.isInteger(port) || port < 1 || port > 65535) {
+  throw new Error(`Invalid PLAYWRIGHT_PORT value: "${rawPort}"`);
+}
+
 export default defineConfig({
   testDir: "./tests",
   fullyParallel: true,
   reporter: "list",
   use: {
-    baseURL: "http://127.0.0.1:5173",
+    baseURL: `http://127.0.0.1:${port}`,
     trace: "retain-on-failure",
   },
   webServer: {
-    command: "BASE_PATH=/ PORT=5173 VITE_CLERK_PUBLISHABLE_KEY= VITE_STUDIO_E2E_AUTH=true pnpm run dev",
-    url: "http://127.0.0.1:5173/",
+    command: `node ../../scripts/free-ports.mjs ${port} && BASE_PATH=/ PORT=${port} VITE_CLERK_PUBLISHABLE_KEY= VITE_STUDIO_E2E_AUTH=true pnpm run dev`,
+    url: `http://127.0.0.1:${port}/`,
     reuseExistingServer: false,
   },
   projects: [
