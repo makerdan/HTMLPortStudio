@@ -17,3 +17,4 @@
 - [GitHub validation evidence](github-validation-evidence.md) — Local workflow files do not prove remote activation; plan limits can block branch protection.
 - [Ephemeral PostgreSQL tests](ephemeral-postgres-tests.md) — Local clusters need an explicit socket directory and use the initdb-created OS role.
 - [Replit development runtime guards](replit-development-runtime.md) — Treat REPLIT_DEV_DOMAIN as the development marker even when the shell reports REPLIT_ENVIRONMENT=production.
+- [Regression guard test paths](validation-guard-path-format.md) — Keep concrete test paths at line end or followed by whitespace; punctuation/backticks can fail the strict validator.
