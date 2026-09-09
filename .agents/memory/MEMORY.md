@@ -18,3 +18,4 @@
 - [Ephemeral PostgreSQL tests](ephemeral-postgres-tests.md) — Local clusters need an explicit socket directory and use the initdb-created OS role.
 - [Replit development runtime guards](replit-development-runtime.md) — Treat REPLIT_DEV_DOMAIN as the development marker even when the shell reports REPLIT_ENVIRONMENT=production.
 - [Regression guard test paths](validation-guard-path-format.md) — Keep concrete test paths at line end or followed by whitespace; punctuation/backticks can fail the strict validator.
+- [Node test detached fixtures](node-test-detached-fixtures.md) — Use temporary readiness files instead of inherited IPC for detached process fixtures.
