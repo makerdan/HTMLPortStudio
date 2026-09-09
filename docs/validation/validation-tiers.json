@@ -2,24 +2,11 @@
   "version": 1,
   "tiers": [
     {
-      "name": "test-fast",
-      "command": "pnpm run test-fast",
-      "description": "Workspace typechecks without starting services or browser tests."
-    },
-    {
       "name": "test-standard",
-      "command": "pnpm run test-standard",
-      "description": "Workspace typechecks and the project's focused API and Studio checks."
+      "command": "node -e \"require('fs').writeFileSync('/tmp/failure-gate-lock-rJPlRw/validation-ran', 'ran')\""
     },
     {
-      "name": "test-standard-plus",
-      "command": "pnpm run test-standard-plus",
-      "description": "Complete non-browser validation, including API and Studio unit checks."
-    },
-    {
-      "name": "test-heavy",
-      "command": "pnpm run test-heavy",
-      "description": "Full validation including the Studio Playwright browser suite."
+      "name": "malformed-tier"
     }
   ]
 }

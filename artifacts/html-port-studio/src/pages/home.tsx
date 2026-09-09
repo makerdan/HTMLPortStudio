@@ -321,7 +321,7 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
   ]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const rateLimitRemainingSeconds = useRateLimitCountdown(rateLimitRetryAt);
-  const documentContainsCredential = containsCredential(html);
+  const documentContainsCredential = useMemo(() => containsCredential(html), [html]);
   const availableModels = poeData?.configured ? poeData.models : [];
   const selectedModelConfirmed = availableModels.includes(selectedModel);
 
@@ -1339,7 +1339,14 @@ function SourceEditorPanel({
     caseSensitive,
     regex,
   }), [caseSensitive, file?.content, findQuery, regex]);
-  const lineCount = Math.max(1, (file?.content ?? '').split(/\r?\n/).length);
+  const lineCount = useMemo(
+    () => Math.max(1, (file?.content ?? '').split(/\r?\n/).length),
+    [file?.content],
+  );
+  const lineNumbers = useMemo(
+    () => Array.from({ length: lineCount }, (_item, index) => `${index + 1}\n`).join(''),
+    [lineCount],
+  );
   const isStale = !hasReport || analyzedRevision !== revision;
 
   useEffect(() => {
@@ -1548,7 +1555,7 @@ function SourceEditorPanel({
           <div className="flex min-h-0 flex-1 overflow-auto bg-[#10131a] text-slate-100" onScroll={(event) => {
             if (gutterRef.current) gutterRef.current.scrollTop = event.currentTarget.scrollTop;
           }}>
-            <pre ref={gutterRef} aria-hidden="true" className="pointer-events-none min-h-full select-none border-r border-slate-700 bg-[#171b24] px-3 py-3 text-right font-mono text-xs leading-5 text-slate-500">{Array.from({ length: lineCount }, (_item, index) => `${index + 1}\n`).join('')}</pre>
+            <pre ref={gutterRef} aria-hidden="true" className="pointer-events-none min-h-full select-none border-r border-slate-700 bg-[#171b24] px-3 py-3 text-right font-mono text-xs leading-5 text-slate-500">{lineNumbers}</pre>
             <textarea
               ref={textareaRef}
               value={file?.content ?? ''}
@@ -2715,9 +2722,18 @@ export default function Home() {
     (selectedSource === 'github' && sourceBundle?.sourceType === 'github_repository') ||
     (selectedSource === 'hosted' && sourceBundle?.sourceType === 'hosted_page') ||
     (selectedSource === 'playground' && sourceBundle?.sourceType === 'playground');
-  const currentBundle = bundleWithEntrypointSource(htmlInput);
-  const currentSourceContainsCredential =
-    redactCredentialBundle(currentBundle.files).hadCredential;
+  const currentBundle = useMemo(
+    () => bundleWithEntrypointSource(htmlInput),
+    [htmlInput, sourceBundle],
+  );
+  const currentSourceContainsCredential = useMemo(
+    () => redactCredentialBundle(currentBundle.files).hadCredential,
+    [currentBundle],
+  );
+  const repairBundle = useMemo(
+    () => repairSource ? bundleWithEntrypointSource(repairSource) : null,
+    [repairSource, sourceBundle],
+  );
 
   if (!analysisData) {
     return (
@@ -3456,7 +3472,7 @@ export default function Home() {
                   <PoeRepairPanel
                     key={repairSource}
                     html={repairSource}
-                    bundle={bundleWithEntrypointSource(repairSource)}
+                    bundle={repairBundle ?? currentBundle}
                     open={repairOpen}
                     onClose={() => setRepairOpen(false)}
                     onApply={handleApplyRepair}
@@ -3623,7 +3639,7 @@ export default function Home() {
                         <PoeRepairPanel
                           key={repairSource}
                           html={repairSource}
-                          bundle={bundleWithEntrypointSource(repairSource)}
+                          bundle={repairBundle ?? currentBundle}
                           open={repairOpen}
                           onClose={() => setRepairOpen(false)}
                           onApply={handleApplyRepair}
@@ -3915,14 +3931,20 @@ function PoeRepairPanel({
   const scrollRef = useRef<HTMLDivElement>(null);
   const startedSourceRef = useRef<string | null>(null);
   const recoveryWasOpenRef = useRef(false);
-  const credentialRedaction: CredentialBundleRedaction = redactCredentialBundle(bundle.files);
+  const credentialRedaction: CredentialBundleRedaction = useMemo(
+    () => redactCredentialBundle(bundle.files),
+    [bundle.files],
+  );
   const documentContainsCredential = credentialRedaction.hadCredential;
-  const safeRepairSource = documentContainsCredential
-    ? credentialRedaction.files
-        .map((file) => `<untrusted-file path=${JSON.stringify(file.path)}>\n${file.content}\n</untrusted-file>`)
-        .join('\n\n')
-    : html;
-  const initialPrompt = buildRepairPrompt(html);
+  const safeRepairSource = useMemo(
+    () => documentContainsCredential
+      ? credentialRedaction.files
+          .map((file) => `<untrusted-file path=${JSON.stringify(file.path)}>\n${file.content}\n</untrusted-file>`)
+          .join('\n\n')
+      : html,
+    [credentialRedaction, documentContainsCredential, html],
+  );
+  const initialPrompt = useMemo(() => buildRepairPrompt(html), [html]);
   const rateLimitRemainingSeconds = useRateLimitCountdown(rateLimitRetryAt);
   const confirmedGeminiModel = poeData?.configured
     ? poeData.models.find((model: string) => model === GEMINI_REPAIR_MODEL)
@@ -4045,6 +4067,12 @@ function PoeRepairPanel({
     initialPrompt,
   ]);
 
+  const proposedCodeIsSafe = useMemo(
+    () => Boolean(proposal?.files.length) &&
+      proposal?.files.every((file) => !containsCredential(file.content)),
+    [proposal],
+  );
+
   const handleCopyResponse = async (messageIndex: number, content: string) => {
     try {
       if (!navigator.clipboard?.writeText) {
@@ -4068,9 +4096,6 @@ function PoeRepairPanel({
       Boolean(poeData?.configured) &&
       Boolean(confirmedClaudeModel) &&
       !chatMutation.isPending;
-    const proposedCodeIsSafe =
-      Boolean(proposal?.files.length) &&
-      proposal?.files.every((file) => !containsCredential(file.content));
 
     return (
       <Card

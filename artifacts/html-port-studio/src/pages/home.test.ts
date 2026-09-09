@@ -732,6 +732,56 @@ test("requires redacted consent, review, confirmation, re-scan, and undo in Fix 
   assert.match(source, /Reject proposal/);
 });
 
+test("memoizes source-derived render work from its current inputs", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+  const assistantStart = source.indexOf("function PoeAssistantPanel");
+  const editorStart = source.indexOf("function SourceEditorPanel");
+  const homeStart = source.indexOf("export default function Home");
+  const repairStart = source.indexOf("function PoeRepairPanel");
+
+  assert.notEqual(assistantStart, -1);
+  assert.notEqual(editorStart, -1);
+  assert.notEqual(homeStart, -1);
+  assert.notEqual(repairStart, -1);
+
+  const assistantSource = source.slice(assistantStart, editorStart);
+  const editorSource = source.slice(editorStart, homeStart);
+  const homeSource = source.slice(homeStart, repairStart);
+  const repairSource = source.slice(repairStart);
+
+  assert.match(
+    assistantSource,
+    /const documentContainsCredential = useMemo\(\(\) => containsCredential\(html\), \[html\]\)/,
+  );
+  assert.match(
+    homeSource,
+    /const currentBundle = useMemo\(\s*\(\) => bundleWithEntrypointSource\(htmlInput\),\s*\[htmlInput, sourceBundle\],\s*\)/s,
+  );
+  assert.match(
+    homeSource,
+    /const currentSourceContainsCredential = useMemo\(\s*\(\) => redactCredentialBundle\(currentBundle\.files\)\.hadCredential,\s*\[currentBundle\],\s*\)/s,
+  );
+  assert.match(
+    homeSource,
+    /const repairBundle = useMemo\(\s*\(\) => repairSource \? bundleWithEntrypointSource\(repairSource\) : null,\s*\[repairSource, sourceBundle\],\s*\)/s,
+  );
+  assert.match(
+    repairSource,
+    /const credentialRedaction: CredentialBundleRedaction = useMemo\(\s*\(\) => redactCredentialBundle\(bundle\.files\),\s*\[bundle\.files\],\s*\)/s,
+  );
+  assert.match(repairSource, /const safeRepairSource = useMemo\(/);
+  assert.match(repairSource, /const initialPrompt = useMemo\(\(\) => buildRepairPrompt\(html\), \[html\]\)/);
+  assert.match(repairSource, /const proposedCodeIsSafe = useMemo\(/);
+  assert.match(editorSource, /const lineCount = useMemo\(/);
+  assert.match(editorSource, /const lineNumbers = useMemo\(/);
+  assert.match(editorSource, /\{lineNumbers\}/);
+  assert.doesNotMatch(editorSource, /const lineCount = Math\.max\(1, \(file\?\.content \?\? ''\)\.split/);
+  assert.doesNotMatch(
+    editorSource,
+    /<pre[\s\S]*Array\.from\(\{ length: lineCount \}/,
+  );
+});
+
 test("uses concise fallbacks for unknown, transport, and non-JSON errors", () => {
   const fallback = "The assistant could not answer. Your prompt is ready to retry.";
   const errors = [
