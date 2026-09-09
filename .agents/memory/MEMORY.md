@@ -15,3 +15,4 @@
 - [Drizzle migration history](drizzle-migration-history.md) — In this project, additive schema changes need a narrowly scoped migration because generation may recreate existing tables.
 - [GitHub action pin review](github-action-pin-review.md) — Resolve reviewed release tags to full upstream SHAs and verify pin/comment pairs before validation.
 - [GitHub validation evidence](github-validation-evidence.md) — Local workflow files do not prove remote activation; plan limits can block branch protection.
+- [Ephemeral PostgreSQL tests](ephemeral-postgres-tests.md) — Local clusters need an explicit socket directory and use the initdb-created OS role.

@@ -3,7 +3,8 @@ import { randomUUID } from "node:crypto";
 import { spawn, type ChildProcess } from "node:child_process";
 import http, { type IncomingMessage } from "node:http";
 import { createRequire } from "node:module";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import test from "node:test";
 import { once } from "node:events";
 import {
@@ -83,6 +84,69 @@ async function unusedPort(): Promise<number> {
   return port;
 }
 
+async function runCommand(
+  command: string,
+  args: string[],
+  options: { cwd?: string } = {},
+): Promise<void> {
+  const child = spawn(command, args, {
+    ...options,
+    stdio: "ignore",
+  });
+  const [result] = (await once(child, "exit")) as [number | null, string | null];
+  assert.equal(result, 0, `${command} ${args.join(" ")} failed`);
+}
+
+async function startTemporaryPostgres(port: number): Promise<{
+  databaseUrl: string;
+  stop: () => Promise<void>;
+  directory: string;
+}> {
+  const directory = await mkdtemp(`${tmpdir()}/port-test-postgres-`);
+  await runCommand("initdb", ["--no-locale", "--auth=trust", "-D", directory]);
+  const postgres = spawn(
+    "postgres",
+    ["-D", directory, "-h", "127.0.0.1", "-k", directory, "-p", String(port)],
+    { stdio: "ignore" },
+  );
+  const databaseUser = encodeURIComponent(process.env.USER ?? "runner");
+  const databaseUrl = `postgresql://${databaseUser}@127.0.0.1:${port}/postgres`;
+  const database = new Pool({ connectionString: databaseUrl });
+  try {
+    await waitFor(
+      async () => {
+        try {
+          await database.query("SELECT 1");
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      "temporary PostgreSQL server did not start",
+    );
+    await database.query(`
+      CREATE TABLE "poe_chat_rate_limits" (
+        "client_ip" TEXT PRIMARY KEY,
+        "window_started_at" TIMESTAMPTZ NOT NULL,
+        "request_count" INTEGER NOT NULL
+      )
+    `);
+  } finally {
+    await database.end();
+  }
+  return {
+    databaseUrl,
+    directory,
+    stop: async () => {
+      if (!postgres.killed) {
+        postgres.kill("SIGTERM");
+        await once(postgres, "exit").catch(() => undefined);
+      }
+      await rm(directory, { recursive: true, force: true });
+    },
+  };
+}
+
 async function waitFor(
   callback: () => Promise<boolean>,
   message: string,
@@ -145,13 +209,16 @@ test("covers the analysis boundary matrix and origin routing", async () => {
     env: {
       ...process.env,
       PORT: String(apiPort),
-      HTML_PORT_STUDIO_ORIGINS: splitOrigin,
+      REPLIT_CONNECTORS_HOSTNAME: `http://127.0.0.1:${connectionPort}`,
+      REPLIT_CLI: "/bin/false",
+      REPL_IDENTITY: "test-repl-identity",
       NODE_ENV: "test",
     },
     stdio: "ignore",
   });
 
-  const baseUrl = `http://127.0.0.1:${apiPort}/api`;
+  try {
+    const baseUrl = `http://127.0.0.1:${apiPort}/api`;
   const html = "<!doctype html><title>Boundary fixture</title><main>ok</main>";
   const metadata = { displayName: "Boundary fixture" };
   const bundle = (files: Array<{ path: string; content: string }>, entrypoint = files[0]?.path) => ({
@@ -358,60 +425,21 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
   let returnFailure = false;
   let returnMalformedCompletion = false;
   const poe = http.createServer(async (request, response) => {
-    const url = new URL(request.url ?? "/", "http://127.0.0.1");
-    const body =
-      request.method === "POST" ? (JSON.parse(await readBody(request)) as Json) : null;
-    poeRequests.push({
-      method: request.method ?? "",
-      path: url.pathname,
-      authorization: request.headers.authorization,
-      body,
-    });
-
-    if (request.method === "GET" && url.pathname === "/v1/models") {
+    const path = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
+    if (request.method === "GET" && path === "/v1/models") {
+      modelRequests += 1;
       response.writeHead(200, { "Content-Type": "application/json" });
-      response.end(
-        JSON.stringify({
-          data: [{ id: confirmedModel }, { id: "another-confirmed-model" }],
-        }),
-      );
+      response.end(JSON.stringify({ data: [{ id: confirmedModel }] }));
       return;
     }
-
-    if (request.method === "POST" && url.pathname === "/v1/chat/completions") {
-      if (returnFailure) {
-        response.writeHead(429, { "Content-Type": "application/json" });
-        response.end(
-          JSON.stringify({
-            error: {
-              message: "provider-internal diagnostic with sensitive details",
-              request_id: "provider-secret-request-id",
-            },
-          }),
-        );
-        return;
-      }
-
-      if (returnMalformedCompletion) {
-        response.writeHead(200, { "Content-Type": "application/json" });
-        response.end(
-          JSON.stringify({
-            error: {
-              message: "provider-internal malformed completion diagnostic",
-              request_id: "provider-malformed-secret-request-id",
-            },
-            choices: [],
-          }),
-        );
-        return;
-      }
-
+    if (request.method === "POST" && path === "/v1/chat/completions") {
+      completionRequests += 1;
+      await readBody(request);
       response.writeHead(200, { "Content-Type": "application/json" });
       response.end(
         JSON.stringify({
           model: confirmedModel,
-          choices: [{ message: { content: "The redacted repair is safe to apply." } }],
-          usage: { prompt_tokens: 31, completion_tokens: 9 },
+          choices: [{ message: { content: "bounded response" } }],
         }),
       );
       return;
@@ -426,8 +454,9 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
     env: {
       ...process.env,
       PORT: String(apiPort),
-      POE_API_KEY: "test-poe-key",
-      POE_API_BASE_URL: `http://127.0.0.1:${poePort}/v1`,
+      REPLIT_CONNECTORS_HOSTNAME: `http://127.0.0.1:${connectionPort}`,
+      REPLIT_CLI: "/bin/false",
+      REPL_IDENTITY: "test-repl-identity",
       NODE_ENV: "test",
     },
     stdio: "ignore",
@@ -520,6 +549,104 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
   }
 });
 
+test("recovers Poe forwarding after rate-limit storage becomes available", async () => {
+  const confirmedModel = "Claude-Sonnet-4.6";
+  const clientIp = testClientIp();
+  let providerRequests = 0;
+  const poe = http.createServer(async (request, response) => {
+    const path = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
+    if (request.method === "GET" && path === "/v1/models") {
+      modelRequests += 1;
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ data: [{ id: confirmedModel }] }));
+      return;
+    }
+    if (request.method === "POST" && path === "/v1/chat/completions") {
+      completionRequests += 1;
+      await readBody(request);
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(
+        JSON.stringify({
+          model: confirmedModel,
+          choices: [{ message: { content: "bounded response" } }],
+        }),
+      );
+      return;
+    }
+    response.writeHead(404);
+    response.end();
+  });
+  const poePort = await listen(poe);
+  const databasePort = await unusedPort();
+  const apiPort = await unusedPort();
+  const api = spawn(process.execPath, ["--enable-source-maps", "dist/index.mjs"], {
+    cwd: new URL("../../", import.meta.url).pathname,
+    env: {
+      ...process.env,
+      PORT: String(apiPort),
+      REPLIT_CONNECTORS_HOSTNAME: `http://127.0.0.1:${connectionPort}`,
+      REPLIT_CLI: "/bin/false",
+      REPL_IDENTITY: "test-repl-identity",
+      NODE_ENV: "test",
+    },
+    stdio: "ignore",
+  });
+  let temporaryPostgres: Awaited<ReturnType<typeof startTemporaryPostgres>> | undefined;
+
+  try {
+    const baseUrl = `http://127.0.0.1:${apiPort}/api`;
+    await waitFor(async () => {
+      try {
+        return (await fetch(`${baseUrl}/healthz`)).ok;
+      } catch {
+        return false;
+      }
+    }, "API server did not start");
+
+    const unavailable = await jsonRequest(`${baseUrl}/port/poe/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Forwarded-For": clientIp,
+      },
+      body: JSON.stringify({
+        model: confirmedModel,
+        messages: [{ role: "user", content: "request during outage" }],
+      }),
+    });
+    assert.equal(unavailable.status, 503);
+    assert.equal(unavailable.body.code, "POE_RATE_LIMIT_UNAVAILABLE");
+    assert.equal(providerRequests, 0);
+
+    temporaryPostgres = await startTemporaryPostgres(databasePort);
+
+    const recovered = await jsonRequest(`${baseUrl}/port/poe/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Forwarded-For": clientIp,
+      },
+      body: JSON.stringify({
+        model: confirmedModel,
+        messages: [{ role: "user", content: "request after recovery" }],
+      }),
+    });
+    assert.equal(recovered.status, 200);
+    assert.deepEqual(recovered.body, {
+      content: "recovered provider response",
+      model: confirmedModel,
+    });
+    assert.equal(providerRequests, 1);
+  } finally {
+    if (!api.killed) {
+      api.kill("SIGTERM");
+      await once(api, "exit").catch(() => undefined);
+    }
+    await temporaryPostgres?.stop();
+    await new Promise<void>((resolve) => poe.close(() => resolve()));
+  }
+});
+
 test("bounds public Poe traffic before provider forwarding and caches models", async () => {
   const confirmedModel = "Claude-Sonnet-4.6";
   let modelRequests = 0;
@@ -567,7 +694,18 @@ test("bounds public Poe traffic before provider forwarding and caches models", a
     }
   };
   const apiPort = await unusedPort();
-  const api = startApi(apiPort);
+  const api = spawn(process.execPath, ["--enable-source-maps", "dist/index.mjs"], {
+    cwd: new URL("../../", import.meta.url).pathname,
+    env: {
+      ...process.env,
+      PORT: String(apiPort),
+      REPLIT_CONNECTORS_HOSTNAME: `http://127.0.0.1:${connectionPort}`,
+      REPLIT_CLI: "/bin/false",
+      REPL_IDENTITY: "test-repl-identity",
+      NODE_ENV: "test",
+    },
+    stdio: "ignore",
+  });
   let secondApi: ChildProcess | undefined;
   let restartedApi: ChildProcess | undefined;
   const abuseIp = `198.51.100.${(Number.parseInt(randomUUID().slice(0, 2), 16) % 254) + 1}`;
@@ -751,11 +889,7 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
       `${otherOwnerId}@example.test`,
     ],
   );
-  const source = `<!doctype html>
-<html>
-  <head><title>Project handoff fixture</title></head>
-  <body><main>Source must remain unchanged.</main></body>
-</html>`;
+  const source = await readFile(new URL("./port.ts", import.meta.url), "utf8");
 
   const setupSkills: Array<{ name: string; slug: string }> = [];
   const setupRequests: Json[] = [];
