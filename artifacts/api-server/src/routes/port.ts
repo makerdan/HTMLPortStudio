@@ -15,6 +15,13 @@ import { requireAuth } from "../middlewares/clerkAuthMiddleware";
 import { fetchHostedUrl, HostedUrlError } from "./hosted-url";
 import { importPlayground, PlaygroundError } from "./playground";
 import {
+  parseCompletion,
+  poeRequest,
+  PoeProviderError,
+  validateCatalogue,
+  type PoeCatalogue,
+} from "../lib/poe-provider";
+import {
   AnalyzeHtmlBody,
   AnalyzeHtmlResponse,
   analyzeHtmlBodyThreeHtmlMax as SOURCE_TEXT_MAX_BYTES,
@@ -32,11 +39,6 @@ import {
   type PoeMessage,
   ImportPlaygroundResponse,
 } from "@workspace/api-zod";
-import {
-  canonicalSkillInstallRequest,
-  canonicalSkillResolutionDiagnostic,
-  resolvedCanonicalSkillId,
-} from "../project-creation-contract";
 
 type Finding = {
   severity: "info" | "warning" | "blocker";
@@ -213,30 +215,7 @@ export function analyzeBundle(bundle: SourceBundle) {
     steps,
   };
 }
-async function poeRequest(path: string, init?: RequestInit): Promise<Response> {
-  const apiKey = process.env.POE_API_KEY;
-  if (!apiKey) {
-    throw new Error("POE_NOT_CONFIGURED");
-  }
-
-  const baseUrl = (process.env.POE_API_BASE_URL ?? "https://api.poe.com/v1").replace(/\/+$/, "");
-  return fetch(`${baseUrl}${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
-  });
-}
-
-type PoeModelCatalogue = {
-  configured: boolean;
-  models: string[];
-  message: string;
-  available: boolean;
-  failed: boolean;
-};
+type PoeModelCatalogue = PoeCatalogue;
 
 export const POE_CHAT_REQUEST_MAX_BYTES = 512 * 1024;
 export const POE_CHAT_MAX_COMPLETION_TOKENS = 4_096;
@@ -326,15 +305,7 @@ async function loadPoeModelCatalogueFromPoe(): Promise<PoeModelCatalogue> {
     }
 
     const body: unknown = await response.json();
-    const models =
-      typeof body === "object" &&
-      body !== null &&
-      "data" in body &&
-      Array.isArray((body as { data?: unknown }).data)
-        ? (body as { data: Array<{ id?: unknown }> }).data
-            .map((model) => (typeof model.id === "string" ? model.id : null))
-            .filter((model): model is string => model !== null)
-        : [];
+    const models = validateCatalogue(body);
 
     return {
       configured: true,
@@ -361,12 +332,12 @@ export function isPoeModelConfirmed(models: readonly string[], requestedModel: s
 }
 
 const SETUP_STEPS = [
-  { name: "Port Authority", skillId: "port-authority" },
-  { name: "Failure Gate", skillId: "failure-gate" },
-  { name: "Regression Guard", skillId: "regression-guard" },
-  { name: "Skill Mirror Sync", skillId: "skill-mirror-sync" },
-  { name: "App Support Ops", skillId: "app-support-ops" },
-  { name: "Poe Setup", skillId: "poe-setup" },
+  { name: "Port Authority", slug: "port-authority" },
+  { name: "Failure Gate", slug: "failure-gate" },
+  { name: "Regression Guard", slug: "regression-guard" },
+  { name: "Skill Mirror Sync", slug: "skill-mirror-sync" },
+  { name: "App Support Ops", slug: "app-support-ops" },
+  { name: "Poe Setup", slug: "poe-setup" },
 ] as const;
 
 type SetupStepName = (typeof SETUP_STEPS)[number]["name"];
@@ -386,7 +357,7 @@ type ProjectCreationConnection = {
   installSkill(input: {
     projectId: string;
     name: SetupStepName;
-    skillId: string;
+    slug: string;
     idempotencyKey: string;
   }): Promise<void>;
 };
@@ -431,7 +402,13 @@ async function hasProjectCreationConnection(): Promise<boolean> {
 }
 
 function projectConnectionSetupUrl(): string {
-  return "https://replit.com/integrations";
+  const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME ?? "connectors.replit.com";
+  const baseUrl = hostname.startsWith("http://") || hostname.startsWith("https://")
+    ? hostname
+    : `https://${hostname}`;
+  const setupUrl = new URL("/console/connector-config", baseUrl);
+  setupUrl.searchParams.set("connector", PROJECT_CREATION_CONNECTOR);
+  return setupUrl.toString();
 }
 
 async function projectConnectionRequest(
@@ -484,7 +461,7 @@ function getStringField(value: unknown, keys: string[]): string | null {
   return null;
 }
 
-function skillWasConfirmed(body: unknown, skillId: string): boolean {
+function skillWasConfirmed(body: unknown): boolean {
   const status = getStringField(body, ["status", "state"]);
   return (
     (typeof body === "object" &&
@@ -492,7 +469,7 @@ function skillWasConfirmed(body: unknown, skillId: string): boolean {
       (body as Record<string, unknown>).completed === true) ||
     status === "completed" ||
     status === "succeeded"
-  ) && resolvedCanonicalSkillId(body) === skillId;
+  );
 }
 
 function skillFailed(body: unknown): boolean {
@@ -507,17 +484,14 @@ function sleep(milliseconds: number): Promise<void> {
 async function awaitSkillConfirmation(
   initialBody: unknown,
   idempotencyKey: string,
-  skillId: string,
 ): Promise<void> {
   let body = initialBody;
   for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (skillWasConfirmed(body, skillId)) return;
+    if (skillWasConfirmed(body)) return;
     if (skillFailed(body)) throw new Error("PROJECT_CREATION_CONNECTION_FAILED");
 
     const operationId = getStringField(body, ["operationId", "setupOperationId"]);
-    if (!operationId) {
-      throw new Error("CANONICAL_SKILL_NOT_RESOLVED");
-    }
+    if (!operationId) throw new Error("SKILL_INSTALLATION_NOT_CONFIRMED");
 
     await sleep(500);
     const operation = await projectConnectionRequest(
@@ -557,16 +531,16 @@ function createProjectConnection(): ProjectCreationConnection {
         projectUrl: getStringField(body, ["projectUrl", "url"]),
       };
     },
-    async installSkill({ projectId, skillId, idempotencyKey }) {
+    async installSkill({ projectId, name, slug, idempotencyKey }) {
       const response = await projectConnectionRequest(
         `/projects/${encodeURIComponent(projectId)}/setup`,
         {
           method: "POST",
-          body: JSON.stringify(canonicalSkillInstallRequest(skillId)),
+          body: JSON.stringify({ name, slug }),
         },
         idempotencyKey,
       );
-      await awaitSkillConfirmation(response.body, idempotencyKey, skillId);
+      await awaitSkillConfirmation(response.body, idempotencyKey);
     },
   };
 }
@@ -675,9 +649,6 @@ function jobError(message: unknown): string {
     }
     if (message.message === "SKILL_INSTALLATION_NOT_CONFIRMED") {
       return "The setup skill did not confirm completion, so later steps were not started. Retry this step after checking the Replit connection.";
-    }
-    if (message.message === "CANONICAL_SKILL_NOT_RESOLVED") {
-      return canonicalSkillResolutionDiagnostic();
     }
   }
   return "The Replit project setup could not be completed. Retry the failed step.";
@@ -818,7 +789,7 @@ async function runHandoffJob(jobId: string): Promise<void> {
         await connection.installSkill({
           projectId: job.projectId,
           name: definition.name,
-          skillId: definition.skillId,
+          slug: definition.slug,
           idempotencyKey: `handoff:${job.id}:step:${index}`,
         });
         assertLease();
@@ -1198,15 +1169,8 @@ router.post("/port/poe/chat", async (req, res): Promise<void> => {
       return;
     }
 
-    const body: unknown = await response.json();
-    const completion = body as {
-      model?: unknown;
-      choices?: Array<{ message?: { content?: unknown } }>;
-      usage?: { prompt_tokens?: unknown; completion_tokens?: unknown };
-    };
-    const content = completion.choices?.[0]?.message?.content;
-
-    if (typeof content !== "string") {
+    const completion = parseCompletion(await response.json());
+    if (!completion.content) {
       req.log.warn("Poe chat response had no text content");
       res.status(503).json({ error: "Poe returned a completion without text content." });
       return;
@@ -1214,30 +1178,27 @@ router.post("/port/poe/chat", async (req, res): Promise<void> => {
 
     res.json(
       ChatWithPoeResponse.parse({
-        content,
-        model:
-          typeof completion.model === "string"
-            ? completion.model
-            : parsed.data.model,
+        content: completion.content,
+        model: completion.model ?? parsed.data.model,
         usage: completion.usage
           ? {
-              promptTokens:
-                typeof completion.usage.prompt_tokens === "number"
-                  ? completion.usage.prompt_tokens
-                  : 0,
-              completionTokens:
-                typeof completion.usage.completion_tokens === "number"
-                  ? completion.usage.completion_tokens
-                  : 0,
+              promptTokens: completion.usage.prompt_tokens ?? 0,
+              completionTokens: completion.usage.completion_tokens ?? 0,
             }
           : undefined,
       }),
     );
   } catch (error) {
-    if (error instanceof Error && error.message === "POE_NOT_CONFIGURED") {
+    if (error instanceof PoeProviderError && error.code === "POE_NOT_CONFIGURED") {
       res.status(503).json({
         error: "Poe is not configured. Add POE_API_KEY in Replit Secrets, then restart the API server.",
       });
+      return;
+    }
+
+    if (error instanceof PoeProviderError && error.code === "POE_COMPLETION_INVALID") {
+      req.log.warn("Poe chat response had no text content");
+      res.status(503).json({ error: "Poe returned a completion without text content." });
       return;
     }
 
@@ -1358,7 +1319,7 @@ router.post(
         jobId: job.id,
         position,
         name: step.name,
-        slug: step.skillId,
+        slug: step.slug,
         status: "pending",
       })),
     );

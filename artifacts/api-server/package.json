@@ -7,7 +7,7 @@
     "dev": "export NODE_ENV=development && node ../../scripts/free-ports.mjs \"${PORT:?PORT is required}\" && pnpm run build && pnpm run start",
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
-    "test:port": "pnpm run build && node --experimental-strip-types --test src/routes/port.test.ts src/routes/github.test.ts src/routes/hosted-url.test.ts src/routes/playground.test.ts src/routes/auth.test.ts",
+    "test:port": "pnpm run build && node --experimental-strip-types --test src/lib/poe-provider.test.ts src/routes/port.test.ts src/routes/github.test.ts src/routes/hosted-url.test.ts src/routes/playground.test.ts src/routes/auth.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

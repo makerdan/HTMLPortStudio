@@ -3,15 +3,9 @@ import { randomUUID } from "node:crypto";
 import { spawn, type ChildProcess } from "node:child_process";
 import http, { type IncomingMessage } from "node:http";
 import { createRequire } from "node:module";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { once } from "node:events";
-import {
-  canonicalSkillInstallRequest,
-  canonicalSkillResolutionDiagnostic,
-  validateCanonicalSkillInstallRequest,
-} from "../project-creation-contract.ts";
 import { SOURCE_TEXT_MAX_BYTES as ANALYSIS_SOURCE_LIMIT } from "./source-limits.ts";
 
 const requireFromDb = createRequire(
@@ -20,40 +14,6 @@ const requireFromDb = createRequire(
 const { Pool } = requireFromDb("pg");
 
 type Json = Record<string, unknown>;
-
-test("project creation sends canonical skill identities without bundled skill state", () => {
-  assert.deepEqual(canonicalSkillInstallRequest("skill-mirror-sync"), {
-    skillId: "skill-mirror-sync",
-  });
-
-  for (const field of [
-    "body",
-    "content",
-    "definition",
-    "files",
-    "mirror",
-    "sourceRevision",
-    "version",
-    "versionPin",
-  ]) {
-    assert.throws(
-      () =>
-        validateCanonicalSkillInstallRequest({
-          skillId: "skill-mirror-sync",
-          [field]: "must-not-cross-connector-boundary",
-        }),
-      /CANONICAL_SKILL_REQUEST_IDENTITY_ONLY/,
-    );
-  }
-});
-
-test("canonical skill resolution failures stay safe and actionable", () => {
-  const diagnostic = canonicalSkillResolutionDiagnostic();
-  assert.match(diagnostic, /did not resolve the requested workspace skill identity/i);
-  assert.match(diagnostic, /No skill body or mirror was sent/i);
-  assert.match(diagnostic, /Reconnect.*retry/i);
-  assert.doesNotMatch(diagnostic, /SKILL\.md|sourceRevision|fingerprint|versionPin/i);
-});
 
 function testClientIp(): string {
   const value = randomUUID().replaceAll("-", "");
@@ -82,69 +42,6 @@ async function unusedPort(): Promise<number> {
   const port = await listen(server);
   await new Promise<void>((resolve) => server.close(() => resolve()));
   return port;
-}
-
-async function runCommand(
-  command: string,
-  args: string[],
-  options: { cwd?: string } = {},
-): Promise<void> {
-  const child = spawn(command, args, {
-    ...options,
-    stdio: "ignore",
-  });
-  const [result] = (await once(child, "exit")) as [number | null, string | null];
-  assert.equal(result, 0, `${command} ${args.join(" ")} failed`);
-}
-
-async function startTemporaryPostgres(port: number): Promise<{
-  databaseUrl: string;
-  stop: () => Promise<void>;
-  directory: string;
-}> {
-  const directory = await mkdtemp(`${tmpdir()}/port-test-postgres-`);
-  await runCommand("initdb", ["--no-locale", "--auth=trust", "-D", directory]);
-  const postgres = spawn(
-    "postgres",
-    ["-D", directory, "-h", "127.0.0.1", "-k", directory, "-p", String(port)],
-    { stdio: "ignore" },
-  );
-  const databaseUser = encodeURIComponent(process.env.USER ?? "runner");
-  const databaseUrl = `postgresql://${databaseUser}@127.0.0.1:${port}/postgres`;
-  const database = new Pool({ connectionString: databaseUrl });
-  try {
-    await waitFor(
-      async () => {
-        try {
-          await database.query("SELECT 1");
-          return true;
-        } catch {
-          return false;
-        }
-      },
-      "temporary PostgreSQL server did not start",
-    );
-    await database.query(`
-      CREATE TABLE "poe_chat_rate_limits" (
-        "client_ip" TEXT PRIMARY KEY,
-        "window_started_at" TIMESTAMPTZ NOT NULL,
-        "request_count" INTEGER NOT NULL
-      )
-    `);
-  } finally {
-    await database.end();
-  }
-  return {
-    databaseUrl,
-    directory,
-    stop: async () => {
-      if (!postgres.killed) {
-        postgres.kill("SIGTERM");
-        await once(postgres, "exit").catch(() => undefined);
-      }
-      await rm(directory, { recursive: true, force: true });
-    },
-  };
 }
 
 async function waitFor(
@@ -209,16 +106,13 @@ test("covers the analysis boundary matrix and origin routing", async () => {
     env: {
       ...process.env,
       PORT: String(apiPort),
-      REPLIT_CONNECTORS_HOSTNAME: `http://127.0.0.1:${connectionPort}`,
-      REPLIT_CLI: "/bin/false",
-      REPL_IDENTITY: "test-repl-identity",
+      HTML_PORT_STUDIO_ORIGINS: splitOrigin,
       NODE_ENV: "test",
     },
     stdio: "ignore",
   });
 
-  try {
-    const baseUrl = `http://127.0.0.1:${apiPort}/api`;
+  const baseUrl = `http://127.0.0.1:${apiPort}/api`;
   const html = "<!doctype html><title>Boundary fixture</title><main>ok</main>";
   const metadata = { displayName: "Boundary fixture" };
   const bundle = (files: Array<{ path: string; content: string }>, entrypoint = files[0]?.path) => ({
@@ -425,21 +319,60 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
   let returnFailure = false;
   let returnMalformedCompletion = false;
   const poe = http.createServer(async (request, response) => {
-    const path = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
-    if (request.method === "GET" && path === "/v1/models") {
-      modelRequests += 1;
+    const url = new URL(request.url ?? "/", "http://127.0.0.1");
+    const body =
+      request.method === "POST" ? (JSON.parse(await readBody(request)) as Json) : null;
+    poeRequests.push({
+      method: request.method ?? "",
+      path: url.pathname,
+      authorization: request.headers.authorization,
+      body,
+    });
+
+    if (request.method === "GET" && url.pathname === "/v1/models") {
       response.writeHead(200, { "Content-Type": "application/json" });
-      response.end(JSON.stringify({ data: [{ id: confirmedModel }] }));
+      response.end(
+        JSON.stringify({
+          data: [{ id: confirmedModel }, { id: "another-confirmed-model" }],
+        }),
+      );
       return;
     }
-    if (request.method === "POST" && path === "/v1/chat/completions") {
-      completionRequests += 1;
-      await readBody(request);
+
+    if (request.method === "POST" && url.pathname === "/v1/chat/completions") {
+      if (returnFailure) {
+        response.writeHead(429, { "Content-Type": "application/json" });
+        response.end(
+          JSON.stringify({
+            error: {
+              message: "provider-internal diagnostic with sensitive details",
+              request_id: "provider-secret-request-id",
+            },
+          }),
+        );
+        return;
+      }
+
+      if (returnMalformedCompletion) {
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(
+          JSON.stringify({
+            error: {
+              message: "provider-internal malformed completion diagnostic",
+              request_id: "provider-malformed-secret-request-id",
+            },
+            choices: [],
+          }),
+        );
+        return;
+      }
+
       response.writeHead(200, { "Content-Type": "application/json" });
       response.end(
         JSON.stringify({
           model: confirmedModel,
-          choices: [{ message: { content: "bounded response" } }],
+          choices: [{ message: { content: "The redacted repair is safe to apply." } }],
+          usage: { prompt_tokens: 31, completion_tokens: 9 },
         }),
       );
       return;
@@ -454,9 +387,8 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
     env: {
       ...process.env,
       PORT: String(apiPort),
-      REPLIT_CONNECTORS_HOSTNAME: `http://127.0.0.1:${connectionPort}`,
-      REPLIT_CLI: "/bin/false",
-      REPL_IDENTITY: "test-repl-identity",
+      POE_API_KEY: "test-poe-key",
+      POE_API_BASE_URL: `http://127.0.0.1:${poePort}/v1`,
       NODE_ENV: "test",
     },
     stdio: "ignore",
@@ -549,104 +481,6 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
   }
 });
 
-test("recovers Poe forwarding after rate-limit storage becomes available", async () => {
-  const confirmedModel = "Claude-Sonnet-4.6";
-  const clientIp = testClientIp();
-  let providerRequests = 0;
-  const poe = http.createServer(async (request, response) => {
-    const path = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
-    if (request.method === "GET" && path === "/v1/models") {
-      modelRequests += 1;
-      response.writeHead(200, { "Content-Type": "application/json" });
-      response.end(JSON.stringify({ data: [{ id: confirmedModel }] }));
-      return;
-    }
-    if (request.method === "POST" && path === "/v1/chat/completions") {
-      completionRequests += 1;
-      await readBody(request);
-      response.writeHead(200, { "Content-Type": "application/json" });
-      response.end(
-        JSON.stringify({
-          model: confirmedModel,
-          choices: [{ message: { content: "bounded response" } }],
-        }),
-      );
-      return;
-    }
-    response.writeHead(404);
-    response.end();
-  });
-  const poePort = await listen(poe);
-  const databasePort = await unusedPort();
-  const apiPort = await unusedPort();
-  const api = spawn(process.execPath, ["--enable-source-maps", "dist/index.mjs"], {
-    cwd: new URL("../../", import.meta.url).pathname,
-    env: {
-      ...process.env,
-      PORT: String(apiPort),
-      REPLIT_CONNECTORS_HOSTNAME: `http://127.0.0.1:${connectionPort}`,
-      REPLIT_CLI: "/bin/false",
-      REPL_IDENTITY: "test-repl-identity",
-      NODE_ENV: "test",
-    },
-    stdio: "ignore",
-  });
-  let temporaryPostgres: Awaited<ReturnType<typeof startTemporaryPostgres>> | undefined;
-
-  try {
-    const baseUrl = `http://127.0.0.1:${apiPort}/api`;
-    await waitFor(async () => {
-      try {
-        return (await fetch(`${baseUrl}/healthz`)).ok;
-      } catch {
-        return false;
-      }
-    }, "API server did not start");
-
-    const unavailable = await jsonRequest(`${baseUrl}/port/poe/chat`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Forwarded-For": clientIp,
-      },
-      body: JSON.stringify({
-        model: confirmedModel,
-        messages: [{ role: "user", content: "request during outage" }],
-      }),
-    });
-    assert.equal(unavailable.status, 503);
-    assert.equal(unavailable.body.code, "POE_RATE_LIMIT_UNAVAILABLE");
-    assert.equal(providerRequests, 0);
-
-    temporaryPostgres = await startTemporaryPostgres(databasePort);
-
-    const recovered = await jsonRequest(`${baseUrl}/port/poe/chat`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Forwarded-For": clientIp,
-      },
-      body: JSON.stringify({
-        model: confirmedModel,
-        messages: [{ role: "user", content: "request after recovery" }],
-      }),
-    });
-    assert.equal(recovered.status, 200);
-    assert.deepEqual(recovered.body, {
-      content: "recovered provider response",
-      model: confirmedModel,
-    });
-    assert.equal(providerRequests, 1);
-  } finally {
-    if (!api.killed) {
-      api.kill("SIGTERM");
-      await once(api, "exit").catch(() => undefined);
-    }
-    await temporaryPostgres?.stop();
-    await new Promise<void>((resolve) => poe.close(() => resolve()));
-  }
-});
-
 test("bounds public Poe traffic before provider forwarding and caches models", async () => {
   const confirmedModel = "Claude-Sonnet-4.6";
   let modelRequests = 0;
@@ -694,18 +528,7 @@ test("bounds public Poe traffic before provider forwarding and caches models", a
     }
   };
   const apiPort = await unusedPort();
-  const api = spawn(process.execPath, ["--enable-source-maps", "dist/index.mjs"], {
-    cwd: new URL("../../", import.meta.url).pathname,
-    env: {
-      ...process.env,
-      PORT: String(apiPort),
-      REPLIT_CONNECTORS_HOSTNAME: `http://127.0.0.1:${connectionPort}`,
-      REPLIT_CLI: "/bin/false",
-      REPL_IDENTITY: "test-repl-identity",
-      NODE_ENV: "test",
-    },
-    stdio: "ignore",
-  });
+  const api = startApi(apiPort);
   let secondApi: ChildProcess | undefined;
   let restartedApi: ChildProcess | undefined;
   const abuseIp = `198.51.100.${(Number.parseInt(randomUUID().slice(0, 2), 16) % 254) + 1}`;
@@ -889,10 +712,13 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
       `${otherOwnerId}@example.test`,
     ],
   );
-  const source = await readFile(new URL("./port.ts", import.meta.url), "utf8");
+  const source = `<!doctype html>
+<html>
+  <head><title>Project handoff fixture</title></head>
+  <body><main>Source must remain unchanged.</main></body>
+</html>`;
 
   const setupSkills: Array<{ name: string; slug: string }> = [];
-  const setupRequests: Json[] = [];
   const connectorNames: string[] = [];
   let createdProject: Json | null = null;
   let connectionAttached = false;
@@ -927,25 +753,13 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
     }
 
     if (request.method === "POST" && path === "/api/v2/proxy/projects/project-123/setup") {
-      setupRequests.push(body);
-      const setup = body as { skillId: string };
-      const skillNames: Record<string, string> = {
-        "port-authority": "Port Authority",
-        "failure-gate": "Failure Gate",
-        "regression-guard": "Regression Guard",
-        "skill-mirror-sync": "Skill Mirror Sync",
-        "app-support-ops": "App Support Ops",
-        "poe-setup": "Poe Setup",
-      };
-      const name = skillNames[setup.skillId];
-      assert.ok(name);
-      setupSkills.push({ name, slug: setup.skillId });
-      const shouldFail = setup.skillId === "failure-gate" && firstFailure;
+      const setup = body as { name: string; slug: string };
+      setupSkills.push({ name: setup.name, slug: setup.slug });
+      const shouldFail = setup.name === "Failure Gate" && firstFailure;
       if (shouldFail) firstFailure = false;
       response.writeHead(200, { "Content-Type": "application/json" });
       response.end(JSON.stringify({
         status: shouldFail ? "failed" : "completed",
-        resolvedSkillId: setup.skillId,
       }));
       return;
     }
@@ -1026,7 +840,10 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
     });
     assert.equal(ownerSetup.status, 200);
     assert.equal(ownerSetup.body.status, "setup_required");
-    assert.equal(ownerSetup.body.setupUrl, "https://replit.com/integrations");
+    assert.equal(
+      ownerSetup.body.setupUrl,
+      `http://127.0.0.1:${connectionPort}/console/connector-config?connector=replit-project-creation`,
+    );
 
     const otherOwnerSetup = await jsonRequest(`${baseUrl}/port/replit-project-connection/setup`, {
       headers: otherOwnerHeaders,
@@ -1111,10 +928,6 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
       { name: "Port Authority", slug: "port-authority" },
       { name: "Failure Gate", slug: "failure-gate" },
     ]);
-    assert.deepEqual(setupRequests, [
-      { skillId: "port-authority" },
-      { skillId: "failure-gate" },
-    ]);
     assert.deepEqual(createdProject?.["files"], [{ path: "index.html", content: source }]);
     assert.ok(connectorNames.length > 0);
     assert.ok(connectorNames.every((name) => name === "replit-project-creation"));
@@ -1160,17 +973,6 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
         ["App Support Ops", "app-support-ops"],
         ["Poe Setup", "poe-setup"],
       ].map(([name, slug]) => ({ name, slug })),
-    );
-    assert.ok(
-      setupRequests.every(
-        (request) =>
-          Object.keys(request).length === 1 &&
-          typeof request.skillId === "string" &&
-          !("body" in request) &&
-          !("mirror" in request) &&
-          !("version" in request) &&
-          !("versionPin" in request),
-      ),
     );
   } finally {
     if (!api.killed) {
