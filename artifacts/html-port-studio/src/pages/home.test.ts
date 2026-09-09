@@ -35,6 +35,19 @@ import {
   trackSourceImportOutcome,
 } from "../lib/analytics.ts";
 
+const sharedProviderSourcePaths = [
+  "../components/ui/carousel.tsx",
+  "../components/ui/chart.tsx",
+  "../components/ui/form.tsx",
+  "../components/ui/toggle-group.tsx",
+  "../hooks/use-toast.ts",
+  "../../../../artifacts/mockup-sandbox/src/components/ui/carousel.tsx",
+  "../../../../artifacts/mockup-sandbox/src/components/ui/chart.tsx",
+  "../../../../artifacts/mockup-sandbox/src/components/ui/form.tsx",
+  "../../../../artifacts/mockup-sandbox/src/components/ui/toggle-group.tsx",
+  "../../../../artifacts/mockup-sandbox/src/hooks/use-toast.ts",
+];
+
 function makeStorage(initial: Record<string, string> = {}) {
   const values = new Map(Object.entries(initial));
   return {
@@ -44,6 +57,63 @@ function makeStorage(initial: Record<string, string> = {}) {
     value: (key: string) => values.get(key) ?? null,
   };
 }
+
+test("keeps mirrored provider values and subscriptions stable", async () => {
+  const sources = await Promise.all(
+    sharedProviderSourcePaths.map((path) =>
+      readFile(new URL(path, import.meta.url), "utf8"),
+    ),
+  );
+
+  const [htmlCarousel, htmlChart, htmlForm, htmlToggle, htmlToast,
+    mockupCarousel, mockupChart, mockupForm, mockupToggle, mockupToast] =
+    sources;
+
+  for (const source of [htmlCarousel, mockupCarousel]) {
+    assert.match(
+      source,
+      /api\.on\(["']reInit["'], onSelect\)[\s\S]*api\?\.off\(["']reInit["'], onSelect\)/,
+    );
+    assert.match(
+      source,
+      /api\.on\(["']select["'], onSelect\)[\s\S]*api\?\.off\(["']select["'], onSelect\)/,
+    );
+    assert.match(source, /const carouselContextValue = React\.useMemo/);
+    assert.doesNotMatch(source, /<CarouselContext\.Provider\s+value=\{\{/);
+  }
+
+  for (const source of [htmlChart, mockupChart]) {
+    assert.match(source, /const chartContextValue = React\.useMemo/);
+    assert.doesNotMatch(source, /<ChartContext\.Provider\s+value=\{\{/);
+  }
+
+  for (const source of [htmlForm, mockupForm]) {
+    assert.match(source, /const fieldContextValue = React\.useMemo/);
+    assert.match(source, /const itemContextValue = React\.useMemo/);
+    assert.doesNotMatch(source, /<Form(?:Field|Item)Context\.Provider\s+value=\{\{/);
+  }
+
+  for (const source of [htmlToggle, mockupToggle]) {
+    assert.match(source, /const contextValue = React\.useMemo/);
+    assert.doesNotMatch(source, /<ToggleGroupContext\.Provider\s+value=\{\{/);
+  }
+
+  for (const source of [htmlToast, mockupToast]) {
+    assert.match(
+      source,
+      /listeners\.push\(setState\)[\s\S]*?\}, \[\]\)?[;\n]/,
+    );
+  }
+
+  const authSource = await readFile(
+    new URL("../auth.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(authSource, /const user = useMemo<StudioUser \| null>/);
+  assert.match(authSource, /const authContextValue = useMemo/);
+  assert.match(authSource, /<AuthContext\.Provider value=\{authContextValue\}>/);
+  assert.match(authSource, /<AuthContext\.Provider value=\{e2eAuthState\}>/);
+});
 
 test("keeps analytics optional and non-blocking when the tracker is missing or fails", () => {
   const originalWindow = (globalThis as { window?: unknown }).window;

@@ -14,6 +14,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -65,6 +66,21 @@ const fallbackAuthState: StudioAuthState = {
   logout: () => undefined,
 };
 
+const e2eAuthState: StudioAuthState = {
+  user: {
+    id: "e2e-user",
+    email: "e2e@example.test",
+    firstName: "Browser",
+    lastName: "Test",
+    profileImageUrl: null,
+  },
+  isLoading: false,
+  isAuthenticated: true,
+  error: null,
+  login: () => undefined,
+  logout: () => undefined,
+};
+
 function stripBase(path: string): string {
   return basePath && path.startsWith(basePath)
     ? path.slice(basePath.length) || "/"
@@ -108,27 +124,47 @@ function ClerkAuthBridge({ children }: { children: ReactNode }) {
     void signOut({ redirectUrl: basePath || "/" });
   }, [signOut]);
 
-  const user: StudioUser | null = clerkUser
-    ? {
-        id: clerkUser.id,
-        email: clerkUser.primaryEmailAddress?.emailAddress ?? null,
-        firstName: clerkUser.firstName ?? null,
-        lastName: clerkUser.lastName ?? null,
-        profileImageUrl: clerkUser.imageUrl ?? null,
-      }
-    : null;
+  const clerkUserId = clerkUser?.id ?? null;
+  const clerkUserEmail = clerkUser?.primaryEmailAddress?.emailAddress ?? null;
+  const clerkUserFirstName = clerkUser?.firstName ?? null;
+  const clerkUserLastName = clerkUser?.lastName ?? null;
+  const clerkUserImageUrl = clerkUser?.imageUrl ?? null;
+  const isAuthenticated = Boolean(isSignedIn);
+
+  const user = useMemo<StudioUser | null>(
+    () =>
+      clerkUserId
+        ? {
+            id: clerkUserId,
+            email: clerkUserEmail,
+            firstName: clerkUserFirstName,
+            lastName: clerkUserLastName,
+            profileImageUrl: clerkUserImageUrl,
+          }
+        : null,
+    [
+      clerkUserEmail,
+      clerkUserFirstName,
+      clerkUserId,
+      clerkUserImageUrl,
+      clerkUserLastName,
+    ],
+  );
+
+  const authContextValue = useMemo(
+    () => ({
+      user,
+      isLoading: !isLoaded,
+      isAuthenticated,
+      error: null,
+      login,
+      logout,
+    }),
+    [isAuthenticated, isLoaded, login, logout, user],
+  );
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        isLoading: !isLoaded,
-        isAuthenticated: Boolean(isSignedIn),
-        error: null,
-        login,
-        logout,
-      }}
-    >
+    <AuthContext.Provider value={authContextValue}>
       <ClerkQueryClientCacheInvalidator />
       {children}
     </AuthContext.Provider>
@@ -143,22 +179,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   if (!clerkPubKey) {
     if (e2eAuthEnabled) {
       return (
-        <AuthContext.Provider
-          value={{
-            user: {
-              id: "e2e-user",
-              email: "e2e@example.test",
-              firstName: "Browser",
-              lastName: "Test",
-              profileImageUrl: null,
-            },
-            isLoading: false,
-            isAuthenticated: true,
-            error: null,
-            login: () => undefined,
-            logout: () => undefined,
-          }}
-        >
+        <AuthContext.Provider value={e2eAuthState}>
           {children}
         </AuthContext.Provider>
       );
