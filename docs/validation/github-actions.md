@@ -13,8 +13,31 @@ real run is observed in the private repository.
 - Visibility: private, as confirmed for this task
 - Local evidence: Node 24, pnpm 10.26.1, and a pnpm workspace with
   `pnpm-lock.yaml`
-- Remote evidence: no verified workflow run, branch protection, ruleset, or
-  required-check configuration is available in this workspace
+- Remote evidence: see the verification snapshot below; no successful remote
+  workflow run or required-check configuration is currently available
+
+## Verification snapshot
+
+Read-only GitHub API checks on September 9, 2026, using the repository's
+authenticated GitHub connection, found:
+
+- The repository exists, is private, and has `main` as its default branch.
+- `GET /actions/runs` returned zero workflow runs.
+- `GET /actions/workflows/validation.yml` returned `404`, so GitHub has not
+  activated this workflow on the remote default branch. The workflow file is
+  present locally but is not yet available in the GitHub repository revision
+  being inspected.
+- `main` reported `protected: false`.
+- Both the branch-protection and repository-rulesets endpoints returned
+  `403` with GitHub's message that the feature requires GitHub Pro or a public
+  repository. No required `validation` check can therefore be confirmed or
+  enabled from this repository's current plan.
+- There are no pull requests to use as a pull-request or fork behavior
+  observation. No secrets or write-capable workflow permissions were added.
+
+This is evidence that remote activation and branch protection are not complete,
+not evidence that the workflow jobs pass. A real pull-request or `main` push
+run must be observed after `.github/workflows/validation.yml` reaches GitHub.
 
 The existing Replit workflows remain the local validation owners. This note
 does not replace `.replit`, change package scripts, or add a second application
