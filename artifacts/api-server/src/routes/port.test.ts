@@ -6,6 +6,11 @@ import { createRequire } from "node:module";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { once } from "node:events";
+import {
+  canonicalSkillInstallRequest,
+  canonicalSkillResolutionDiagnostic,
+  validateCanonicalSkillInstallRequest,
+} from "../project-creation-contract.ts";
 import { SOURCE_TEXT_MAX_BYTES as ANALYSIS_SOURCE_LIMIT } from "./source-limits.ts";
 
 const requireFromDb = createRequire(
@@ -14,6 +19,40 @@ const requireFromDb = createRequire(
 const { Pool } = requireFromDb("pg");
 
 type Json = Record<string, unknown>;
+
+test("project creation sends canonical skill identities without bundled skill state", () => {
+  assert.deepEqual(canonicalSkillInstallRequest("skill-mirror-sync"), {
+    skillId: "skill-mirror-sync",
+  });
+
+  for (const field of [
+    "body",
+    "content",
+    "definition",
+    "files",
+    "mirror",
+    "sourceRevision",
+    "version",
+    "versionPin",
+  ]) {
+    assert.throws(
+      () =>
+        validateCanonicalSkillInstallRequest({
+          skillId: "skill-mirror-sync",
+          [field]: "must-not-cross-connector-boundary",
+        }),
+      /CANONICAL_SKILL_REQUEST_IDENTITY_ONLY/,
+    );
+  }
+});
+
+test("canonical skill resolution failures stay safe and actionable", () => {
+  const diagnostic = canonicalSkillResolutionDiagnostic();
+  assert.match(diagnostic, /did not resolve the requested workspace skill identity/i);
+  assert.match(diagnostic, /No skill body or mirror was sent/i);
+  assert.match(diagnostic, /Reconnect.*retry/i);
+  assert.doesNotMatch(diagnostic, /SKILL\.md|sourceRevision|fingerprint|versionPin/i);
+});
 
 function testClientIp(): string {
   const value = randomUUID().replaceAll("-", "");
@@ -719,6 +758,7 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
 </html>`;
 
   const setupSkills: Array<{ name: string; slug: string }> = [];
+  const setupRequests: Json[] = [];
   const connectorNames: string[] = [];
   let createdProject: Json | null = null;
   let connectionAttached = false;
@@ -753,13 +793,25 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
     }
 
     if (request.method === "POST" && path === "/api/v2/proxy/projects/project-123/setup") {
-      const setup = body as { name: string; slug: string };
-      setupSkills.push({ name: setup.name, slug: setup.slug });
-      const shouldFail = setup.name === "Failure Gate" && firstFailure;
+      setupRequests.push(body);
+      const setup = body as { skillId: string };
+      const skillNames: Record<string, string> = {
+        "port-authority": "Port Authority",
+        "failure-gate": "Failure Gate",
+        "regression-guard": "Regression Guard",
+        "skill-mirror-sync": "Skill Mirror Sync",
+        "app-support-ops": "App Support Ops",
+        "poe-setup": "Poe Setup",
+      };
+      const name = skillNames[setup.skillId];
+      assert.ok(name);
+      setupSkills.push({ name, slug: setup.skillId });
+      const shouldFail = setup.skillId === "failure-gate" && firstFailure;
       if (shouldFail) firstFailure = false;
       response.writeHead(200, { "Content-Type": "application/json" });
       response.end(JSON.stringify({
         status: shouldFail ? "failed" : "completed",
+        resolvedSkillId: setup.skillId,
       }));
       return;
     }
@@ -925,6 +977,10 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
       { name: "Port Authority", slug: "port-authority" },
       { name: "Failure Gate", slug: "failure-gate" },
     ]);
+    assert.deepEqual(setupRequests, [
+      { skillId: "port-authority" },
+      { skillId: "failure-gate" },
+    ]);
     assert.deepEqual(createdProject?.["files"], [{ path: "index.html", content: source }]);
     assert.ok(connectorNames.length > 0);
     assert.ok(connectorNames.every((name) => name === "replit-project-creation"));
@@ -970,6 +1026,17 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
         ["App Support Ops", "app-support-ops"],
         ["Poe Setup", "poe-setup"],
       ].map(([name, slug]) => ({ name, slug })),
+    );
+    assert.ok(
+      setupRequests.every(
+        (request) =>
+          Object.keys(request).length === 1 &&
+          typeof request.skillId === "string" &&
+          !("body" in request) &&
+          !("mirror" in request) &&
+          !("version" in request) &&
+          !("versionPin" in request),
+      ),
     );
   } finally {
     if (!api.killed) {

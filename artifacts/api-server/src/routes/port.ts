@@ -32,6 +32,11 @@ import {
   type PoeMessage,
   ImportPlaygroundResponse,
 } from "@workspace/api-zod";
+import {
+  canonicalSkillInstallRequest,
+  canonicalSkillResolutionDiagnostic,
+  resolvedCanonicalSkillId,
+} from "../project-creation-contract";
 
 type Finding = {
   severity: "info" | "warning" | "blocker";
@@ -356,12 +361,12 @@ export function isPoeModelConfirmed(models: readonly string[], requestedModel: s
 }
 
 const SETUP_STEPS = [
-  { name: "Port Authority", slug: "port-authority" },
-  { name: "Failure Gate", slug: "failure-gate" },
-  { name: "Regression Guard", slug: "regression-guard" },
-  { name: "Skill Mirror Sync", slug: "skill-mirror-sync" },
-  { name: "App Support Ops", slug: "app-support-ops" },
-  { name: "Poe Setup", slug: "poe-setup" },
+  { name: "Port Authority", skillId: "port-authority" },
+  { name: "Failure Gate", skillId: "failure-gate" },
+  { name: "Regression Guard", skillId: "regression-guard" },
+  { name: "Skill Mirror Sync", skillId: "skill-mirror-sync" },
+  { name: "App Support Ops", skillId: "app-support-ops" },
+  { name: "Poe Setup", skillId: "poe-setup" },
 ] as const;
 
 type SetupStepName = (typeof SETUP_STEPS)[number]["name"];
@@ -381,7 +386,7 @@ type ProjectCreationConnection = {
   installSkill(input: {
     projectId: string;
     name: SetupStepName;
-    slug: string;
+    skillId: string;
     idempotencyKey: string;
   }): Promise<void>;
 };
@@ -479,7 +484,7 @@ function getStringField(value: unknown, keys: string[]): string | null {
   return null;
 }
 
-function skillWasConfirmed(body: unknown): boolean {
+function skillWasConfirmed(body: unknown, skillId: string): boolean {
   const status = getStringField(body, ["status", "state"]);
   return (
     (typeof body === "object" &&
@@ -487,7 +492,7 @@ function skillWasConfirmed(body: unknown): boolean {
       (body as Record<string, unknown>).completed === true) ||
     status === "completed" ||
     status === "succeeded"
-  );
+  ) && resolvedCanonicalSkillId(body) === skillId;
 }
 
 function skillFailed(body: unknown): boolean {
@@ -502,14 +507,17 @@ function sleep(milliseconds: number): Promise<void> {
 async function awaitSkillConfirmation(
   initialBody: unknown,
   idempotencyKey: string,
+  skillId: string,
 ): Promise<void> {
   let body = initialBody;
   for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (skillWasConfirmed(body)) return;
+    if (skillWasConfirmed(body, skillId)) return;
     if (skillFailed(body)) throw new Error("PROJECT_CREATION_CONNECTION_FAILED");
 
     const operationId = getStringField(body, ["operationId", "setupOperationId"]);
-    if (!operationId) throw new Error("SKILL_INSTALLATION_NOT_CONFIRMED");
+    if (!operationId) {
+      throw new Error("CANONICAL_SKILL_NOT_RESOLVED");
+    }
 
     await sleep(500);
     const operation = await projectConnectionRequest(
@@ -549,16 +557,16 @@ function createProjectConnection(): ProjectCreationConnection {
         projectUrl: getStringField(body, ["projectUrl", "url"]),
       };
     },
-    async installSkill({ projectId, name, slug, idempotencyKey }) {
+    async installSkill({ projectId, skillId, idempotencyKey }) {
       const response = await projectConnectionRequest(
         `/projects/${encodeURIComponent(projectId)}/setup`,
         {
           method: "POST",
-          body: JSON.stringify({ name, slug }),
+          body: JSON.stringify(canonicalSkillInstallRequest(skillId)),
         },
         idempotencyKey,
       );
-      await awaitSkillConfirmation(response.body, idempotencyKey);
+      await awaitSkillConfirmation(response.body, idempotencyKey, skillId);
     },
   };
 }
@@ -667,6 +675,9 @@ function jobError(message: unknown): string {
     }
     if (message.message === "SKILL_INSTALLATION_NOT_CONFIRMED") {
       return "The setup skill did not confirm completion, so later steps were not started. Retry this step after checking the Replit connection.";
+    }
+    if (message.message === "CANONICAL_SKILL_NOT_RESOLVED") {
+      return canonicalSkillResolutionDiagnostic();
     }
   }
   return "The Replit project setup could not be completed. Retry the failed step.";
@@ -807,7 +818,7 @@ async function runHandoffJob(jobId: string): Promise<void> {
         await connection.installSkill({
           projectId: job.projectId,
           name: definition.name,
-          slug: definition.slug,
+          skillId: definition.skillId,
           idempotencyKey: `handoff:${job.id}:step:${index}`,
         });
         assertLease();
@@ -1347,7 +1358,7 @@ router.post(
         jobId: job.id,
         position,
         name: step.name,
-        slug: step.slug,
+        slug: step.skillId,
         status: "pending",
       })),
     );
