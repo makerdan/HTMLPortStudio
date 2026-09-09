@@ -911,6 +911,50 @@ test("does not analyze ZIP source while it is being selected", async () => {
   assert.match(zipHandler, /if \(sessionId !== importSessionRef\.current\) return/);
 });
 
+test("rejects stale Claude patches and ZIP completion state", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+  const zipHandlerStart = source.indexOf("const handleZipSelect");
+  const zipHandlerEnd = source.indexOf("const handleEntrypointChange", zipHandlerStart);
+  const claudeHandlerStart = source.indexOf("const handleApplyClaudePatch");
+  const claudeHandlerEnd = source.indexOf("const sourceMatchesSelection", claudeHandlerStart);
+  const zipHandler = source.slice(zipHandlerStart, zipHandlerEnd);
+  const claudeHandler = source.slice(claudeHandlerStart, claudeHandlerEnd);
+
+  assert.notEqual(zipHandlerStart, -1);
+  assert.notEqual(zipHandlerEnd, -1);
+  assert.notEqual(claudeHandlerStart, -1);
+  assert.notEqual(claudeHandlerEnd, -1);
+
+  const claudeGuard = claudeHandler.slice(
+    claudeHandler.indexOf("const handleApplyClaudePatch"),
+    claudeHandler.indexOf("const nextBundle"),
+  );
+  assert.match(claudeGuard, /expectedRevision !== sourceRevisionRef\.current/);
+  assert.doesNotMatch(claudeGuard, /expectedRevision !== sourceRevision(?!Ref)/);
+
+  const successStart = zipHandler.indexOf("const bundle = makeZipSourceBundle");
+  const successEnd = zipHandler.indexOf("} catch (error)", successStart);
+  const successPath = zipHandler.slice(successStart, successEnd);
+  assert.match(successPath, /if \(sessionId !== importSessionRef\.current\) return;/);
+  assert.match(
+    successPath,
+    /if \(sessionId !== importSessionRef\.current\) return;\s*clearRecovery\(\);\s*setSourceBundle\(bundle\)/s,
+  );
+
+  const catchStart = zipHandler.indexOf("} catch (error)");
+  const finallyStart = zipHandler.indexOf("} finally", catchStart);
+  const catchPath = zipHandler.slice(catchStart, finallyStart);
+  const finallyPath = zipHandler.slice(finallyStart, zipHandler.indexOf("};", finallyStart));
+  assert.match(
+    catchPath,
+    /if \(sessionId !== importSessionRef\.current\) return;\s*setFileError\(/s,
+  );
+  assert.match(
+    finallyPath,
+    /if \(sessionId === importSessionRef\.current\) \{\s*setZipLoading\(false\);\s*\}/s,
+  );
+});
+
 test("clears obsolete editor feedback when analysis becomes current", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
   const editorStart = source.indexOf("function SourceEditorPanel");

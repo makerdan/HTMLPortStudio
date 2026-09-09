@@ -2553,6 +2553,7 @@ export default function Home() {
           'The main HTML file could not be selected from this ZIP. Choose another archive.',
         );
       }
+      if (sessionId !== importSessionRef.current) return;
       clearRecovery();
       setSourceBundle(bundle);
       setHtmlInput(entrypointFile.content);
@@ -2562,13 +2563,16 @@ export default function Home() {
       setAnalyzedRevision(null);
       setAnalysisStale(false);
     } catch (error) {
+      if (sessionId !== importSessionRef.current) return;
       setFileError(
         error instanceof ZipSourceError
           ? error.message
           : 'The ZIP archive could not be imported. It may be malformed.',
       );
     } finally {
-      setZipLoading(false);
+      if (sessionId === importSessionRef.current) {
+        setZipLoading(false);
+      }
     }
   };
 
@@ -2675,7 +2679,7 @@ export default function Home() {
     edits: ValidatedClaudePatch[],
     expectedRevision: number,
   ) => {
-    if (!sourceBundle || expectedRevision !== sourceRevision) {
+    if (!sourceBundle || expectedRevision !== sourceRevisionRef.current) {
       setClaudeApplyError('The source changed while Claude was working. Review a new proposal for the current revision.');
       setClaudeRepairOpen(false);
       return;
