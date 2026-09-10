@@ -162,6 +162,77 @@ test("pins HTTPS requests while preserving virtual-host SNI and Host routing", a
   }
 });
 
+test("rejects an HTTPS certificate whose identity does not match the requested hostname", async () => {
+  const server = createServer(
+    { key: LOCAL_HTTPS_KEY, cert: LOCAL_HTTPS_CERT },
+    (_request, response) => {
+      response.writeHead(200, { "content-type": "text/html" });
+      response.end("<!doctype html><title>Should not import</title>");
+    },
+  );
+  const port = await listen(server);
+
+  try {
+    const error = await rejectsWith(
+      fetchHostedUrl("https://wrong.virtual-host.test/app", {
+        lookup: publicLookup,
+        fetch: (url, init, pinnedAddress) => {
+          const localUrl = new URL(url);
+          localUrl.port = String(port);
+          return fetchPinnedUrl(localUrl.toString(), init, "127.0.0.1", { ca: LOCAL_HTTPS_CERT });
+        },
+      }),
+      "HOSTED_URL_FETCH_FAILED",
+    );
+
+    assert.doesNotMatch(error.message, /Should not import/);
+  } finally {
+    await close(server);
+  }
+});
+
+test("aborting a stalled pinned HTTPS response closes its client connection", async () => {
+  let resolveConnectionClosed: (() => void) | undefined;
+  const connectionClosed = new Promise<void>((resolve) => {
+    resolveConnectionClosed = resolve;
+  });
+  const server = createServer(
+    { key: LOCAL_HTTPS_KEY, cert: LOCAL_HTTPS_CERT },
+    (_request, response) => {
+      response.writeHead(200, { "content-type": "text/html" });
+      response.write("<!doctype html><title>Stalled</title>");
+    },
+  );
+  server.on("connection", (socket) => {
+    socket.once("close", () => resolveConnectionClosed?.());
+  });
+  const port = await listen(server);
+
+  try {
+    await rejectsWith(
+      fetchHostedUrl("https://source.virtual-host.test/stalled", {
+        lookup: publicLookup,
+        timeoutMs: 25,
+        fetch: (url, init, pinnedAddress) => {
+          const localUrl = new URL(url);
+          localUrl.port = String(port);
+          return fetchPinnedUrl(localUrl.toString(), init, "127.0.0.1", { ca: LOCAL_HTTPS_CERT });
+        },
+      }),
+      "HOSTED_URL_TIMEOUT",
+    );
+
+    await Promise.race([
+      connectionClosed,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Pinned HTTPS connection remained open after abort")), 1_000),
+      ),
+    ]);
+  } finally {
+    await close(server);
+  }
+});
+
 test("blocks loopback and private destinations before fetch", async () => {
   let fetchCalls = 0;
   await rejectsWith(
@@ -196,6 +267,42 @@ test("blocks loopback and private destinations before fetch", async () => {
     }),
     "HOSTED_URL_BLOCKED_HOST",
   );
+  assert.equal(fetchCalls, 0);
+});
+
+test("blocks uncommon private and reserved address representations before fetch", async () => {
+  const blockedAddresses: Array<{ address: string; family: number }> = [
+    { address: "::ffff:10.0.0.1", family: 6 },
+    { address: "::ffff:192.168.1.1", family: 6 },
+    { address: "::ffff:100.64.0.1", family: 6 },
+    { address: "::ffff:192.0.2.1", family: 6 },
+    { address: "::ffff:198.51.100.42", family: 6 },
+    { address: "::ffff:203.0.113.9", family: 6 },
+    { address: "::c000:201", family: 6 },
+    { address: "192.31.196.1", family: 4 },
+    { address: "192.52.193.1", family: 4 },
+    { address: "192.88.99.1", family: 4 },
+    { address: "2001:db8::1", family: 6 },
+    { address: "2001:2::1", family: 6 },
+    { address: "fec0::1", family: 6 },
+    { address: "2001:10::1", family: 6 },
+    { address: "2001:0::1", family: 6 },
+  ];
+  let fetchCalls = 0;
+
+  for (const address of blockedAddresses) {
+    await rejectsWith(
+      fetchHostedUrl("https://reserved.example.test/resource", {
+        lookup: async () => [address],
+        fetch: async () => {
+          fetchCalls += 1;
+          return response("<!doctype html>");
+        },
+      }),
+      "HOSTED_URL_BLOCKED_HOST",
+    );
+  }
+
   assert.equal(fetchCalls, 0);
 });
 

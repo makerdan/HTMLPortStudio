@@ -22,3 +22,5 @@
 - [Node test detached fixtures](node-test-detached-fixtures.md) — Use temporary readiness files instead of inherited IPC for detached process fixtures.
 - [OpenAPI integer codegen](openapi-integer-codegen.md) — This Orval/Zod setup emits unsupported zod.int for OpenAPI integer fields; use numeric schemas for generated contracts.
 - [Validation registry drift](validation-registry-drift.md) — Locked validation can stop before project tests when the tier registry contains malformed entries.
+- [Node test detached fixtures](node-test-detached-fixtures.md) — Use temporary readiness files instead of inherited IPC for detached process fixtures.
+- [Hosted URL fixture ports](hosted-url-fixture-boundary.md) — Local hosted-URL HTTPS fixtures must map ephemeral ports inside injected transport because canonical imports allow only 80/443.

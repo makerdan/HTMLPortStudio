@@ -233,6 +233,7 @@ export async function fetchHostedUrl(
         validatedDestination.address,
       );
     } catch (error) {
+      clearTimeout(timeout);
       if (controller.signal.aborted) {
         throw new HostedUrlError(
           "HOSTED_URL_TIMEOUT",

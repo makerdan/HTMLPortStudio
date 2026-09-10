@@ -1,5 +1,5 @@
 import { lookup as dnsLookup } from "node:dns/promises";
-import { request as httpRequest } from "node:http";
+import { request as httpRequest, type IncomingMessage } from "node:http";
 import { isIP } from "node:net";
 import { Readable } from "node:stream";
 import { request as httpsRequest } from "node:https";
@@ -31,7 +31,7 @@ function ipv4IsBlocked(address: string): boolean {
   ) {
     return true;
   }
-  const [a, b] = parts;
+  const [a, b, c] = parts;
   return (
     a === 0 ||
     a === 10 ||
@@ -40,6 +40,9 @@ function ipv4IsBlocked(address: string): boolean {
     (a === 169 && b === 254) ||
     (a === 172 && b >= 16 && b <= 31) ||
     (a === 192 && (b === 0 || b === 2 || b === 168)) ||
+    (a === 192 && b === 31 && c === 196) ||
+    (a === 192 && b === 52 && c === 193) ||
+    (a === 192 && b === 88 && c === 99) ||
     (a === 198 && (b === 18 || b === 19 || b === 51)) ||
     (a === 203 && b === 0) ||
     a >= 224
@@ -68,7 +71,9 @@ function ipv6Parts(address: string): number[] | null {
   };
   const leftParts = left.flatMap((part) => expandPart(part) ?? []);
   const rightParts = right.flatMap((part) => expandPart(part) ?? []);
-  if (leftParts.length !== left.length || rightParts.length !== right.length) return null;
+  if (left.some((part) => expandPart(part) === null) || right.some((part) => expandPart(part) === null)) {
+    return null;
+  }
   if (halves.length === 1 && leftParts.length !== 8) return null;
   if (halves.length === 2 && leftParts.length + rightParts.length >= 8) return null;
   return halves.length === 2
@@ -88,19 +93,31 @@ function addressIsBlocked(address: string): boolean {
     (parts.slice(0, 7).every((part) => part === 0) && parts[7] === 1);
   const isUniqueLocal = (first & 0xfe00) === 0xfc00;
   const isLinkLocal = (first & 0xffc0) === 0xfe80;
+  const isSiteLocal = (first & 0xffc0) === 0xfec0;
   const isDocumentation = first === 0x2001 && second === 0x0db8;
   const isBenchmark = first === 0x2001 && second === 0x0002;
+  const isDiscardOnly = first === 0x0100 && parts.slice(2).every((part) => part === 0);
+  const isTeredo = first === 0x2001 && second === 0;
+  const isOrchid = first === 0x2001 && (second & 0xfff0) === 0x0010;
+  const isSixToFour = first === 0x2002;
   const isMulticastOrReserved = (first & 0xff00) === 0xff00;
   const mappedIpv4 = parts.slice(0, 5).every((part) => part === 0) && parts[5] === 0xffff;
+  const compatibleIpv4 = parts.slice(0, 6).every((part) => part === 0);
   const mappedAddress = `${parts[6] >> 8}.${parts[6] & 255}.${parts[7] >> 8}.${parts[7] & 255}`;
   return (
     isUnspecifiedOrLoopback ||
     isUniqueLocal ||
     isLinkLocal ||
+    isSiteLocal ||
     isDocumentation ||
     isBenchmark ||
+    isDiscardOnly ||
+    isTeredo ||
+    isOrchid ||
+    isSixToFour ||
     isMulticastOrReserved ||
-    (mappedIpv4 && ipv4IsBlocked(mappedAddress))
+    (mappedIpv4 && ipv4IsBlocked(mappedAddress)) ||
+    compatibleIpv4
   );
 }
 
@@ -192,33 +209,49 @@ export async function fetchPinnedUrl(
     headers: requestHeaders(init, parsed),
     family: isIP(pinnedAddress),
     ...(parsed.protocol === "https:"
-      ? { servername: parsed.hostname.replace(/^\[|\]$/g, "") }
+      ? {
+          servername: parsed.hostname.replace(/^\[|\]$/g, ""),
+          rejectUnauthorized: true,
+        }
       : {}),
     ...tlsOptions,
+    ...(parsed.protocol === "https:" ? { rejectUnauthorized: true } : {}),
   };
 
   return new Promise<Response>((resolve, reject) => {
-    const clientRequest = request(requestOptions, (incomingMessage) => {
+    let incomingMessage: IncomingMessage | undefined;
+    const signal = init.signal;
+    const cleanup = () => signal?.removeEventListener("abort", abort);
+    const abortError = new Error("The pinned URL request was aborted.");
+    const abort = () => {
+      clientRequest.destroy(abortError);
+      incomingMessage?.destroy(abortError);
+    };
+    const clientRequest = request(requestOptions, (responseMessage) => {
+      incomingMessage = responseMessage;
+      responseMessage.once("close", cleanup);
+      responseMessage.once("end", cleanup);
       const headers: Record<string, string> = {};
-      for (const [name, value] of Object.entries(incomingMessage.headers)) {
+      for (const [name, value] of Object.entries(responseMessage.headers)) {
         if (value !== undefined) headers[name] = Array.isArray(value) ? value.join(", ") : value;
       }
       resolve(
-        new Response(Readable.toWeb(incomingMessage) as ReadableStream, {
-          status: incomingMessage.statusCode ?? 502,
-          statusText: incomingMessage.statusMessage,
+        new Response(Readable.toWeb(responseMessage) as ReadableStream, {
+          status: responseMessage.statusCode ?? 502,
+          statusText: responseMessage.statusMessage,
           headers,
         }),
       );
     });
-    const signal = init.signal;
-    const abort = () => clientRequest.destroy(new Error("The pinned URL request was aborted."));
+    clientRequest.once("error", (error) => {
+      cleanup();
+      reject(error);
+    });
     if (signal?.aborted) {
       abort();
       return;
     }
     signal?.addEventListener("abort", abort, { once: true });
-    clientRequest.once("error", reject);
     clientRequest.end();
   });
 }
