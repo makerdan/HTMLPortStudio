@@ -97,6 +97,8 @@ import {
 import {
   getStudioErrorMessage,
   getStudioErrorPresentation,
+  isCanonicalSkillResolutionFailure,
+  PROJECT_HANDOFF_CANONICAL_SKILL_FAILURE,
   PROJECT_HANDOFF_FAILURE_FALLBACK,
   PROJECT_HANDOFF_RECOVERY_EXPIRED,
   type StudioErrorPresentation,
@@ -778,6 +780,13 @@ function RecoveredHandoffPanel({
     },
   });
   const handoff = statusQuery.data;
+  const canonicalSkillFailure = Boolean(
+    handoff?.steps.some(
+      (step) =>
+        step.status === 'failed' &&
+        isCanonicalSkillResolutionFailure(step.error),
+    ) || isCanonicalSkillResolutionFailure(handoff?.error),
+  );
 
   useEffect(() => {
     if (authLoading) return;
@@ -904,7 +913,11 @@ function RecoveredHandoffPanel({
             </div>
             {handoff.status === 'failed' && (
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-3">
-                <p className="text-sm text-destructive">{PROJECT_HANDOFF_FAILURE_FALLBACK}</p>
+                <p className="text-sm text-destructive">
+                  {canonicalSkillFailure
+                    ? PROJECT_HANDOFF_CANONICAL_SKILL_FAILURE
+                    : PROJECT_HANDOFF_FAILURE_FALLBACK}
+                </p>
                 <Button type="button" size="sm" variant="outline" onClick={handleRetry} disabled={retryMutation.isPending}>
                   {retryMutation.isPending ? 'Retrying…' : 'Retry step'}
                 </Button>
@@ -965,6 +978,13 @@ function ReplitProjectHandoffPanel({
   });
 
   const handoff = statusQuery.data ?? createMutation.data;
+  const canonicalSkillFailure = Boolean(
+    handoff?.steps.some(
+      (step) =>
+        step.status === 'failed' &&
+        isCanonicalSkillResolutionFailure(step.error),
+    ) || isCanonicalSkillResolutionFailure(handoff?.error),
+  );
   const isWorking =
     createMutation.isPending ||
     retryMutation.isPending ||
@@ -1311,18 +1331,32 @@ function ReplitProjectHandoffPanel({
           {handoff.status === 'failed' && (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-3">
               <p className="text-sm text-destructive">
-                {PROJECT_HANDOFF_FAILURE_FALLBACK}
+                {canonicalSkillFailure
+                  ? PROJECT_HANDOFF_CANONICAL_SKILL_FAILURE
+                  : PROJECT_HANDOFF_FAILURE_FALLBACK}
               </p>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={handleRetry}
-                className="w-full sm:w-auto"
-                disabled={isWorking}
-              >
-                Retry step
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                {canonicalSkillFailure && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowConnectionSetup(true)}
+                  >
+                    Reconnect connection
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleRetry}
+                  className="w-full sm:w-auto"
+                  disabled={isWorking}
+                >
+                  Retry step
+                </Button>
+              </div>
             </div>
           )}
           {handoff.status === 'completed' && (

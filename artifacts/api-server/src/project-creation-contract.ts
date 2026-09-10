@@ -6,8 +6,12 @@ const FORBIDDEN_SKILL_FIELDS = new Set([
   "definition",
   "files",
   "fingerprint",
+  "metadata",
   "mirror",
   "mirrorPath",
+  "revision",
+  "source",
+  "sourceMetadata",
   "sourceRevision",
   "version",
   "versionPin",
@@ -63,6 +67,41 @@ export function resolvedCanonicalSkillId(value: unknown): string | null {
     : null;
 }
 
+function containsForbiddenSkillField(value: unknown): boolean {
+  if (Array.isArray(value)) {
+    return value.some(containsForbiddenSkillField);
+  }
+  if (!isRecord(value)) return false;
+  return Object.entries(value).some(
+    ([key, child]) =>
+      FORBIDDEN_SKILL_FIELDS.has(key) || containsForbiddenSkillField(child),
+  );
+}
+
+export function validateCanonicalSkillResolution(
+  value: unknown,
+  requestedSkillId: string,
+): void {
+  if (containsForbiddenSkillField(value)) {
+    throw new Error("CANONICAL_SKILL_NOT_RESOLVED");
+  }
+
+  const status = isRecord(value) ? value.status ?? value.state : undefined;
+  if (status === "cancelled") {
+    throw new Error("CANONICAL_SKILL_NOT_RESOLVED");
+  }
+
+  if (
+    status === "completed" ||
+    status === "succeeded" ||
+    (isRecord(value) && value.completed === true)
+  ) {
+    if (resolvedCanonicalSkillId(value) !== requestedSkillId) {
+      throw new Error("CANONICAL_SKILL_NOT_RESOLVED");
+    }
+  }
+}
+
 export function canonicalSkillResolutionDiagnostic(): string {
-  return "The authorized Replit project connection did not resolve the requested workspace skill identity. No skill body or mirror was sent. Reconnect the project-creation connection, then retry this step.";
+  return "The authorized Replit project connection did not resolve the requested workspace skill identity. No skill contents or mirrors were sent. Reconnect the project-creation connection, then retry this step.";
 }

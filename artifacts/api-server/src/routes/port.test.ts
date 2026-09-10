@@ -6,6 +6,12 @@ import { createRequire } from "node:module";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { once } from "node:events";
+import {
+  canonicalSkillInstallRequest,
+  canonicalSkillResolutionDiagnostic,
+  validateCanonicalSkillResolution,
+  validateCanonicalSkillInstallRequest,
+} from "../project-creation-contract.ts";
 import { SOURCE_TEXT_MAX_BYTES as ANALYSIS_SOURCE_LIMIT } from "./source-limits.ts";
 
 const requireFromDb = createRequire(
@@ -15,6 +21,7 @@ const { Pool } = requireFromDb("pg");
 
 type Json = Record<string, unknown>;
 
+  const diagnostic = canonicalSkillResolutionDiagnostic();
 function testClientIp(): string {
   const value = randomUUID().replaceAll("-", "");
   return `198.18.${Number.parseInt(value.slice(0, 2), 16)}.${Number.parseInt(value.slice(2, 4), 16)}`;
@@ -110,7 +117,7 @@ test("covers the analysis boundary matrix and origin routing", async () => {
     env: {
       ...process.env,
       PORT: String(apiPort),
-      HTML_PORT_STUDIO_ORIGINS: splitOrigin,
+      REPLIT_CONNECTORS_HOSTNAME: `http://127.0.0.1:${connectionPort}`,
       REPLIT_CLI: "/bin/false",
       REPL_IDENTITY: "test-repl-identity",
       NODE_ENV: "test",
@@ -332,16 +339,7 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
   let returnFailure = false;
   let returnMalformedCompletion = false;
   const poe = http.createServer(async (request, response) => {
-    const url = new URL(request.url ?? "/", "http://127.0.0.1");
-    const body =
-      request.method === "POST" ? (JSON.parse(await readBody(request)) as Json) : null;
-    poeRequests.push({
-      method: request.method ?? "",
-      path: url.pathname,
-      authorization: request.headers.authorization,
-      body,
-    });
-    const path = url.pathname;
+    const path = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
     if (request.method === "GET" && path === "/v1/models") {
       modelRequests += 1;
       response.writeHead(200, { "Content-Type": "application/json" });
@@ -350,27 +348,7 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
     }
     if (request.method === "POST" && path === "/v1/chat/completions") {
       completionRequests += 1;
-      if (returnFailure) {
-        response.writeHead(429, { "Content-Type": "application/json" });
-        response.end(JSON.stringify({
-          error: {
-            message: "provider-internal diagnostic with sensitive details",
-            request_id: "provider-secret-request-id",
-          },
-        }));
-        return;
-      }
-      if (returnMalformedCompletion) {
-        response.writeHead(200, { "Content-Type": "application/json" });
-        response.end(JSON.stringify({
-          error: {
-            message: "provider-internal malformed completion diagnostic",
-            request_id: "provider-malformed-secret-request-id",
-          },
-          choices: [],
-        }));
-        return;
-      }
+      await readBody(request);
       response.writeHead(200, { "Content-Type": "application/json" });
       response.end(
         JSON.stringify({
@@ -390,8 +368,7 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
     env: {
       ...process.env,
       PORT: String(apiPort),
-      POE_API_KEY: "test-poe-key",
-      POE_API_BASE_URL: `http://127.0.0.1:${poePort}/v1`,
+      REPLIT_CONNECTORS_HOSTNAME: `http://127.0.0.1:${connectionPort}`,
       REPLIT_CLI: "/bin/false",
       REPL_IDENTITY: "test-repl-identity",
       NODE_ENV: "test",
@@ -546,7 +523,14 @@ test("bounds public Poe traffic before provider forwarding and caches models", a
   const apiPort = await unusedPort();
   const api = spawn(process.execPath, ["--enable-source-maps", "dist/index.mjs"], {
     cwd: new URL("../../", import.meta.url).pathname,
-    env: { ...apiEnvironment, PORT: String(apiPort) },
+    env: {
+      ...process.env,
+      PORT: String(apiPort),
+      REPLIT_CONNECTORS_HOSTNAME: `http://127.0.0.1:${connectionPort}`,
+      REPLIT_CLI: "/bin/false",
+      REPL_IDENTITY: "test-repl-identity",
+      NODE_ENV: "test",
+    },
     stdio: "ignore",
   });
   let secondApi: ChildProcess | undefined;
@@ -732,17 +716,17 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
       `${otherOwnerId}@example.test`,
     ],
   );
-  const source = `<!doctype html>
-<html>
-  <head><title>Project handoff fixture</title></head>
-  <body><main>Source must remain unchanged.</main></body>
-</html>`;
+  const source = await readFile(new URL("./port.ts", import.meta.url), "utf8");
 
   const setupSkills: Array<{ name: string; slug: string }> = [];
+
+  const setupRequests: Json[] = [];
   const connectorNames: string[] = [];
   let createdProject: Json | null = null;
   let connectionAttached = false;
   let firstFailure = true;
+
+  let operationPolls = 0;
   const connection = http.createServer(async (request, response) => {
     const path = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
     if (request.method === "GET" && path === "/api/v2/connection") {
@@ -764,7 +748,9 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
     }
 
     connectorNames.push(String(request.headers["connector-name"] ?? ""));
-    const body = JSON.parse(await readBody(request)) as Json;
+    const body = request.method === "POST"
+      ? (JSON.parse(await readBody(request)) as Json)
+      : {};
     if (request.method === "POST" && path === "/api/v2/proxy/projects") {
       createdProject = body;
       response.writeHead(200, { "Content-Type": "application/json" });
@@ -773,14 +759,45 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
     }
 
     if (request.method === "POST" && path === "/api/v2/proxy/projects/project-123/setup") {
-      const setup = body as { name: string; slug: string };
-      setupSkills.push({ name: setup.name, slug: setup.slug });
-      const shouldFail = setup.name === "Failure Gate" && firstFailure;
+      setupRequests.push(body);
+      const setup = body as { skillId: string };
+      const skillNames: Record<string, string> = {
+        "port-authority": "Port Authority",
+        "failure-gate": "Failure Gate",
+        "regression-guard": "Regression Guard",
+        "skill-mirror-sync": "Skill Mirror Sync",
+        "app-support-ops": "App Support Ops",
+        "poe-setup": "Poe Setup",
+      };
+      const name = skillNames[setup.skillId];
+      assert.ok(name);
+      setupSkills.push({ name, slug: setup.skillId });
+      const shouldFail = setup.skillId === "failure-gate" && firstFailure;
       if (shouldFail) firstFailure = false;
       response.writeHead(200, { "Content-Type": "application/json" });
       response.end(JSON.stringify({
-        status: shouldFail ? "failed" : "completed",
+        ...(setup.skillId === "port-authority"
+          ? { status: "running", operationId: "operation-port-authority" }
+          : {
+              status: shouldFail ? "failed" : "completed",
+              ...(shouldFail ? {} : { resolvedSkillId: setup.skillId }),
+            }),
       }));
+      return;
+    }
+
+    if (
+      request.method === "GET" &&
+      path === "/api/v2/proxy/operations/operation-port-authority"
+    ) {
+      operationPolls += 1;
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(
+        JSON.stringify({
+          status: "completed",
+          resolvedSkillId: "port-authority",
+        }),
+      );
       return;
     }
 
@@ -950,6 +967,11 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
       { name: "Port Authority", slug: "port-authority" },
       { name: "Failure Gate", slug: "failure-gate" },
     ]);
+    assert.deepEqual(setupRequests, [
+      { skillId: "port-authority" },
+      { skillId: "failure-gate" },
+    ]);
+    assert.equal(operationPolls, 1);
     assert.deepEqual(createdProject?.["files"], [{ path: "index.html", content: source }]);
     assert.ok(connectorNames.length > 0);
     assert.ok(connectorNames.every((name) => name === "replit-project-creation"));
@@ -995,6 +1017,17 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
         ["App Support Ops", "app-support-ops"],
         ["Poe Setup", "poe-setup"],
       ].map(([name, slug]) => ({ name, slug })),
+    );
+    assert.ok(
+      setupRequests.every(
+        (request) =>
+          Object.keys(request).length === 1 &&
+          typeof request.skillId === "string" &&
+          !("body" in request) &&
+          !("mirror" in request) &&
+          !("version" in request) &&
+          !("versionPin" in request),
+      ),
     );
   } finally {
     if (!api.killed) {

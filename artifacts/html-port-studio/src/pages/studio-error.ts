@@ -163,6 +163,8 @@ export const STUDIO_ERROR_ACTIONS = {
 export const PROJECT_HANDOFF_FAILURE_FALLBACK =
   'The Replit project setup could not be completed. Retry the failed step.';
 
+export const PROJECT_HANDOFF_CANONICAL_SKILL_FAILURE =
+  'Canonical workspace skill resolution failed. No skill contents or mirrors were sent. Reconnect the project-creation connection, then retry this step.';
 export const PROJECT_HANDOFF_RECOVERY_EXPIRED =
   'The project setup status is no longer available. Start again with a new source.';
 
@@ -248,4 +250,13 @@ export function getStudioErrorMessage(
   fallback: string,
 ): string {
   return getStudioErrorPresentation(error, fallback).message;
+}
+
+export function isCanonicalSkillResolutionFailure(
+  message: string | null | undefined,
+): boolean {
+  return Boolean(
+    message?.includes('did not resolve the requested workspace skill identity') &&
+      message.includes('No skill contents or mirrors were sent'),
+  );
 }

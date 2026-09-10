@@ -878,6 +878,99 @@ test("stops handoff polling after an error and only resumes on retry", async ({ 
   await expect.poll(() => statusChecks).toBeGreaterThan(checksWhenFailed);
 });
 
+test("shows canonical skill recovery guidance and preserves completed steps", async ({ page }) => {
+  const jobId = "123e4567-e89b-12d3-a456-426614174020";
+  const canonicalError =
+    "The authorized Replit project connection did not resolve the requested workspace skill identity. No skill contents or mirrors were sent. Reconnect the project-creation connection, then retry this step.";
+  let retried = false;
+  const failedSteps = [
+    ["Port Authority", "completed", null],
+    ["Failure Gate", "failed", canonicalError],
+    ["Regression Guard", "pending", null],
+    ["Skill Mirror Sync", "pending", null],
+    ["App Support Ops", "pending", null],
+    ["Poe Setup", "pending", null],
+  ];
+  const completedSteps = failedSteps.map(([name]) => [name, "completed", null]);
+  const makeStatus = (status: string, steps: string[][], error: string | null) => ({
+    jobId,
+    status,
+    projectId: "project-1",
+    projectUrl: null,
+    projectName: "Imported page",
+    currentStep: status === "failed" ? "Failure Gate" : null,
+    steps: steps.map(([name, stepStatus, stepError]) => ({
+      name,
+      status: stepStatus,
+      error: stepError,
+    })),
+    error,
+  });
+
+  await mockAuthenticatedAuth(page);
+  await mockAnalysis(page);
+  await page.route("**/api/port/replit-project-connection", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ status: "connected", setupUrl: null }),
+    }),
+  );
+  await page.route("**/api/port/replit-project-connection/setup", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ setupUrl: "https://connectors.replit.com/setup" }),
+    }),
+  );
+  await page.route("**/api/port/replit-projects", (route) => {
+    if (route.request().method() === "POST") {
+      return route.fulfill({
+        status: 202,
+        contentType: "application/json",
+        body: JSON.stringify(makeStatus("failed", failedSteps, canonicalError)),
+      });
+    }
+    return route.continue();
+  });
+  await page.route(`**/api/port/replit-projects/${jobId}`, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(
+        makeStatus(
+          retried ? "completed" : "failed",
+          retried ? completedSteps : failedSteps,
+          retried ? null : canonicalError,
+        ),
+      ),
+    }),
+  );
+  await page.route(`**/api/port/replit-projects/${jobId}/retry`, (route) => {
+    retried = true;
+    return route.fulfill({
+      status: 202,
+      contentType: "application/json",
+      body: JSON.stringify(makeStatus("running", failedSteps, null)),
+    });
+  });
+
+  await page.goto("/");
+  await analyzeImportedHtml(page);
+  await page.getByRole("button", { name: "Create Replit Project" }).click();
+  await expect(page.getByText("Canonical workspace skill resolution failed.")).toBeVisible();
+  await expect(page.getByText("No skill contents or mirrors were sent.")).toBeVisible();
+  await expect(page.getByText("The connector returned private skill contents.")).not.toBeVisible();
+  await expect(page.getByText("Port Authority")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Reconnect connection" })).toBeVisible();
+  await page.getByRole("button", { name: "Reconnect connection" }).click();
+  await expect(page.getByText("Project creation is connected")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Retry step" })).toBeVisible();
+  await page.getByRole("button", { name: "Retry step" }).click();
+  await expect(page.getByText("All setup skills completed")).toBeVisible();
+  expect(retried).toBe(true);
+});
+
 test("[cross-browser] recovers an in-progress authenticated handoff after reload", async ({ page }) => {
   const jobId = "123e4567-e89b-12d3-a456-426614174019";
   const status = {
