@@ -1,6 +1,6 @@
 type AnalyticsData = Record<string, string | number | boolean>;
-type SourceImportType = 'github' | 'hosted' | 'playground';
-type SourceImportOutcome = 'cancelled' | 'completed';
+export type SourceImportType = 'paste' | 'html' | 'zip' | 'github' | 'hosted' | 'playground';
+export type SourceImportOutcome = 'cancelled' | 'completed' | 'failed';
 
 declare global {
   interface Window {

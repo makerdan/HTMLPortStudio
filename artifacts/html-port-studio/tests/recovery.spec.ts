@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { zipSync } from "fflate";
 
 const html = "<!doctype html><html><body><main>Imported page</main></body></html>";
 const githubUrl = "https://github.com/acme/demo";
@@ -530,6 +531,178 @@ test("keeps import recovery working when analytics is missing or throws", async 
   expect(importAttempts).toBe(2);
 
   releaseFirstImport?.();
+});
+
+test("records coarse outcomes for local paste, HTML, and ZIP sources", async ({ page }) => {
+  await page.addInitScript(() => {
+    const testWindow = window as typeof window & {
+      umami?: {
+        track(name: string, data?: Record<string, string | number | boolean>): void;
+      };
+      __sourceImportEvents?: Array<{
+        name: string;
+        data?: Record<string, string | number | boolean>;
+      }>;
+    };
+    testWindow.__sourceImportEvents = [];
+    testWindow.umami = {
+      track(name, data) {
+        testWindow.__sourceImportEvents?.push({ name, data });
+        throw new Error("analytics is unavailable");
+      },
+    };
+  });
+  await mockAuth(page);
+  await mockAnalysis(page);
+  await page.goto("/");
+
+  const paste = page.getByPlaceholder(/paste your html/i);
+  await paste.fill("<main>paste source</main>");
+  await page.getByRole("button", { name: "Clear", exact: true }).click();
+  await paste.fill("<main>paste source</main>");
+  await page.getByRole("button", { name: /Analyze & Preview/i }).click();
+  await expect(page.getByRole("button", { name: "Reset HTML Port Studio" })).toBeVisible();
+  await page.getByRole("button", { name: "Reset HTML Port Studio" }).click();
+
+  const sourceAnnouncement = page.locator('[aria-live="polite"]');
+  await page.getByRole("tab", { name: "Upload HTML" }).click();
+  await expect(sourceAnnouncement).toHaveText(
+    "Previous source bundle cleared. New source: Upload HTML.",
+  );
+  await page.locator('input[type="file"]').first().setInputFiles({
+    name: "local-page.html",
+    mimeType: "text/html",
+    buffer: Buffer.from("<main>uploaded source</main>"),
+  });
+  await expect(page.getByText(/normalized locally/i)).toBeVisible();
+  await page.getByRole("button", { name: "Clear", exact: true }).click();
+
+  await page.getByRole("tab", { name: "Upload ZIP" }).click();
+  await page.locator('input[type="file"]').nth(1).setInputFiles({
+    name: "local-project.zip",
+    mimeType: "application/zip",
+    buffer: Buffer.from(
+      zipSync({ "index.html": Buffer.from("<main>zipped source</main>") }),
+    ),
+  });
+  await expect(page.getByText(/normalized locally/i)).toBeVisible();
+  await page.getByRole("button", { name: "Clear", exact: true }).click();
+
+  const events = await page.evaluate(() => {
+    const testWindow = window as typeof window & {
+      __sourceImportEvents?: Array<{
+        name: string;
+        data?: Record<string, string | number | boolean>;
+      }>;
+    };
+    return testWindow.__sourceImportEvents ?? [];
+  });
+  expect(events).toEqual(
+    expect.arrayContaining([
+      { name: "source_import_outcome", data: { source_type: "paste", outcome: "cancelled" } },
+      { name: "source_import_outcome", data: { source_type: "paste", outcome: "completed" } },
+      { name: "source_import_outcome", data: { source_type: "html", outcome: "completed" } },
+      { name: "source_import_outcome", data: { source_type: "html", outcome: "cancelled" } },
+      { name: "source_import_outcome", data: { source_type: "zip", outcome: "completed" } },
+      { name: "source_import_outcome", data: { source_type: "zip", outcome: "cancelled" } },
+    ]),
+  );
+  expect(events.every((event) => Object.keys(event.data ?? {}).sort().join(",") === "outcome,source_type")).toBe(true);
+});
+
+test("records one coarse failure for each remote source without request details", async ({ page }) => {
+  await page.addInitScript(() => {
+    const testWindow = window as typeof window & {
+      umami?: {
+        track(name: string, data?: Record<string, string | number | boolean>): void;
+      };
+      __sourceImportEvents?: Array<{
+        name: string;
+        data?: Record<string, string | number | boolean>;
+      }>;
+    };
+    testWindow.__sourceImportEvents = [];
+    testWindow.umami = {
+      track(name, data) {
+        testWindow.__sourceImportEvents?.push({ name, data });
+      },
+    };
+  });
+  await mockAuth(page);
+  await page.route("**/api/port/github/repository**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(githubRepository),
+    }),
+  );
+  await page.route("**/api/port/github/import", (route) =>
+    route.fulfill({
+      status: 502,
+      contentType: "application/json",
+      body: JSON.stringify({
+        code: "GITHUB_FETCH_FAILED",
+        error: "private source URL and provider response must not be tracked",
+      }),
+    }),
+  );
+  await page.route("**/api/port/hosted-url", (route) =>
+    route.fulfill({
+      status: 502,
+      contentType: "application/json",
+      body: JSON.stringify({
+        code: "HOSTED_URL_FETCH_FAILED",
+        error: "private source URL and provider response must not be tracked",
+      }),
+    }),
+  );
+  await page.route("**/api/port/playground/import", (route) =>
+    route.fulfill({
+      status: 502,
+      contentType: "application/json",
+      body: JSON.stringify({
+        code: "PLAYGROUND_PROVIDER_UNAVAILABLE",
+        error: "private source URL and provider response must not be tracked",
+      }),
+    }),
+  );
+
+  await page.goto("/");
+  await openGithubImport(page);
+  await page.getByRole("button", { name: "Fetch selected snapshot" }).click();
+  await expect(page.getByText("GitHub import needs attention")).toBeVisible();
+
+  await page.getByRole("tab", { name: /Import hosted URL/i }).click();
+  await page.getByRole("textbox", { name: "Hosted page URL" }).fill("https://example.com/app");
+  await page.getByRole("button", { name: "Fetch hosted HTML" }).click();
+  await expect(page.getByText("Hosted page could not be imported")).toBeVisible();
+
+  await page.getByRole("tab", { name: /Import CodePen \/ JSFiddle/i }).click();
+  await page.getByRole("textbox", { name: "Public CodePen or JSFiddle URL" }).fill(
+    "https://codepen.io/alice/pen/demo",
+  );
+  await page.getByRole("button", { name: "Import playground" }).click();
+  await expect(page.getByText("Playground could not be imported")).toBeVisible();
+
+  const events = await page.evaluate(() => {
+    const testWindow = window as typeof window & {
+      __sourceImportEvents?: Array<{
+        name: string;
+        data?: Record<string, string | number | boolean>;
+      }>;
+    };
+    return testWindow.__sourceImportEvents ?? [];
+  });
+  expect(events).toEqual(
+    expect.arrayContaining([
+      { name: "source_import_outcome", data: { source_type: "github", outcome: "failed" } },
+      { name: "source_import_outcome", data: { source_type: "hosted", outcome: "failed" } },
+      { name: "source_import_outcome", data: { source_type: "playground", outcome: "failed" } },
+    ]),
+  );
+  expect(JSON.stringify(events)).not.toContain("private source URL");
+  expect(JSON.stringify(events)).not.toContain("provider response");
+  expect(events.every((event) => Object.keys(event.data ?? {}).sort().join(",") === "outcome,source_type")).toBe(true);
 });
 
 test("cancelling a pending playground import aborts the request and permits retry", async ({ page }) => {
@@ -1065,6 +1238,7 @@ test("keeps credential recovery analytics coarse across every browser outcome", 
     return testWindow.recoveryAnalyticsEvents;
   });
   expect(analyticsEvents).toEqual([
+    { name: "source_import_outcome", data: { source_type: "paste", outcome: "completed" } },
     { name: "credential_recovery_opened", data: null },
     { name: "credential_recovery_consent", data: null },
     { name: "credential_recovery_proposal_requested", data: null },
@@ -1073,6 +1247,7 @@ test("keeps credential recovery analytics coarse across every browser outcome", 
     { name: "credential_recovery_action", data: { action: "apply" } },
     { name: "credential_recovery_rescan", data: { result: "passed" } },
     { name: "credential_recovery_action", data: { action: "undo" } },
+    { name: "source_import_outcome", data: { source_type: "paste", outcome: "completed" } },
     { name: "credential_recovery_opened", data: null },
     { name: "credential_recovery_consent", data: null },
     { name: "credential_recovery_proposal_requested", data: null },

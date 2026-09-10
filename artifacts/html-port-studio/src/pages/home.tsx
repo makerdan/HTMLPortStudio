@@ -136,6 +136,17 @@ import {
 // ----------------------------------------------------------------------
 // Types and Helpers
 // ----------------------------------------------------------------------
+const SOURCE_MODE_LABELS = {
+  paste: 'Paste HTML',
+  html: 'Upload HTML',
+  zip: 'Upload ZIP',
+  github: 'Import GitHub repository',
+  hosted: 'Import hosted URL',
+  playground: 'Import CodePen / JSFiddle',
+} as const;
+
+type SourceChoice = keyof typeof SOURCE_MODE_LABELS;
+
 const SEVERITY_ICONS = {
   info: <Info className="h-4 w-4 text-primary" />,
   warning: <AlertTriangle className="h-4 w-4 text-primary" />,
@@ -1867,9 +1878,9 @@ function ClaudeRepairPanel({
 // ----------------------------------------------------------------------
 
 export default function Home() {
-  type SourceChoice = 'paste' | 'html' | 'zip' | 'github' | 'hosted' | 'playground';
   const queryClient = useQueryClient();
   const [selectedSource, setSelectedSource] = useState<SourceChoice>('paste');
+  const [sourceAnnouncement, setSourceAnnouncement] = useState('');
   const [htmlInput, setHtmlInput] = useState('');
   const [sourceBundle, setSourceBundle] = useState<SourceBundle | null>(null);
   const [analysisData, setAnalysisData] = useState<HtmlAnalysis | null>(null);
@@ -1952,6 +1963,7 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const zipInputRef = useRef<HTMLInputElement>(null);
   const sourceEntrypointRef = useRef<HTMLElement | null>(null);
+  const githubLookupFailureRef = useRef<string | null>(null);
   const setSourceEntrypointRef = useCallback((element: HTMLElement | null) => {
     sourceEntrypointRef.current = element;
   }, []);
@@ -1983,6 +1995,25 @@ export default function Home() {
       setGithubRef(githubRepositoryQuery.data.defaultBranch);
     }
   }, [githubRepositoryQuery.data, githubRef]);
+
+  useEffect(() => {
+    if (
+      selectedSource !== 'github' ||
+      !githubLookupUrl ||
+      !githubRepositoryQuery.isError
+    ) {
+      return;
+    }
+    const failureKey = `${githubLookupUrl}:${githubRepositoryQuery.errorUpdatedAt}`;
+    if (githubLookupFailureRef.current === failureKey) return;
+    githubLookupFailureRef.current = failureKey;
+    trackSourceImportOutcome('github', 'failed');
+  }, [
+    githubLookupUrl,
+    githubRepositoryQuery.errorUpdatedAt,
+    githubRepositoryQuery.isError,
+    selectedSource,
+  ]);
 
   useEffect(() => {
     if (pendingSourceFocusRef.current !== selectedSource) return;
@@ -2048,6 +2079,8 @@ export default function Home() {
         setAnalysisStale(false);
         if (isRepairRescan) {
           trackEvent('credential_recovery_rescan', { result: 'passed' });
+        } else if (selectedSource === 'paste') {
+          trackSourceImportOutcome('paste', 'completed');
         }
       },
       onError: () => {
@@ -2057,6 +2090,8 @@ export default function Home() {
         setAnalysisStale(true);
         if (isRepairRescan) {
           trackEvent('credential_recovery_rescan', { result: 'failed' });
+        } else if (selectedSource === 'paste') {
+          trackSourceImportOutcome('paste', 'failed');
         }
       }
     });
@@ -2165,6 +2200,23 @@ export default function Home() {
 
   const handleSourceChange = (nextSource: SourceChoice) => {
     if (nextSource === selectedSource) return;
+    if (selectedSource === 'github' && githubImportMutation.isPending) {
+      trackSourceImportOutcome('github', 'cancelled');
+    }
+    if (selectedSource === 'hosted' && hostedImportMutation.isPending) {
+      trackSourceImportOutcome('hosted', 'cancelled');
+    }
+    if (selectedSource === 'playground' && playgroundImportMutation.isPending) {
+      trackSourceImportOutcome('playground', 'cancelled');
+    }
+    const localSourceHasContent =
+      (selectedSource === 'paste' && Boolean(htmlInput.trim())) ||
+      (selectedSource === 'html' && sourceBundle?.sourceType === 'single_file') ||
+      (selectedSource === 'zip' &&
+        (zipLoading || sourceBundle?.sourceType === 'zip_project'));
+    if (localSourceHasContent && ['paste', 'html', 'zip'].includes(selectedSource)) {
+      trackSourceImportOutcome(selectedSource, 'cancelled');
+    }
     pendingSourceFocusRef.current = nextSource;
     importSessionRef.current += 1;
     analyzeMutation.reset();
@@ -2190,6 +2242,9 @@ export default function Home() {
     setPendingDownload(null);
     setDownloadError(null);
     setSelectedSource(nextSource);
+    setSourceAnnouncement(
+      `Previous source bundle cleared. New source: ${SOURCE_MODE_LABELS[nextSource]}.`,
+    );
     setFileError(null);
     setGithubUrl('');
     setGithubLookupUrl('');
@@ -2266,6 +2321,7 @@ export default function Home() {
               ? candidates.filter((candidate): candidate is string => typeof candidate === 'string')
               : [],
           );
+          trackSourceImportOutcome('github', 'failed');
           setGithubError(
             getStudioErrorMessage(
               error,
@@ -2311,6 +2367,7 @@ export default function Home() {
     const value = hostedUrl.trim();
     const validationError = validateHostedUrl(value);
     if (validationError) {
+      trackSourceImportOutcome('hosted', 'failed');
       setHostedError({ message: validationError });
       return;
     }
@@ -2330,6 +2387,7 @@ export default function Home() {
           if (sessionId !== importSessionRef.current) return;
           const bundle = data.bundle;
           if (bundle.sourceType !== 'hosted_page') {
+            trackSourceImportOutcome('hosted', 'failed');
             setHostedImportData(null);
             setHostedError({
               message: 'The server returned an unexpected hosted source. Retry the import.',
@@ -2357,6 +2415,7 @@ export default function Home() {
           }
           if (abortController.signal.aborted) return;
           if (sessionId !== importSessionRef.current) return;
+           trackSourceImportOutcome('hosted', 'failed');
           setHostedImportData(null);
           setHostedError(
             getStudioErrorPresentation(
@@ -2382,6 +2441,7 @@ export default function Home() {
     const value = playgroundUrl.trim();
     const validationError = validatePlaygroundUrl(value);
     if (validationError) {
+      trackSourceImportOutcome('playground', 'failed');
       setPlaygroundError({ message: validationError });
       return;
     }
@@ -2401,6 +2461,7 @@ export default function Home() {
           if (abortController.signal.aborted) return;
           if (sessionId !== importSessionRef.current) return;
           if (data.bundle.sourceType !== 'playground') {
+             trackSourceImportOutcome('playground', 'failed');
             setPlaygroundError({
               message: 'The server returned an unexpected playground source. Retry the import.',
             });
@@ -2426,6 +2487,7 @@ export default function Home() {
           }
           if (abortController.signal.aborted) return;
           if (sessionId !== importSessionRef.current) return;
+           trackSourceImportOutcome('playground', 'failed');
           setPlaygroundImportData(null);
           setPlaygroundError(
             getStudioErrorPresentation(
@@ -2448,6 +2510,18 @@ export default function Home() {
   };
 
   const handleReset = () => {
+    if (selectedSource === 'paste' && Boolean(htmlInput.trim())) {
+      trackSourceImportOutcome('paste', 'cancelled');
+    }
+    if (selectedSource === 'html' && sourceBundle?.sourceType === 'single_file') {
+      trackSourceImportOutcome('html', 'cancelled');
+    }
+    if (
+      selectedSource === 'zip' &&
+      (zipLoading || sourceBundle?.sourceType === 'zip_project')
+    ) {
+      trackSourceImportOutcome('zip', 'cancelled');
+    }
     importSessionRef.current += 1;
     analyzeMutation.reset();
     githubImportAbortControllerRef.current?.abort();
@@ -2492,9 +2566,22 @@ export default function Home() {
     setPlaygroundImportData(null);
     playgroundImportMutation.reset();
     setSelectedSource('paste');
+    setSourceAnnouncement('Previous source bundle cleared. New source: Paste HTML.');
   };
 
   const handleClearSelectedSource = () => {
+    if (selectedSource === 'paste' && (Boolean(htmlInput.trim()) || sourceBundle?.sourceType === 'pasted_html')) {
+      trackSourceImportOutcome('paste', 'cancelled');
+    }
+    if (selectedSource === 'html' && sourceBundle?.sourceType === 'single_file') {
+      trackSourceImportOutcome('html', 'cancelled');
+    }
+    if (
+      selectedSource === 'zip' &&
+      (zipLoading || sourceBundle?.sourceType === 'zip_project')
+    ) {
+      trackSourceImportOutcome('zip', 'cancelled');
+    }
     importSessionRef.current += 1;
     analyzeMutation.reset();
     githubImportAbortControllerRef.current?.abort();
@@ -2548,13 +2635,23 @@ export default function Home() {
 
     const validationError = validateHtmlFile(file);
     event.target.value = '';
+    if (validationError) trackSourceImportOutcome('html', 'failed');
     if (validationError) {
       setFileError(validationError);
       return;
     }
 
     const sessionId = importSessionRef.current;
-    const html = await file.text();
+    let html: string;
+    try {
+      html = await file.text();
+    } catch {
+      if (sessionId === importSessionRef.current) {
+        trackSourceImportOutcome('html', 'failed');
+        setFileError('The HTML file could not be read. Choose another file and try again.');
+      }
+      return;
+    }
     if (sessionId !== importSessionRef.current) return;
     importSessionRef.current += 1;
     const bundlePath = 'index.html';
@@ -2573,6 +2670,7 @@ export default function Home() {
     setAnalyzedRevision(null);
     setAnalysisStale(false);
     setFileError(null);
+    trackSourceImportOutcome('html', 'completed');
   };
 
   const handleZipSelect = async (
@@ -2583,10 +2681,12 @@ export default function Home() {
     if (!file) return;
 
     if (!file.name.toLowerCase().endsWith('.zip')) {
+      trackSourceImportOutcome('zip', 'failed');
       setFileError('Choose a ZIP file ending in .zip, then try again.');
       return;
     }
     if (file.size > 25 * 1024 * 1024) {
+      trackSourceImportOutcome('zip', 'failed');
       setFileError(
         `This ZIP is ${formatZipBytes(file.size)}. Choose an archive no larger than 25 MB.`,
       );
@@ -2615,6 +2715,7 @@ export default function Home() {
       bumpSourceRevision();
       setAnalyzedRevision(null);
       setAnalysisStale(false);
+      trackSourceImportOutcome('zip', 'completed');
     } catch (error) {
       if (sessionId !== importSessionRef.current) return;
       setFileError(
@@ -2622,6 +2723,7 @@ export default function Home() {
           ? error.message
           : 'The ZIP archive could not be imported. It may be malformed.',
       );
+      trackSourceImportOutcome('zip', 'failed');
     } finally {
       if (sessionId === importSessionRef.current) {
         setZipLoading(false);
@@ -2864,6 +2966,13 @@ export default function Home() {
                     </Button>
                   ))}
                 </div>
+                 <p
+                   aria-live="polite"
+                   aria-atomic="true"
+                   className="sr-only"
+                 >
+                   {sourceAnnouncement}
+                 </p>
                 <input
                   ref={fileInputRef}
                   type="file"

@@ -155,6 +155,64 @@ test("keeps analytics optional and non-blocking when the tracker is missing or f
   }
 });
 
+test("limits source import analytics to the fixed privacy-safe vocabulary", () => {
+  const originalWindow = (globalThis as { window?: unknown }).window;
+  const calls: Array<{ name: string; data?: Record<string, string | number | boolean> }> = [];
+
+  try {
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: {
+        umami: {
+          track(name: string, data?: Record<string, string | number | boolean>) {
+            calls.push({ name, data });
+          },
+        },
+      },
+    });
+
+    for (const sourceType of ["paste", "html", "zip", "github", "hosted", "playground"] as const) {
+      for (const outcome of ["cancelled", "completed", "failed"] as const) {
+        trackSourceImportOutcome(sourceType, outcome);
+      }
+    }
+
+    assert.equal(calls.length, 18);
+    for (const call of calls) {
+      assert.equal(call.name, "source_import_outcome");
+      assert.deepEqual(Object.keys(call.data ?? {}).sort(), ["outcome", "source_type"]);
+      assert.match(String(call.data?.source_type), /^(paste|html|zip|github|hosted|playground)$/);
+      assert.match(String(call.data?.outcome), /^(cancelled|completed|failed)$/);
+    }
+  } finally {
+    if (originalWindow === undefined) {
+      Reflect.deleteProperty(globalThis, "window");
+    } else {
+      Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        value: originalWindow,
+      });
+    }
+  }
+});
+
+test("announces the cleared bundle and newly active source mode", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /const SOURCE_MODE_LABELS = \{/);
+  assert.match(source, /paste: 'Paste HTML'/);
+  assert.match(source, /html: 'Upload HTML'/);
+  assert.match(source, /zip: 'Upload ZIP'/);
+  assert.match(source, /github: 'Import GitHub repository'/);
+  assert.match(source, /hosted: 'Import hosted URL'/);
+  assert.match(source, /playground: 'Import CodePen \/ JSFiddle'/);
+  assert.match(source, /aria-live="polite"/);
+  assert.match(source, /aria-atomic="true"/);
+  assert.match(source, /setSourceAnnouncement\(/);
+  assert.match(source, /Previous source bundle cleared\. New source:/);
+  assert.match(source, /SOURCE_MODE_LABELS\[nextSource\]/);
+});
+
 test("keeps source requests scoped to the current import", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
 
