@@ -31,6 +31,13 @@ export const REGRESSION_GUARD_STUB = `## Regression Guard
 **What it checks:** REQUIRED: state the specific assertion that fails if the old behavior returns.
 `;
 
+export const REGRESSION_GUARD_ARCHIVE_CATEGORIES = [
+  "missing",
+  "misplaced",
+  "placeholder",
+  "malformed",
+];
+
 function sectionHeadings(text) {
   return [...text.matchAll(/^##\s+(.+?)\s*$/gm)].map((match) => ({
     name: match[1].trim(),
@@ -181,6 +188,25 @@ export function validateRegressionGuardText(text, planFile = "task plan", { requ
     validateConcreteDeclaration(body, planFile, errors);
   }
   return errors;
+}
+
+export function classifyRegressionGuardInspection(inspection) {
+  const body = extractSectionBody(inspection.text, GUARD_SECTION);
+  if (body === null) {
+    return { categories: ["missing"], errors: inspection.errors };
+  }
+
+  const categories = [];
+  const placementError = inspection.errors.some((error) =>
+    /must appear (?:after|before)|more than one "## Regression Guard"/i.test(error));
+  const placeholderError = PLACEHOLDER.test(body) || inspection.errors.some((error) =>
+    /placeholder|non-placeholder|missing a real/i.test(error));
+
+  if (placementError) categories.push("misplaced");
+  if (placeholderError) categories.push("placeholder");
+  if (inspection.errors.length && !categories.includes("malformed")) categories.push("malformed");
+
+  return { categories, errors: inspection.errors };
 }
 
 export function addMissingRegressionGuardStub(text) {

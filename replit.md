@@ -114,8 +114,21 @@ pre-existing test baselines. A passing retry proves intermittency only; an
 unlisted failure needs two-factor provenance before it can be classified as
 pre-existing.
 
+Create plans with `scripts/new-plan.mjs`, which requires exactly one of:
+
+- `--guard-covers`, `--guard-test-location`, and `--guard-checks`
+- `--guard-na-reason` with a permitted N/A reason
+- `--guard-self-satisfying` naming the guard-writing deliverable
+
+Incomplete or mixed decisions fail before a plan is written. To inspect
+environment-local history without changing it, run
+`node scripts/check-regression-guard.mjs --archive`. That command produces a
+clearly labeled `HISTORICAL` read-only report; it does not affect strict
+current-task validation, which remains scoped to `TASK_PLAN_FILE`.
+
 ## Regression Guard
 
+```markdown
 **Covers:** <concrete scenario, boundary, invariant, lifecycle, reliability property, or contract>
 **Test location:** <specific test file in the layer where the wrong behavior lives>
 **What it checks:** <specific assertion or observable behavior that fails if it returns>
@@ -131,6 +144,7 @@ strict validation. Regression Guard never replaces Failure Gate or raises the
 plan's validation ceiling.
 ## Regression Guard
 
+```markdown
 **Covers:** <concrete scenario, boundary, invariant, lifecycle, reliability property, or contract>
 **Test location:** <specific test file in the layer where the wrong behavior lives>
 **What it checks:** <specific assertion or observable behavior that fails if it returns>

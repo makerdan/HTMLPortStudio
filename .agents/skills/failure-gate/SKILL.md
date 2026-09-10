@@ -118,6 +118,14 @@ comes after this skill's baseline and validation sections and does not change
 the selected validation tier. The validation entry point scopes both guards to
 `TASK_PLAN_FILE`, remediates missing stubs, then runs both strict checks.
 
+Use `scripts/new-plan.mjs` to create plans. It requires exactly one guard
+decision: a complete `--guard-covers`, `--guard-test-location`, and
+`--guard-checks` declaration; `--guard-na-reason` with one permitted reason; or
+`--guard-self-satisfying` naming the guard-writing deliverable. Incomplete,
+mixed, or placeholder decisions fail before the output file is created. These
+inputs only generate the additive Regression Guard section; they do not alter
+Failure Gate fields or the selected validation tier.
+
 ## Execute-time decision path
 
 Read the plan's baseline and validation sections before editing. A task-driven
@@ -178,6 +186,17 @@ current `TASK_PLAN_FILE`. Archive inspection requires:
 ```sh
 node scripts/check-failure-gate.mjs --archive
 ```
+
+Regression Guard archive inspection is a separate, read-only historical report:
+
+```sh
+node scripts/check-regression-guard.mjs --archive
+```
+
+It labels missing, misplaced, placeholder, and malformed sections as
+`HISTORICAL` findings, returns without modifying `.local/tasks`, and does not
+turn archive findings into current-task validation failures. Current-task
+validation remains the strict `TASK_PLAN_FILE` path above.
 
 It is not an ordinary tier dependency. Periodic baseline maintenance is an
 opt-in report:

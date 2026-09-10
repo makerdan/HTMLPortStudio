@@ -4,6 +4,7 @@ import path from "node:path";
 import { ROOT } from "./lib/tier-lock-check.mjs";
 import {
   addMissingRegressionGuardStub,
+  classifyRegressionGuardInspection,
   inspectRegressionGuardFile,
 } from "./lib/regression-guard.mjs";
 
@@ -13,7 +14,12 @@ const stubsOnly = args.includes("--stubs-only");
 const archive = args.includes("--archive");
 const planOptionIndex = args.indexOf("--plan");
 const explicitPlan = planOptionIndex === -1 ? null : args[planOptionIndex + 1];
-const planFile = explicitPlan || (planOptionIndex === -1 ? process.env.TASK_PLAN_FILE : null);
+const planFile = archive ? null : explicitPlan || (planOptionIndex === -1 ? process.env.TASK_PLAN_FILE : null);
+
+if (archive && (explicitPlan || fixStub || stubsOnly)) {
+  console.error("[REGRESSION-GUARD] --archive is a read-only historical report and cannot be combined with --plan, --fix-stub, or --stubs-only.");
+  process.exit(2);
+}
 
 function filesToCheck() {
   if (planFile) return [planFile];
@@ -33,10 +39,33 @@ if (files.length === 0) {
     process.exit(2);
   }
   if (archive) {
-    console.log("[REGRESSION-GUARD] No task plans found in the local archive.");
+    console.log("[REGRESSION-GUARD] HISTORICAL ARCHIVE REPORT (read-only)");
+    console.log("[REGRESSION-GUARD] No task plans found in the local archive; no files were modified.");
     process.exit(0);
   }
   console.log("[REGRESSION-GUARD] No TASK_PLAN_FILE set; skipping task-plan lint in ad-hoc mode.");
+  process.exit(0);
+}
+
+if (archive) {
+  console.log("[REGRESSION-GUARD] HISTORICAL ARCHIVE REPORT (read-only)");
+  console.log("[REGRESSION-GUARD] Findings describe archived plans only; they are not current-task validation failures.");
+  let findings = 0;
+  for (const file of files) {
+    try {
+      const inspection = inspectRegressionGuardFile(file);
+      const classified = classifyRegressionGuardInspection(inspection);
+      if (!classified.categories.length) continue;
+      findings += 1;
+      console.log(`[REGRESSION-GUARD] HISTORICAL ${path.relative(ROOT, file)} — ${classified.categories.join(", ")}`);
+      for (const error of classified.errors) console.log(`  - ${error}`);
+    } catch (error) {
+      findings += 1;
+      console.log(`[REGRESSION-GUARD] HISTORICAL ${path.relative(ROOT, file)} — malformed`);
+      console.log(`  - ${error.message}`);
+    }
+  }
+  console.log(`[REGRESSION-GUARD] Historical archive report complete: ${findings} plan(s) with findings; no files were modified.`);
   process.exit(0);
 }
 

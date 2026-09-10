@@ -324,7 +324,15 @@ test("locked runner rejects a structurally invalid plan before running", () => {
 test("scaffold creates a compliant plan with a real rationale", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "failure-gate-scaffold-"));
   const file = path.join(directory, "scaffold.md");
-  execFileSync(process.execPath, [path.join(root, "scripts/new-plan.mjs"), "--title", "Scaffold case", "--why", "The task needs a reproducible validation ceiling.", "--output", file], { cwd: root });
+  execFileSync(process.execPath, [
+    path.join(root, "scripts/new-plan.mjs"),
+    "--title", "Scaffold case",
+    "--why", "The task needs a reproducible validation ceiling.",
+    "--guard-covers", "A generated plan must retain its selected validation ceiling.",
+    "--guard-test-location", "scripts/check-failure-gate.test.mjs",
+    "--guard-checks", "Asserts that the generated plan keeps the exact registered validation command.",
+    "--output", file,
+  ], { cwd: root });
   assert.deepEqual(validatePlanText(fs.readFileSync(file, "utf8"), file), []);
   fs.rmSync(directory, { recursive: true, force: true });
 });

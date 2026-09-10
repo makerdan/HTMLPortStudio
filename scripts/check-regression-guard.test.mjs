@@ -6,11 +6,14 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 import {
   addMissingRegressionGuardStub,
+  classifyRegressionGuardInspection,
+  inspectRegressionGuardFile,
   validateRegressionGuardText,
 } from "./lib/regression-guard.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const checker = path.join(root, "scripts/check-regression-guard.mjs");
+const planner = path.join(root, "scripts/new-plan.mjs");
 
 const baseline = `## Pre-existing failures to ignore
 None known at plan time.
@@ -143,6 +146,7 @@ test("fix-stub is remediation-only while strict mode rejects the stub", () => {
   }
 });
 
+
 test("stubs-only skips missing sections but still adds a stub", () => {
   const { directory, file } = temporaryPlan(baseline);
   try {
@@ -180,6 +184,139 @@ test("TASK_PLAN_FILE scopes to one plan and rejects invalid or missing paths", (
     });
     assert.notEqual(missing.status, 0);
     assert.match(missing.stderr, /does not exist/);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("archive classification names historical gaps without turning them into current failures", () => {
+  const cases = [
+    {
+      label: "missing",
+      text: baseline,
+      category: "missing",
+    },
+    {
+      label: "misplaced",
+      text: `## Regression Guard
+${concrete.split("## Regression Guard\n")[1]}
+${baseline}`,
+      category: "misplaced",
+    },
+    {
+      label: "placeholder",
+      text: `${baseline}
+## Regression Guard
+**Covers:** REQUIRED: describe the scenario.
+**Test location:** scripts/example.test.mjs
+**What it checks:** Asserts the expected behavior.
+`,
+      category: "placeholder",
+    },
+    {
+      label: "malformed",
+      text: `${baseline}
+## Regression Guard
+**Covers:** A concrete scenario is described here.
+**Test location:** the relevant test
+**What it checks:** This is a specific assertion with enough detail.
+`,
+      category: "malformed",
+    },
+  ];
+
+  for (const entry of cases) {
+    const { directory, file } = temporaryPlan(entry.text);
+    try {
+      const classified = classifyRegressionGuardInspection(inspectRegressionGuardFile(file));
+      assert.ok(classified.categories.includes(entry.category), `${entry.label} was not classified`);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  }
+});
+
+test("archive mode reports historical findings as read-only", () => {
+  const archiveDir = path.join(root, ".local/tasks");
+  const before = new Map(
+    fs.readdirSync(archiveDir)
+      .filter((name) => name.endsWith(".md"))
+      .map((name) => [name, fs.readFileSync(path.join(archiveDir, name), "utf8")]),
+  );
+  const result = spawnSync(process.execPath, [checker, "--archive"], { cwd: root, encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /HISTORICAL ARCHIVE REPORT \(read-only\)/);
+  assert.match(result.stdout, /not current-task validation failures/);
+  for (const [name, text] of before) {
+    assert.equal(fs.readFileSync(path.join(archiveDir, name), "utf8"), text, `${name} was modified`);
+  }
+});
+
+test("plan creation rejects a missing or incomplete guard before creating a file", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "regression-guard-plan-"));
+  const file = path.join(directory, "incomplete.md");
+  try {
+    const result = spawnSync(process.execPath, [
+      planner,
+      "--title", "Incomplete guard",
+      "--why", "The plan must reject incomplete guard decisions before writing.",
+      "--guard-covers", "A concrete scenario is described here.",
+      "--output", file,
+    ], { cwd: root, encoding: "utf8" });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /requires --guard-covers, --guard-test-location, and --guard-checks/);
+    assert.equal(fs.existsSync(file), false);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("plan creation writes a compliant section for every supported decision", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "regression-guard-planner-"));
+  const fixtureScripts = path.join(directory, "scripts");
+  const fixtureDocs = path.join(directory, "docs");
+  fs.cpSync(path.join(root, "scripts"), fixtureScripts, { recursive: true });
+  fs.cpSync(path.join(root, "docs"), fixtureDocs, { recursive: true });
+  fs.mkdirSync(path.join(directory, ".local/tasks"), { recursive: true });
+  fs.writeFileSync(path.join(fixtureDocs, "validation/validation-tiers.json"), JSON.stringify({
+    version: 1,
+    tiers: [{ name: "test-standard", command: "true" }],
+  }));
+
+  const decisions = [
+    [
+      "--guard-covers", "A delayed response must not replace newer editor content.",
+      "--guard-test-location", "scripts/check-regression-guard.test.mjs",
+      "--guard-checks", "Asserts that an older response is ignored and the newest content remains selected.",
+      "**Covers:** A delayed response must not replace newer editor content.",
+    ],
+    [
+      "--guard-na-reason", "The failure is a race condition requiring real timing: genuine wall-clock concurrency cannot be faithfully reproduced with fake timers.",
+      "**N/A**",
+    ],
+    [
+      "--guard-self-satisfying", "the Regression Guard checker and focused recurrence test",
+      "**Self-satisfying**",
+    ],
+  ];
+
+  try {
+    for (const [index, decision] of decisions.entries()) {
+      const output = path.join(directory, ".local/tasks", `plan-${index}.md`);
+      const result = spawnSync(process.execPath, [
+        path.join(fixtureScripts, "new-plan.mjs"),
+        "--title", `Planner decision ${index}`,
+        "--why", "The generated plan must preserve its validation contract.",
+        ...decision.slice(0, decision.length - 1),
+        "--output", output,
+      ], { cwd: directory, encoding: "utf8" });
+      assert.equal(result.status, 0, result.stderr);
+      const text = fs.readFileSync(output, "utf8");
+      assert.deepEqual(validateRegressionGuardText(text, output), []);
+      assert.match(text, new RegExp(decision.at(-1).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+      assert.match(text, /## Pre-existing failures to ignore/);
+      assert.match(text, /## Validation\n\*\*Command:\*\* `test-standard`/);
+    }
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }
