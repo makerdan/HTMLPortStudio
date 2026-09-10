@@ -3,8 +3,8 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { loadTierRegistry, TIER_REGISTRY_LABEL } from "./lib/tier-lock-check.mjs";
 
-export function runTier(tierName, { env = process.env } = {}) {
-  const tier = loadTierRegistry().get(tierName);
+export function runTier(tierName, { env = process.env, tier: lockedTier } = {}) {
+  const tier = lockedTier || loadTierRegistry().get(tierName);
   if (!tier) {
     throw new Error(`Validation-tier registry ${TIER_REGISTRY_LABEL} does not define requested tier "${tierName}"; check the registered tiers in ${TIER_REGISTRY_LABEL}.`);
   }

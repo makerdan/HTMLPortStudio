@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { runTier } from "./run-tier.mjs";
-import { readPlanTier, resolvePlanFile } from "./lib/tier-lock-check.mjs";
+import { readPlanTier } from "./lib/tier-lock-check.mjs";
 import { inspectPlanFile } from "./lib/failure-gate.mjs";
 import { inspectRegressionGuardFile } from "./lib/regression-guard.mjs";
 
@@ -17,7 +17,7 @@ try {
     console.warn("[TIER-LOCK] Ad-hoc run explicitly allowed without TASK_PLAN_FILE.");
     process.exit(runTier(tierName, { env: { ...process.env } }));
   }
-  const plan = readPlanTier(suppliedPlan || resolvePlanFile());
+  const plan = readPlanTier(suppliedPlan);
   const failureLint = inspectPlanFile(plan.planFile);
   const regressionLint = inspectRegressionGuardFile(plan.planFile);
   if (failureLint.errors.length || regressionLint.errors.length) {
@@ -31,7 +31,7 @@ try {
     throw new Error(messages.join("\n"));
   }
   const env = { ...process.env, TASK_PLAN_FILE: plan.planFile };
-  process.exit(runTier(plan.tierName, { env }));
+  process.exit(runTier(plan.tierName, { env, tier: plan.tier }));
 } catch (error) {
   const message = error.message.startsWith("TIER-LOCK VIOLATION:")
     ? error.message

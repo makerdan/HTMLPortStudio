@@ -5,7 +5,7 @@ import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import test from "node:test";
 import { validatePlanText } from "./lib/failure-gate.mjs";
-import { TIER_REGISTRY_FILE, loadTierRegistry, readPlanTier } from "./lib/tier-lock-check.mjs";
+import { loadTierRegistry, readPlanTier } from "./lib/tier-lock-check.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const checker = path.join(root, "scripts/check-failure-gate.mjs");
@@ -53,17 +53,52 @@ function withCatalog(records, callback) {
 }
 
 function withTierRegistry(registry, callback) {
-  const original = fs.readFileSync(TIER_REGISTRY_FILE, "utf8");
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "failure-gate-registry-"));
+  const file = path.join(directory, "validation-tiers.json");
+  const previous = process.env.VALIDATION_TIER_REGISTRY_FILE;
   try {
-    fs.writeFileSync(TIER_REGISTRY_FILE, JSON.stringify(registry, null, 2));
+    fs.writeFileSync(file, JSON.stringify(registry, null, 2));
+    process.env.VALIDATION_TIER_REGISTRY_FILE = file;
     return callback();
   } finally {
-    fs.writeFileSync(TIER_REGISTRY_FILE, original);
+    if (previous === undefined) delete process.env.VALIDATION_TIER_REGISTRY_FILE;
+    else process.env.VALIDATION_TIER_REGISTRY_FILE = previous;
+    fs.rmSync(directory, { recursive: true, force: true });
   }
 }
 
 test("accepts a valid plan", () => {
   assert.deepEqual(validatePlanText(valid, "valid plan"), []);
+});
+
+test("rejects missing and empty tier registry data with specific diagnostics", () => {
+  const cases = [
+    [{ version: 1 }, /missing tier data.*"tiers" array/],
+    [{ version: 1, tiers: [] }, /empty tier registry/],
+  ];
+  for (const [registry, diagnostic] of cases) {
+    assert.throws(() => withTierRegistry(registry, () => loadTierRegistry()), diagnostic);
+  }
+});
+
+test("rejects empty tier names and commands with field-specific diagnostics", () => {
+  const cases = [
+    [{ version: 1, tiers: [{ name: "", command: "node -e \"process.exit(0)\"" }] }, /tier name must be a non-empty string/],
+    [{ version: 1, tiers: [{ name: "empty-command", command: "  " }] }, /tier command must be a non-empty string/],
+  ];
+  for (const [registry, diagnostic] of cases) {
+    assert.throws(() => withTierRegistry(registry, () => loadTierRegistry()), diagnostic);
+  }
+});
+
+test("rejects duplicate tier names and identifies both declarations", () => {
+  assert.throws(() => withTierRegistry({
+    version: 1,
+    tiers: [
+      { name: "duplicate", command: "node -e \"process.exit(0)\"" },
+      { name: "duplicate", command: "node -e \"process.exit(0)\"" },
+    ],
+  }, () => loadTierRegistry()), /duplicate tier name "duplicate" at index 1; already declared at index 0/);
 });
 
 test("resolves every registered tier from a valid plan to its exact command", () => {
@@ -192,6 +227,27 @@ test("TASK_PLAN_FILE selects exactly one plan", () => {
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
+test("locked runner invokes the exact command returned by the registered tier", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "failure-gate-lock-"));
+  const file = path.join(directory, "plan.md");
+  const marker = path.join(directory, "validation-ran");
+  const lockedValid = `${valid}\n## Regression Guard\n**Covers:** The locked runner must execute the selected registered validation command.\n**Test location:** scripts/check-failure-gate.test.mjs\n**What it checks:** The marker is written only when the registry-selected command starts.\n`;
+  fs.writeFileSync(file, lockedValid);
+  const command = `node -e "require('fs').writeFileSync('${marker}', 'registry-command')"`;
+  const result = withTierRegistry({
+    version: 1,
+    tiers: [{ name: "test-standard", command }],
+  }, () => spawnSync(process.execPath, [runner, file], {
+    cwd: root,
+    env: process.env,
+    encoding: "utf8",
+  }));
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, new RegExp(`Running tier "test-standard": ${command.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+  assert.equal(fs.readFileSync(marker, "utf8"), "registry-command");
+  fs.rmSync(directory, { recursive: true, force: true });
+});
+
 test("fix-stub adds structure but strict mode still catches placeholders", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "failure-gate-stub-"));
   const file = path.join(directory, "plan.md");
@@ -268,6 +324,33 @@ test("locked runner explains malformed registry data and stops before running", 
   assert.match(result.stderr, new RegExp(`${path.relative(root, file)}.*validation tier "test-standard".*malformed tier at index 1`));
   assert.doesNotMatch(result.stderr, /\[VALIDATION\] Running tier/);
   assert.equal(fs.existsSync(marker), false);
+  fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test("locked runner explains missing TASK_PLAN_FILE before running", () => {
+  const result = spawnSync(process.execPath, [runner], {
+    cwd: root,
+    env: { ...process.env, TASK_PLAN_FILE: undefined },
+    encoding: "utf8",
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /TASK_PLAN_FILE is not set/);
+  assert.match(result.stderr, /pass a readable \.md task plan path explicitly/);
+  assert.doesNotMatch(result.stderr, /\[VALIDATION\] Running tier/);
+});
+
+test("locked runner distinguishes an unreadable explicit plan and stops before running", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "failure-gate-lock-"));
+  const file = path.join(directory, "missing.md");
+  const result = spawnSync(process.execPath, [runner, file], {
+    cwd: root,
+    env: { ...process.env, TASK_PLAN_FILE: path.join(directory, "ignored.md") },
+    encoding: "utf8",
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, new RegExp(`${path.relative(root, file)}.*exact path: ${file.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}.*source: explicit plan argument`));
+  assert.match(result.stderr, /Repair the explicit plan argument/);
+  assert.doesNotMatch(result.stderr, /\[VALIDATION\] Running tier/);
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
