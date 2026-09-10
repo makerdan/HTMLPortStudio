@@ -242,6 +242,7 @@ paths:
       operationId: listPoeModels
       tags: [porting]
       summary: List Poe models available to the configured server key
+      description: Requires an authenticated Studio session. Model identifiers are exact, case-sensitive values from the live Poe catalogue; provider credentials never reach the browser.
       responses:
         "200":
           description: Available Poe models and configuration status
@@ -249,18 +250,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PoeModels"
+        "401":
+          description: An authenticated Studio session is required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "503":
           description: Poe model availability could not be loaded
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/PoeErrorResponse"
   /port/poe/chat:
     post:
       operationId: chatWithPoe
       tags: [porting]
       summary: Send an OpenAI-compatible chat request through Poe
-      description: Proxies a chat completion through Poe so the API key never reaches the browser.
+      description: Requires an authenticated Studio session and proxies a text-only chat completion through Poe so the API key never reaches the browser. The selected model and capability must be confirmed by the live catalogue and server registry.
       requestBody:
         required: true
         content:
@@ -279,25 +286,31 @@ paths:
           content:
             application/json:
               schema:
+                $ref: "#/components/schemas/PoeErrorResponse"
+        "401":
+          description: An authenticated Studio session is required
+          content:
+            application/json:
+              schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "413":
           description: Chat request exceeds the server request byte limit
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/PoeErrorResponse"
         "429":
           description: Too many chat requests from the caller
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/PoeErrorResponse"
         "503":
           description: Poe is not configured or unavailable
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/PoeErrorResponse"
   /port/replit-project-connection:
     get:
       operationId: getReplitProjectConnection
@@ -472,6 +485,38 @@ components:
         action:
           type: string
       required: [error]
+    PoeErrorCode:
+      type: string
+      description: Stable safe Poe route failures. Provider response bodies and credentials are never returned.
+      enum:
+        - POE_INVALID_REQUEST
+        - POE_CHAT_REQUEST_TOO_LARGE
+        - POE_TOKEN_LIMIT_EXCEEDED
+        - CHAT_CONTAINS_CREDENTIAL
+        - POE_CAPABILITY_UNAVAILABLE
+        - POE_MODEL_UNAVAILABLE
+        - POE_NOT_CONFIGURED
+        - POE_AUTHENTICATION_FAILED
+        - POE_RATE_LIMITED
+        - POE_RATE_LIMIT_UNAVAILABLE
+        - POE_TIMEOUT
+        - POE_PROVIDER_UNAVAILABLE
+        - POE_COMPLETION_INVALID
+    PoeErrorResponse:
+      type: object
+      description: Safe, stable Poe failure details. retryAfterSeconds is bounded by the server and is also sent as Retry-After when present.
+      properties:
+        error:
+          type: string
+        code:
+          $ref: "#/components/schemas/PoeErrorCode"
+        action:
+          type: string
+        retryAfterSeconds:
+          type: integer
+          minimum: 1
+          maximum: 60
+      required: [error, code]
     ImportErrorCode:
       type: string
       description: Stable, safe error identifiers emitted by hosted and playground imports.
@@ -570,7 +615,7 @@ components:
       required: [version, sourceType, files, entrypoint, metadata]
       properties:
         version:
-          type: integer
+          type: number
           enum: [1]
         sourceType:
           $ref: "#/components/schemas/SourceType"
@@ -821,13 +866,71 @@ components:
       properties:
         configured:
           type: boolean
+        available:
+          type: boolean
         models:
           type: array
           items:
             type: string
         message:
           type: string
-      required: [configured, models, message]
+        capabilities:
+          type: array
+          items:
+            $ref: "#/components/schemas/PoeCapability"
+      required: [configured, available, models, message, capabilities]
+    PoeCapability:
+      type: object
+      properties:
+        version:
+          type: number
+        id:
+          type: string
+          enum: [generic-assistant, gemini-repair, claude-repair]
+        endpoint:
+          type: string
+          enum: [/v1/chat/completions]
+        contract:
+          type: string
+          enum: [text-only]
+        privacyClass:
+          type: string
+          enum: [user-content, redacted-source]
+        limits:
+          type: object
+          properties:
+            maxMessages:
+              type: number
+              minimum: 1
+            maxCompletionTokens:
+              type: number
+              minimum: 1
+          required: [maxMessages, maxCompletionTokens]
+        fallback:
+          type: string
+          enum: [none, generic-assistant]
+        owner:
+          type: string
+          enum: [api-server]
+        reviewEvidence:
+          type: string
+        capabilities:
+          type: object
+          properties:
+            toolCalling:
+              type: string
+              enum: [available, unavailable]
+            vision:
+              type: string
+              enum: [available, unavailable]
+            structuredOutput:
+              type: string
+              enum: [available, unavailable]
+            streaming:
+              type: string
+              enum: [available, unavailable]
+          required: [toolCalling, vision, structuredOutput, streaming]
+      required: [version, id, endpoint, contract, privacyClass, limits, fallback, owner, reviewEvidence, capabilities]
     PoeMessage:
       type: object
       properties:
@@ -844,6 +947,9 @@ components:
         model:
           type: string
           minLength: 1
+        capability:
+          type: string
+          enum: [generic-assistant, gemini-repair, claude-repair]
         messages:
           type: array
           minItems: 1

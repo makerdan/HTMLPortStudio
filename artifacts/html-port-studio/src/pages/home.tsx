@@ -303,6 +303,7 @@ function Header({ onReset }: { onReset: () => void }) {
 }
 
 function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFinding[] }) {
+  const { isAuthenticated, isLoading: authLoading, login } = useStudioAuth();
   const {
     data: poeData,
     isLoading: modelsLoading,
@@ -310,7 +311,9 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
     isError: modelsError,
     error: modelsQueryError,
     refetch: refetchModels,
-  } = useListPoeModels();
+  } = useListPoeModels({
+    query: { queryKey: ['assistant-poe-models'], enabled: isAuthenticated },
+  });
   const chatMutation = useChatWithPoe();
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [prompt, setPrompt] = useState('');
@@ -320,6 +323,9 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
     { role: 'assistant', content: "Hello! I can help you port this HTML to Replit. What issue are you facing?" }
   ]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const chatRequestRevisionRef = useRef(0);
+  const latestHtmlRef = useRef(html);
+  latestHtmlRef.current = html;
   const rateLimitRemainingSeconds = useRateLimitCountdown(rateLimitRetryAt);
   const documentContainsCredential = useMemo(() => containsCredential(html), [html]);
   const availableModels = poeData?.configured ? poeData.models : [];
@@ -350,6 +356,7 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
     ) return;
 
     const submittedPrompt = prompt.trim();
+    const requestRevision = ++chatRequestRevisionRef.current;
     const newMessage: PoeMessage = { role: 'user', content: submittedPrompt };
     const newHistory = [...chatHistory, newMessage];
     
@@ -362,15 +369,24 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
     chatMutation.mutate({
       data: {
         model: selectedModel,
+        capability: 'generic-assistant',
         messages: [{ role: 'system', content: systemContext }, ...newHistory]
       }
     }, {
       onSuccess: (res: PoeChatResponse) => {
+        if (
+          requestRevision !== chatRequestRevisionRef.current ||
+          latestHtmlRef.current !== html
+        ) return;
         setPrompt('');
         setRateLimitRetryAt(null);
         setChatHistory(prev => [...prev, { role: 'assistant', content: res.content }]);
       },
       onError: (error: unknown) => {
+        if (
+          requestRevision !== chatRequestRevisionRef.current ||
+          latestHtmlRef.current !== html
+        ) return;
         setChatHistory(prev => prev.filter((message, index) => index !== prev.length - 1));
         setPrompt(submittedPrompt);
         const presentation = getStudioErrorPresentation(
@@ -386,6 +402,27 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
       }
     });
   };
+
+  if (authLoading) {
+    return (
+      <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Checking sign-in...
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center p-6 text-center">
+        <AlertTriangle className="mb-4 h-8 w-8 text-warning" />
+        <p className="mb-2 font-medium">Sign in to use Poe Assistant</p>
+        <p className="mb-4 text-sm text-muted-foreground">
+          Assistant requests are protected by your Studio account.
+        </p>
+        <Button type="button" variant="outline" onClick={login}>Sign in</Button>
+      </div>
+    );
+  }
 
   if (modelsLoading) {
     return (
@@ -1588,6 +1625,7 @@ function ClaudeRepairPanel({
   onClose: () => void;
   onApply: (patch: ValidatedClaudePatch[], expectedRevision: number) => void;
 }) {
+  const { isAuthenticated, isLoading: authLoading, login } = useStudioAuth();
   const {
     data: poeData,
     isLoading: modelsLoading,
@@ -1595,7 +1633,10 @@ function ClaudeRepairPanel({
     error: modelsQueryError,
     refetch: refetchModels,
   } = useListPoeModels({
-    query: { queryKey: ['claude-repair-models', revision], enabled: open },
+    query: {
+      queryKey: ['claude-repair-models', revision],
+      enabled: open && isAuthenticated,
+    },
   });
   const chatMutation = useChatWithPoe();
   const [attempts, setAttempts] = useState(0);
@@ -1605,6 +1646,7 @@ function ClaudeRepairPanel({
   const [requestError, setRequestError] = useState<string | null>(null);
   const [rateLimitRetryAt, setRateLimitRetryAt] = useState<number | null>(null);
   const [promptSizeError, setPromptSizeError] = useState<string | null>(null);
+  const requestRevisionRef = useRef(0);
   const confirmedModel = poeData?.configured
     ? poeData.models.find((model: string) => model === CLAUDE_REPAIR_MODEL)
     : undefined;
@@ -1644,6 +1686,7 @@ function ClaudeRepairPanel({
       if (!prompt) setPromptSizeError(`This source and report are too large for the bounded Claude repair request (${EDITOR_LIMITS.maxRepairPromptBytes.toLocaleString()} bytes).`);
       return;
     }
+    const requestRevision = ++requestRevisionRef.current;
     setAttempts((count) => count + 1);
     setRequestError(null);
     setRateLimitRetryAt(null);
@@ -1653,6 +1696,7 @@ function ClaudeRepairPanel({
     chatMutation.mutate({
       data: {
         model: confirmedModel,
+        capability: 'claude-repair',
         messages: [
           {
             role: 'system',
@@ -1664,6 +1708,7 @@ function ClaudeRepairPanel({
       },
     }, {
       onSuccess: (response: PoeChatResponse) => {
+        if (requestRevision !== requestRevisionRef.current) return;
           setRateLimitRetryAt(null);
         const result = validateClaudePatchResponse(response.content, bundle, analysis.findings);
         if (!result.ok) {
@@ -1673,6 +1718,7 @@ function ClaudeRepairPanel({
         setProposal(result.edits);
       },
       onError: (error: unknown) => {
+        if (requestRevision !== requestRevisionRef.current) return;
         const presentation = getStudioErrorPresentation(
           error,
           'Claude could not prepare a repair proposal. Nothing was changed.',
@@ -3904,6 +3950,7 @@ function PoeRepairPanel({
   onRecheck: () => void;
   analysisContext?: string;
 }) {
+  const { isAuthenticated, isLoading: authLoading, login } = useStudioAuth();
   const {
     data: poeData,
     isLoading: modelsLoading,
@@ -3913,7 +3960,7 @@ function PoeRepairPanel({
   } = useListPoeModels({
     query: {
       queryKey: ['repair-poe-models'],
-      enabled: open,
+      enabled: open && isAuthenticated,
     },
   });
   const chatMutation = useChatWithPoe();
@@ -3931,6 +3978,9 @@ function PoeRepairPanel({
   const scrollRef = useRef<HTMLDivElement>(null);
   const startedSourceRef = useRef<string | null>(null);
   const recoveryWasOpenRef = useRef(false);
+  const requestRevisionRef = useRef(0);
+  const latestSourceRef = useRef(html);
+  latestSourceRef.current = html;
   const credentialRedaction: CredentialBundleRedaction = useMemo(
     () => redactCredentialBundle(bundle.files),
     [bundle.files],
@@ -3993,6 +4043,7 @@ function PoeRepairPanel({
     if (!isInitial && documentContainsCredential) {
       trackEvent('credential_recovery_proposal_requested');
     }
+    const requestRevision = ++requestRevisionRef.current;
     setChatHistory(newHistory);
     setPendingPrompt(message);
     setChatError(null);
@@ -4001,6 +4052,7 @@ function PoeRepairPanel({
       {
         data: {
           model: confirmedRepairModel,
+          capability: documentContainsCredential ? 'claude-repair' : 'gemini-repair',
           messages: [
             { role: 'system', content: context },
             ...historyForRequest.slice(-39),
@@ -4010,6 +4062,10 @@ function PoeRepairPanel({
       },
       {
         onSuccess: (res: PoeChatResponse) => {
+          if (
+            requestRevision !== requestRevisionRef.current ||
+            latestSourceRef.current !== html
+          ) return;
           const safeResponse = sanitizeUntrustedRepairText(res.content);
           setPrompt('');
           setPendingPrompt(null);
@@ -4020,6 +4076,10 @@ function PoeRepairPanel({
           }
         },
         onError: (error: unknown) => {
+          if (
+            requestRevision !== requestRevisionRef.current ||
+            latestSourceRef.current !== html
+          ) return;
           setChatHistory((prev) => prev.filter((_message, index) => index !== prev.length - 1));
           setPrompt(message);
           setPendingPrompt(message);
@@ -4086,6 +4146,28 @@ function PoeRepairPanel({
   };
 
   if (!open) return null;
+
+  if (authLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center p-6 text-center">
+        <Loader2 className="mb-4 h-8 w-8 animate-spin text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">Checking sign-in...</p>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="flex flex-col items-center justify-center p-6 text-center">
+        <AlertTriangle className="mb-4 h-8 w-8 text-warning" />
+        <p className="mb-2 font-medium">Sign in to use Poe repair</p>
+        <p className="mb-4 text-sm text-muted-foreground">
+          Repair requests are protected by your Studio account.
+        </p>
+        <Button type="button" variant="outline" onClick={login}>Sign in</Button>
+      </div>
+    );
+  }
 
   const retryPrompt = pendingPrompt ?? prompt;
 

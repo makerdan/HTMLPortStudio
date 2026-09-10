@@ -496,26 +496,28 @@ test("keeps every assistant and handoff API code mapped to safe Studio copy", as
 
   const routeSource = portSource.slice(routeStart, routeEnd);
   const emittedCodes = [
-    ...routeSource.matchAll(/code:\s*([\s\S]*?),/g),
+    ...routeSource.matchAll(/["']((?:CHAT|POE)_[A-Z0-9_]+)["']/g),
     ...routeSource.matchAll(/const code\s*=\s*([\s\S]*?);/g),
   ]
     .flatMap((match) => match[1].match(/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/g) ?? [])
+    .filter((code) => !["POE_CATALOGUE_INVALID", "POE_REDIRECT_REJECTED"].includes(code))
     .filter((code, index, codes) => codes.indexOf(code) === index)
     .sort();
   const expectedCodes = [
     "CHAT_CONTAINS_CREDENTIAL",
-    "INVALID_PROJECT_HANDOFF",
     "INVALID_SOURCE_BUNDLE",
+    "POE_AUTHENTICATION_FAILED",
+    "POE_CAPABILITY_UNAVAILABLE",
     "POE_CHAT_REQUEST_TOO_LARGE",
+    "POE_COMPLETION_INVALID",
+    "POE_INVALID_REQUEST",
     "POE_MODEL_UNAVAILABLE",
+    "POE_NOT_CONFIGURED",
+    "POE_PROVIDER_UNAVAILABLE",
     "POE_RATE_LIMITED",
     "POE_RATE_LIMIT_UNAVAILABLE",
+    "POE_TIMEOUT",
     "POE_TOKEN_LIMIT_EXCEEDED",
-    "PROJECT_CREATION_CONNECTION_UNAVAILABLE",
-    "PROJECT_HANDOFF_NOT_FOUND",
-    "PROJECT_HANDOFF_NOT_RETRYABLE",
-    "PROJECT_HANDOFF_SOURCE_TOO_LARGE",
-    "SOURCE_CONTAINS_CREDENTIAL",
   ].sort();
 
   assert.deepEqual(emittedCodes, expectedCodes);
@@ -620,6 +622,13 @@ test("uses exact live Poe identifiers and preserves retryable assistant state", 
   assert.match(source, /const GEMINI_REPAIR_MODEL = 'gemini-3\.1-pro'/);
   assert.match(repairSource, /poeData\.models\.find\(\(model(?:: string)?\) => model === GEMINI_REPAIR_MODEL\)/);
   assert.match(repairSource, /model: confirmedRepairModel/);
+  assert.match(assistantSource, /capability: 'generic-assistant'/);
+  assert.match(
+    repairSource,
+    /capability: documentContainsCredential \? 'claude-repair' : 'gemini-repair'/,
+  );
+  assert.match(repairSource, /requestRevisionRef/);
+  assert.match(assistantSource, /latestHtmlRef/);
   assert.doesNotMatch(repairSource, /Gemini-3\.1-Pro/);
   assert.match(assistantSource, /availableModels\.includes\(selectedModel\)/);
   assert.match(assistantSource, /setSelectedModel\(''\)/);

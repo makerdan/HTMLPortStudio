@@ -5,11 +5,13 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { PoeChatInputCapability } from './poeChatInputCapability';
 import type { PoeMessage } from './poeMessage';
 
 export interface PoeChatInput {
   /** @minLength 1 */
   model: string;
+  capability?: PoeChatInputCapability;
   /**
      * @minItems 1
      * @maxItems 40

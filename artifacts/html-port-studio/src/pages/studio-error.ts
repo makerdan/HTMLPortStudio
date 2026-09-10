@@ -29,17 +29,31 @@ export const STUDIO_ERROR_MESSAGES = {
     "A bundle file path isn't safe to import. Use relative paths without '..' segments, then try again.",
   CHAT_CONTAINS_CREDENTIAL:
     'This request contains a service credential. Remove it before sending content to the assistant, then try again.',
+  POE_AUTHENTICATION_FAILED:
+    'The assistant connection could not be authorized. Try again later or ask an administrator to check the server setup.',
+  POE_CAPABILITY_UNAVAILABLE:
+    'That assistant capability is not available. Refresh model availability, then try again.',
+  POE_COMPLETION_INVALID:
+    'The assistant returned an invalid response. Your request is ready to retry.',
   CSRF_ORIGIN_REJECTED: 'Refresh the Studio and try the request again.',
   POE_CHAT_REQUEST_TOO_LARGE:
     'This assistant request is too large. Shorten the source or prompt, then try again.',
   POE_MODEL_UNAVAILABLE:
     'The requested Poe model is no longer available. Refresh model availability, then try again.',
+  POE_NOT_CONFIGURED:
+    'The assistant is not configured on this server yet. Try again later.',
+  POE_PROVIDER_UNAVAILABLE:
+    'The assistant is temporarily unavailable. Your request is ready to retry.',
   POE_RATE_LIMITED:
     'The assistant is temporarily rate limited. Wait a moment, then try again.',
   POE_RATE_LIMIT_UNAVAILABLE:
     'The assistant protection service is temporarily unavailable. Wait a moment, then try again.',
   POE_TOKEN_LIMIT_EXCEEDED:
     'This assistant request asks for too many completion tokens. Reduce the request and try again.',
+  POE_INVALID_REQUEST:
+    'This assistant request is invalid. Keep the prompt shorter and try again.',
+  POE_TIMEOUT:
+    'The assistant took too long to respond. Your request is ready to retry.',
   INVALID_PROJECT_HANDOFF:
     'The project handoff input is invalid. Check the imported HTML and try again.',
   PROJECT_CREATION_CONNECTION_UNAVAILABLE:
@@ -156,16 +170,20 @@ function getStructuredErrorData(error: unknown): {
   code: string | null;
   error: string | null;
   action: string | null;
+  retryAfterSeconds: number | undefined;
 } {
   const payload = getApiErrorPayload(error);
   return {
     code: payload?.code ?? null,
     error: payload?.error ?? null,
     action: payload?.action ?? null,
+    retryAfterSeconds: payload?.retryAfterSeconds,
   };
 }
 
 function getRetryAfterSeconds(error: unknown): number | undefined {
+  const payloadRetryAfter = getApiErrorPayload(error)?.retryAfterSeconds;
+  if (payloadRetryAfter !== undefined) return payloadRetryAfter;
   if (typeof error !== 'object' || error === null || !('headers' in error)) {
     return undefined;
   }
@@ -193,7 +211,7 @@ function getRetryAfterSeconds(error: unknown): number | undefined {
     return undefined;
   }
 
-  return Math.min(seconds, 60 * 60);
+  return Math.min(seconds, 60);
 }
 
 export function getStudioErrorPresentation(
@@ -217,7 +235,11 @@ export function getStudioErrorPresentation(
         STUDIO_ERROR_ACTIONS[code as keyof typeof STUDIO_ERROR_ACTIONS]
       : undefined,
     retryAfterSeconds:
-      code === 'POE_RATE_LIMITED' ? getRetryAfterSeconds(error) : undefined,
+      code === 'POE_RATE_LIMITED' ||
+      code === 'POE_TIMEOUT' ||
+      code === 'POE_PROVIDER_UNAVAILABLE'
+        ? getRetryAfterSeconds(error)
+        : undefined,
   };
 }
 

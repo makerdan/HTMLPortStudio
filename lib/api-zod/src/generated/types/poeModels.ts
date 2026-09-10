@@ -5,9 +5,12 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { PoeCapability } from './poeCapability';
 
 export interface PoeModels {
   configured: boolean;
+  available: boolean;
   models: string[];
   message: string;
+  capabilities: PoeCapability[];
 }

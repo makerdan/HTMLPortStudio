@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { Router, type IRouter, type Request } from "express";
+import { Router, type IRouter, type Request, type Response as ExpressResponse } from "express";
 import { ReplitConnectors, type Connection } from "@replit/connectors-sdk";
 import {
   db,
@@ -15,6 +15,7 @@ import { requireAuth } from "../middlewares/clerkAuthMiddleware";
 import { fetchHostedUrl, HostedUrlError } from "./hosted-url";
 import { importPlayground, PlaygroundError } from "./playground";
 import {
+  POE_CAPABILITIES,
   parseCompletion,
   poeRequest,
   PoeProviderError,
@@ -223,6 +224,8 @@ const POE_CHAT_RATE_LIMIT_WINDOW_MS = 60_000;
 const POE_CHAT_RATE_LIMIT_MAX_REQUESTS = 6;
 const POE_MODEL_CATALOGUE_CACHE_TTL_MS = 30_000;
 const POE_MODEL_CATALOGUE_FAILURE_CACHE_TTL_MS = 5_000;
+const POE_RETRY_AFTER_MAX_SECONDS = 60;
+const POE_RETRY_AFTER_DEFAULT_SECONDS = 5;
 
 type PoeModelCatalogueCache = {
   value: PoeModelCatalogue;
@@ -325,6 +328,35 @@ async function loadPoeModelCatalogueFromPoe(): Promise<PoeModelCatalogue> {
       failed: true,
     };
   }
+}
+
+function boundedRetryAfterSeconds(
+  value: string | null,
+  fallback = POE_RETRY_AFTER_DEFAULT_SECONDS,
+): number {
+  if (value === null || value.trim() === "") return fallback;
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds < 0) return fallback;
+  return Math.min(POE_RETRY_AFTER_MAX_SECONDS, Math.ceil(seconds));
+}
+
+function sendPoeError(
+  res: ExpressResponse,
+  status: number,
+  code: string,
+  error: string,
+  retryAfterSeconds?: number,
+): void {
+  const bounded =
+    retryAfterSeconds === undefined
+      ? undefined
+      : Math.min(POE_RETRY_AFTER_MAX_SECONDS, Math.max(1, Math.ceil(retryAfterSeconds)));
+  if (bounded !== undefined) res.set("Retry-After", String(bounded));
+  res.status(status).json({
+    error,
+    code,
+    ...(bounded === undefined ? {} : { retryAfterSeconds: bounded }),
+  });
 }
 
 export function isPoeModelConfirmed(models: readonly string[], requestedModel: string): boolean {
@@ -1042,40 +1074,30 @@ router.post("/port/playground/import", async (req, res): Promise<void> => {
   }
 });
 
-router.get("/port/poe/models", async (_req, res): Promise<void> => {
+router.get("/port/poe/models", requireAuth, async (_req, res): Promise<void> => {
   const catalogue = await loadPoeModelCatalogue();
   if (catalogue.failed) {
-    res.status(503).json({
-      error: "Poe model availability could not be loaded. Retry model loading.",
-      code: "POE_MODEL_UNAVAILABLE",
-    });
+    sendPoeError(
+      res,
+      503,
+      "POE_MODEL_UNAVAILABLE",
+      "Poe model availability could not be loaded. Retry model loading.",
+    );
     return;
   }
   res.set("Cache-Control", "private, max-age=30");
-  res.json(ListPoeModelsResponse.parse(catalogue));
+  res.json(
+    ListPoeModelsResponse.parse({
+      configured: catalogue.configured,
+      available: catalogue.available,
+      models: catalogue.models,
+      message: catalogue.message,
+      capabilities: Object.values(POE_CAPABILITIES),
+    }),
+  );
 });
 
-router.post("/port/poe/chat", async (req, res): Promise<void> => {
-  const rateLimit = await takePoeChatRateLimit(req);
-  if (!rateLimit.allowed) {
-    if (rateLimit.storageUnavailable) {
-      req.log.error("Poe rate-limit storage is unavailable");
-      res.status(503).json({
-        error: "Poe protection is temporarily unavailable. Try again later.",
-        code: "POE_RATE_LIMIT_UNAVAILABLE",
-      });
-      return;
-    }
-    res
-      .set("Retry-After", String(rateLimit.retryAfterSeconds))
-      .status(429)
-      .json({
-        error: "Too many Poe requests from this address. Wait before trying again.",
-        code: "POE_RATE_LIMITED",
-      });
-    return;
-  }
-
+router.post("/port/poe/chat", requireAuth, async (req, res): Promise<void> => {
   const parsed = ChatWithPoeBody.safeParse(req.body);
   if (!parsed.success) {
     const requestedTokens =
@@ -1088,14 +1110,21 @@ router.post("/port/poe/chat", async (req, res): Promise<void> => {
       typeof requestedTokens === "number" &&
       requestedTokens > POE_CHAT_MAX_COMPLETION_TOKENS
     ) {
-      res.status(400).json({
-        error: `Poe completion tokens are limited to ${POE_CHAT_MAX_COMPLETION_TOKENS.toLocaleString()}.`,
-        code: "POE_TOKEN_LIMIT_EXCEEDED",
-      });
+      sendPoeError(
+        res,
+        400,
+        "POE_TOKEN_LIMIT_EXCEEDED",
+        `Poe completion tokens are limited to ${POE_CHAT_MAX_COMPLETION_TOKENS.toLocaleString()}.`,
+      );
       return;
     }
     req.log.warn({ errors: parsed.error.message }, "Invalid Poe chat request");
-    res.status(400).json({ error: "Provide a model and at least one message." });
+    sendPoeError(
+      res,
+      400,
+      "POE_INVALID_REQUEST",
+      "Provide a model and at least one message.",
+    );
     return;
   }
 
@@ -1110,27 +1139,65 @@ router.post("/port/poe/chat", async (req, res): Promise<void> => {
       }),
     )
   ) {
-    res.status(400).json({
-      error:
-        "This chat request contains a service credential. Remove it before sending content to Poe; the request was not forwarded.",
-      code: "CHAT_CONTAINS_CREDENTIAL",
-    });
+    sendPoeError(
+      res,
+      400,
+      "CHAT_CONTAINS_CREDENTIAL",
+      "This chat request contains a service credential. Remove it before sending content to Poe; the request was not forwarded.",
+    );
     return;
   }
 
   if (parsed.data.maxTokens && parsed.data.maxTokens > POE_CHAT_MAX_COMPLETION_TOKENS) {
-    res.status(400).json({
-      error: `Poe completion tokens are limited to ${POE_CHAT_MAX_COMPLETION_TOKENS.toLocaleString()}.`,
-      code: "POE_TOKEN_LIMIT_EXCEEDED",
-    });
+    sendPoeError(
+      res,
+      400,
+      "POE_TOKEN_LIMIT_EXCEEDED",
+      `Poe completion tokens are limited to ${POE_CHAT_MAX_COMPLETION_TOKENS.toLocaleString()}.`,
+    );
     return;
   }
 
   if (Buffer.byteLength(JSON.stringify(parsed.data), "utf8") > POE_CHAT_REQUEST_MAX_BYTES) {
-    res.status(413).json({
-      error: "Poe chat requests must be smaller than 512 KiB.",
-      code: "POE_CHAT_REQUEST_TOO_LARGE",
-    });
+    sendPoeError(
+      res,
+      413,
+      "POE_CHAT_REQUEST_TOO_LARGE",
+      "Poe chat requests must be smaller than 512 KiB.",
+    );
+    return;
+  }
+
+  const capability = parsed.data.capability ?? "generic-assistant";
+  if (!POE_CAPABILITIES[capability]) {
+    sendPoeError(
+      res,
+      400,
+      "POE_CAPABILITY_UNAVAILABLE",
+      "The requested Poe capability is not available.",
+    );
+    return;
+  }
+
+  const rateLimit = await takePoeChatRateLimit(req);
+  if (!rateLimit.allowed) {
+    if (rateLimit.storageUnavailable) {
+      req.log.error("Poe rate-limit storage is unavailable");
+      sendPoeError(
+        res,
+        503,
+        "POE_RATE_LIMIT_UNAVAILABLE",
+        "Poe protection is temporarily unavailable. Try again later.",
+      );
+      return;
+    }
+    sendPoeError(
+      res,
+      429,
+      "POE_RATE_LIMITED",
+      "Too many Poe requests from this address. Wait before trying again.",
+      rateLimit.retryAfterSeconds,
+    );
     return;
   }
 
@@ -1145,10 +1212,12 @@ router.post("/port/poe/chat", async (req, res): Promise<void> => {
         { configured: catalogue.configured, available: catalogue.available },
         "Poe model was not confirmed by the live catalogue",
       );
-      res.status(503).json({
-        error: "The requested Poe model is not currently available. Refresh model availability and try again.",
-        code: "POE_MODEL_UNAVAILABLE",
-      });
+      sendPoeError(
+        res,
+        503,
+        "POE_MODEL_UNAVAILABLE",
+        "The requested Poe model is not currently available. Refresh model availability and try again.",
+      );
       return;
     }
 
@@ -1163,16 +1232,50 @@ router.post("/port/poe/chat", async (req, res): Promise<void> => {
 
     if (!response.ok) {
       req.log.warn({ status: response.status }, "Poe chat request failed");
-      res.status(503).json({
-        error: `Poe returned ${response.status}. Check POE_API_KEY, account access, and the exact model identifier.`,
-      });
+      if (response.status === 429) {
+        sendPoeError(
+          res,
+          429,
+          "POE_RATE_LIMITED",
+          "Poe is temporarily rate limited. Wait a moment, then try again.",
+          boundedRetryAfterSeconds(response.headers.get("retry-after")),
+        );
+      } else if (response.status === 401 || response.status === 403) {
+        sendPoeError(
+          res,
+          503,
+          "POE_AUTHENTICATION_FAILED",
+          "Poe could not authorize the server connection. Check the configured Poe access.",
+        );
+      } else if (response.status === 408) {
+        sendPoeError(
+          res,
+          503,
+          "POE_TIMEOUT",
+          "Poe took too long to respond. Try again.",
+          POE_RETRY_AFTER_DEFAULT_SECONDS,
+        );
+      } else {
+        sendPoeError(
+          res,
+          503,
+          "POE_PROVIDER_UNAVAILABLE",
+          "Poe could not complete the request. Try again later.",
+          POE_RETRY_AFTER_DEFAULT_SECONDS,
+        );
+      }
       return;
     }
 
     const completion = parseCompletion(await response.json());
-    if (!completion.content) {
-      req.log.warn("Poe chat response had no text content");
-      res.status(503).json({ error: "Poe returned a completion without text content." });
+    if (!completion.content || (completion.model && completion.model !== parsed.data.model)) {
+      req.log.warn("Poe chat response failed application validation");
+      sendPoeError(
+        res,
+        503,
+        "POE_COMPLETION_INVALID",
+        "Poe returned an invalid text completion. Try again.",
+      );
       return;
     }
 
@@ -1190,22 +1293,70 @@ router.post("/port/poe/chat", async (req, res): Promise<void> => {
     );
   } catch (error) {
     if (error instanceof PoeProviderError && error.code === "POE_NOT_CONFIGURED") {
-      res.status(503).json({
-        error: "Poe is not configured. Add POE_API_KEY in Replit Secrets, then restart the API server.",
-      });
+      sendPoeError(
+        res,
+        503,
+        "POE_NOT_CONFIGURED",
+        "Poe is not configured. Add POE_API_KEY in Replit Secrets, then restart the API server.",
+      );
       return;
     }
 
     if (error instanceof PoeProviderError && error.code === "POE_COMPLETION_INVALID") {
-      req.log.warn("Poe chat response had no text content");
-      res.status(503).json({ error: "Poe returned a completion without text content." });
+      req.log.warn("Poe chat response failed application validation");
+      sendPoeError(
+        res,
+        503,
+        "POE_COMPLETION_INVALID",
+        "Poe returned an invalid text completion. Try again.",
+      );
       return;
     }
 
-    req.log.error({ error }, "Poe chat request crashed");
-    res.status(503).json({
-      error: "Poe could not be reached. Check your connection and try again.",
-    });
+    if (error instanceof PoeProviderError && error.code === "POE_TIMEOUT") {
+      sendPoeError(
+        res,
+        503,
+        "POE_TIMEOUT",
+        "Poe took too long to respond. Try again.",
+        POE_RETRY_AFTER_DEFAULT_SECONDS,
+      );
+      return;
+    }
+
+    if (error instanceof PoeProviderError && error.code === "POE_REDIRECT_REJECTED") {
+      sendPoeError(
+        res,
+        503,
+        "POE_PROVIDER_UNAVAILABLE",
+        "Poe could not complete the request. Try again later.",
+        POE_RETRY_AFTER_DEFAULT_SECONDS,
+      );
+      return;
+    }
+
+    if (error instanceof PoeProviderError && error.code === "POE_CATALOGUE_INVALID") {
+      sendPoeError(
+        res,
+        503,
+        "POE_MODEL_UNAVAILABLE",
+        "Poe model availability could not be verified. Refresh model availability and try again.",
+        POE_RETRY_AFTER_DEFAULT_SECONDS,
+      );
+      return;
+    }
+
+    req.log.error(
+      { code: error instanceof PoeProviderError ? error.code : "unknown" },
+      "Poe chat request crashed",
+    );
+    sendPoeError(
+      res,
+      503,
+      "POE_PROVIDER_UNAVAILABLE",
+      "Poe could not be reached. Try again later.",
+      POE_RETRY_AFTER_DEFAULT_SECONDS,
+    );
   }
 });
 

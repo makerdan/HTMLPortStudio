@@ -12,6 +12,7 @@ export type ApiErrorPayload = {
   error?: string;
   code?: string;
   action?: string;
+  retryAfterSeconds?: number;
 };
 
 const NO_BODY_STATUS = new Set([204, 205, 304]);
@@ -188,6 +189,11 @@ export function getApiErrorPayload(error: unknown): ApiErrorPayload | null {
     error: typeof payload.error === "string" ? payload.error : undefined,
     code: typeof payload.code === "string" ? payload.code : undefined,
     action: typeof payload.action === "string" ? payload.action : undefined,
+    retryAfterSeconds:
+      typeof payload.retryAfterSeconds === "number" &&
+      Number.isFinite(payload.retryAfterSeconds)
+        ? Math.min(60, Math.max(1, Math.ceil(payload.retryAfterSeconds)))
+        : undefined,
   };
 }
 

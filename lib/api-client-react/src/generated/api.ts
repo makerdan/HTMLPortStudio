@@ -36,6 +36,7 @@ import type {
   PlaygroundImportInput,
   PoeChatInput,
   PoeChatResponse,
+  PoeErrorResponse,
   PoeModels,
   ReplitProjectConnectionSetup,
   ReplitProjectConnectionStatus,
@@ -530,6 +531,7 @@ export const getListPoeModelsUrl = () => {
 }
 
 /**
+ * Requires an authenticated Studio session. Model identifiers are exact, case-sensitive values from the live Poe catalogue; provider credentials never reach the browser.
  * @summary List Poe models available to the configured server key
  */
 export const listPoeModels = async ( options?: Parameters<typeof customFetch>[1]): Promise<PoeModels> => {
@@ -554,7 +556,7 @@ export const getListPoeModelsQueryKey = () => {
     }
 
 
-export const getListPoeModelsQueryOptions = <TData = Awaited<ReturnType<typeof listPoeModels>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPoeModels>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getListPoeModelsQueryOptions = <TData = Awaited<ReturnType<typeof listPoeModels>>, TError = ErrorType<ErrorResponse | PoeErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPoeModels>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -573,14 +575,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type ListPoeModelsQueryResult = NonNullable<Awaited<ReturnType<typeof listPoeModels>>>
-export type ListPoeModelsQueryError = ErrorType<ErrorResponse>
+export type ListPoeModelsQueryError = ErrorType<ErrorResponse | PoeErrorResponse>
 
 
 /**
  * @summary List Poe models available to the configured server key
  */
 
-export function useListPoeModels<TData = Awaited<ReturnType<typeof listPoeModels>>, TError = ErrorType<ErrorResponse>>(
+export function useListPoeModels<TData = Awaited<ReturnType<typeof listPoeModels>>, TError = ErrorType<ErrorResponse | PoeErrorResponse>>(
   options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPoeModels>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
@@ -607,7 +609,7 @@ export const getChatWithPoeUrl = () => {
 }
 
 /**
- * Proxies a chat completion through Poe so the API key never reaches the browser.
+ * Requires an authenticated Studio session and proxies a text-only chat completion through Poe so the API key never reaches the browser. The selected model and capability must be confirmed by the live catalogue and server registry.
  * @summary Send an OpenAI-compatible chat request through Poe
  */
 export const chatWithPoe = async (poeChatInput: PoeChatInput, options?: Parameters<typeof customFetch>[1]): Promise<PoeChatResponse> => {
@@ -625,7 +627,7 @@ export const chatWithPoe = async (poeChatInput: PoeChatInput, options?: Paramete
 
 
 
-export const getChatWithPoeMutationOptions = <TError = ErrorType<ErrorResponse>,
+export const getChatWithPoeMutationOptions = <TError = ErrorType<PoeErrorResponse | ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof chatWithPoe>>, TError,{data: BodyType<PoeChatInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof chatWithPoe>>, TError,{data: BodyType<PoeChatInput>}, TContext> => {
 
@@ -654,12 +656,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type ChatWithPoeMutationResult = NonNullable<Awaited<ReturnType<typeof chatWithPoe>>>
     export type ChatWithPoeMutationBody = BodyType<PoeChatInput>
-    export type ChatWithPoeMutationError = ErrorType<ErrorResponse>
+    export type ChatWithPoeMutationError = ErrorType<PoeErrorResponse | ErrorResponse>
 
     /**
  * @summary Send an OpenAI-compatible chat request through Poe
  */
-export const useChatWithPoe = <TError = ErrorType<ErrorResponse>,
+export const useChatWithPoe = <TError = ErrorType<PoeErrorResponse | ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof chatWithPoe>>, TError,{data: BodyType<PoeChatInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof chatWithPoe>>,

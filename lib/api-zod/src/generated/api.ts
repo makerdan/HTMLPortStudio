@@ -364,17 +364,43 @@ export const ImportGithubRepositoryResponse = zod.object({
 
 
 /**
+ * Requires an authenticated Studio session. Model identifiers are exact, case-sensitive values from the live Poe catalogue; provider credentials never reach the browser.
  * @summary List Poe models available to the configured server key
  */
+
+
+
+
 export const ListPoeModelsResponse = zod.object({
   "configured": zod.boolean(),
+  "available": zod.boolean(),
   "models": zod.array(zod.string()),
-  "message": zod.string()
+  "message": zod.string(),
+  "capabilities": zod.array(zod.object({
+  "version": zod.number(),
+  "id": zod.enum(['generic-assistant', 'gemini-repair', 'claude-repair']),
+  "endpoint": zod.enum(['/v1/chat/completions']),
+  "contract": zod.enum(['text-only']),
+  "privacyClass": zod.enum(['user-content', 'redacted-source']),
+  "limits": zod.object({
+  "maxMessages": zod.number().min(1),
+  "maxCompletionTokens": zod.number().min(1)
+}),
+  "fallback": zod.enum(['none', 'generic-assistant']),
+  "owner": zod.enum(['api-server']),
+  "reviewEvidence": zod.string(),
+  "capabilities": zod.object({
+  "toolCalling": zod.enum(['available', 'unavailable']),
+  "vision": zod.enum(['available', 'unavailable']),
+  "structuredOutput": zod.enum(['available', 'unavailable']),
+  "streaming": zod.enum(['available', 'unavailable'])
+})
+}))
 })
 
 
 /**
- * Proxies a chat completion through Poe so the API key never reaches the browser.
+ * Requires an authenticated Studio session and proxies a text-only chat completion through Poe so the API key never reaches the browser. The selected model and capability must be confirmed by the live catalogue and server registry.
  * @summary Send an OpenAI-compatible chat request through Poe
  */
 
@@ -387,6 +413,7 @@ export const chatWithPoeBodyMaxTokensMax = 4096;
 
 export const ChatWithPoeBody = zod.object({
   "model": zod.string().min(1),
+  "capability": zod.enum(['generic-assistant', 'gemini-repair', 'claude-repair']).optional(),
   "messages": zod.array(zod.object({
   "role": zod.enum(['system', 'user', 'assistant']),
   "content": zod.string().min(1)

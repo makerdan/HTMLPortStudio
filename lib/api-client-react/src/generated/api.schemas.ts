@@ -16,6 +16,42 @@ export interface ErrorResponse {
 }
 
 /**
+ * Stable safe Poe route failures. Provider response bodies and credentials are never returned.
+ */
+export type PoeErrorCode = typeof PoeErrorCode[keyof typeof PoeErrorCode];
+
+
+export const PoeErrorCode = {
+  POE_INVALID_REQUEST: 'POE_INVALID_REQUEST',
+  POE_CHAT_REQUEST_TOO_LARGE: 'POE_CHAT_REQUEST_TOO_LARGE',
+  POE_TOKEN_LIMIT_EXCEEDED: 'POE_TOKEN_LIMIT_EXCEEDED',
+  CHAT_CONTAINS_CREDENTIAL: 'CHAT_CONTAINS_CREDENTIAL',
+  POE_CAPABILITY_UNAVAILABLE: 'POE_CAPABILITY_UNAVAILABLE',
+  POE_MODEL_UNAVAILABLE: 'POE_MODEL_UNAVAILABLE',
+  POE_NOT_CONFIGURED: 'POE_NOT_CONFIGURED',
+  POE_AUTHENTICATION_FAILED: 'POE_AUTHENTICATION_FAILED',
+  POE_RATE_LIMITED: 'POE_RATE_LIMITED',
+  POE_RATE_LIMIT_UNAVAILABLE: 'POE_RATE_LIMIT_UNAVAILABLE',
+  POE_TIMEOUT: 'POE_TIMEOUT',
+  POE_PROVIDER_UNAVAILABLE: 'POE_PROVIDER_UNAVAILABLE',
+  POE_COMPLETION_INVALID: 'POE_COMPLETION_INVALID',
+} as const;
+
+/**
+ * Safe, stable Poe failure details. retryAfterSeconds is bounded by the server and is also sent as Retry-After when present.
+ */
+export interface PoeErrorResponse {
+  error: string;
+  code: PoeErrorCode;
+  action?: string;
+  /**
+     * @minimum 1
+     * @maximum 60
+     */
+  retryAfterSeconds?: number;
+}
+
+/**
  * Stable, safe error identifiers emitted by hosted and playground imports.
  */
 export type ImportErrorCode = typeof ImportErrorCode[keyof typeof ImportErrorCode];
@@ -293,10 +329,117 @@ export interface GithubImport {
   warnings: string[];
 }
 
+export type PoeCapabilityId = typeof PoeCapabilityId[keyof typeof PoeCapabilityId];
+
+
+export const PoeCapabilityId = {
+  'generic-assistant': 'generic-assistant',
+  'gemini-repair': 'gemini-repair',
+  'claude-repair': 'claude-repair',
+} as const;
+
+export type PoeCapabilityEndpoint = typeof PoeCapabilityEndpoint[keyof typeof PoeCapabilityEndpoint];
+
+
+export const PoeCapabilityEndpoint = {
+  '/v1/chat/completions': '/v1/chat/completions',
+} as const;
+
+export type PoeCapabilityContract = typeof PoeCapabilityContract[keyof typeof PoeCapabilityContract];
+
+
+export const PoeCapabilityContract = {
+  'text-only': 'text-only',
+} as const;
+
+export type PoeCapabilityPrivacyClass = typeof PoeCapabilityPrivacyClass[keyof typeof PoeCapabilityPrivacyClass];
+
+
+export const PoeCapabilityPrivacyClass = {
+  'user-content': 'user-content',
+  'redacted-source': 'redacted-source',
+} as const;
+
+export type PoeCapabilityFallback = typeof PoeCapabilityFallback[keyof typeof PoeCapabilityFallback];
+
+
+export const PoeCapabilityFallback = {
+  none: 'none',
+  'generic-assistant': 'generic-assistant',
+} as const;
+
+export type PoeCapabilityOwner = typeof PoeCapabilityOwner[keyof typeof PoeCapabilityOwner];
+
+
+export const PoeCapabilityOwner = {
+  'api-server': 'api-server',
+} as const;
+
+export type PoeCapabilityCapabilitiesToolCalling = typeof PoeCapabilityCapabilitiesToolCalling[keyof typeof PoeCapabilityCapabilitiesToolCalling];
+
+
+export const PoeCapabilityCapabilitiesToolCalling = {
+  available: 'available',
+  unavailable: 'unavailable',
+} as const;
+
+export type PoeCapabilityCapabilitiesVision = typeof PoeCapabilityCapabilitiesVision[keyof typeof PoeCapabilityCapabilitiesVision];
+
+
+export const PoeCapabilityCapabilitiesVision = {
+  available: 'available',
+  unavailable: 'unavailable',
+} as const;
+
+export type PoeCapabilityCapabilitiesStructuredOutput = typeof PoeCapabilityCapabilitiesStructuredOutput[keyof typeof PoeCapabilityCapabilitiesStructuredOutput];
+
+
+export const PoeCapabilityCapabilitiesStructuredOutput = {
+  available: 'available',
+  unavailable: 'unavailable',
+} as const;
+
+export type PoeCapabilityCapabilitiesStreaming = typeof PoeCapabilityCapabilitiesStreaming[keyof typeof PoeCapabilityCapabilitiesStreaming];
+
+
+export const PoeCapabilityCapabilitiesStreaming = {
+  available: 'available',
+  unavailable: 'unavailable',
+} as const;
+
+export type PoeCapabilityLimits = {
+  /** @minimum 1 */
+  maxMessages: number;
+  /** @minimum 1 */
+  maxCompletionTokens: number;
+};
+
+export type PoeCapabilityCapabilities = {
+  toolCalling: PoeCapabilityCapabilitiesToolCalling;
+  vision: PoeCapabilityCapabilitiesVision;
+  structuredOutput: PoeCapabilityCapabilitiesStructuredOutput;
+  streaming: PoeCapabilityCapabilitiesStreaming;
+};
+
+export interface PoeCapability {
+  version: number;
+  id: PoeCapabilityId;
+  endpoint: PoeCapabilityEndpoint;
+  contract: PoeCapabilityContract;
+  privacyClass: PoeCapabilityPrivacyClass;
+  limits: PoeCapabilityLimits;
+  fallback: PoeCapabilityFallback;
+  owner: PoeCapabilityOwner;
+  reviewEvidence: string;
+  capabilities: PoeCapabilityCapabilities;
+}
+
 export interface PoeModels {
   configured: boolean;
+  available: boolean;
   models: string[];
   message: string;
+  capabilities: PoeCapability[];
 }
 
 export type PoeMessageRole = typeof PoeMessageRole[keyof typeof PoeMessageRole];
@@ -314,9 +457,19 @@ export interface PoeMessage {
   content: string;
 }
 
+export type PoeChatInputCapability = typeof PoeChatInputCapability[keyof typeof PoeChatInputCapability];
+
+
+export const PoeChatInputCapability = {
+  'generic-assistant': 'generic-assistant',
+  'gemini-repair': 'gemini-repair',
+  'claude-repair': 'claude-repair',
+} as const;
+
 export interface PoeChatInput {
   /** @minLength 1 */
   model: string;
+  capability?: PoeChatInputCapability;
   /**
      * @minItems 1
      * @maxItems 40

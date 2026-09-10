@@ -60,7 +60,11 @@ async function jsonRequest(url: string, init?: RequestInit): Promise<{
   body: Json;
   headers: Headers;
 }> {
-  const response = await fetch(url, init);
+  const headers = new Headers(init?.headers);
+  if (!headers.has("x-test-clerk-user-id")) {
+    headers.set("x-test-clerk-user-id", "port-test-user");
+  }
+  const response = await fetch(url, { ...init, headers });
   return {
     status: response.status,
     body: (await response.json()) as Json,
@@ -116,6 +120,7 @@ test("covers the analysis boundary matrix and origin routing", async () => {
 
   try {
     const baseUrl = `http://127.0.0.1:${apiPort}/api`;
+
   const html = "<!doctype html><title>Boundary fixture</title><main>ok</main>";
   const metadata = { displayName: "Boundary fixture" };
   const bundle = (files: Array<{ path: string; content: string }>, entrypoint = files[0]?.path) => ({
@@ -283,11 +288,13 @@ test("requires an exact live Poe model confirmation before chat forwarding", asy
 
   assert.notEqual(chatStart, -1);
   assert.notEqual(chatEnd, -1);
+  assert.match(source, /router\.get\("\/port\/poe\/models", requireAuth/);
+  assert.match(chatSource, /router\.post\("\/port\/poe\/chat", requireAuth/);
   assert.ok(catalogueIndex >= 0);
   assert.ok(completionIndex > catalogueIndex);
   assert.match(chatSource, /isPoeModelConfirmed\(catalogue\.models, parsed\.data\.model\)/);
   assert.match(source, /models\.some\(\(model\) => model === requestedModel\)/);
-  assert.match(chatSource, /code: "POE_MODEL_UNAVAILABLE"/);
+  assert.match(chatSource, /sendPoeError\([\s\S]*?"POE_MODEL_UNAVAILABLE"/);
   assert.match(
     chatSource,
     /The requested Poe model is not currently available\. Refresh model availability and try again\./,
@@ -334,34 +341,41 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
       authorization: request.headers.authorization,
       body,
     });
-    if (request.method === "GET" && url.pathname === "/v1/models") {
+    const path = url.pathname;
+    if (request.method === "GET" && path === "/v1/models") {
       modelRequests += 1;
       response.writeHead(200, { "Content-Type": "application/json" });
-      response.end(
-        JSON.stringify({
-          data: [{ id: confirmedModel }, { id: "another-confirmed-model" }],
-        }),
-      );
+      response.end(JSON.stringify({ data: [{ id: confirmedModel }] }));
       return;
     }
-    if (request.method === "POST" && url.pathname === "/v1/chat/completions") {
+    if (request.method === "POST" && path === "/v1/chat/completions") {
       completionRequests += 1;
       if (returnFailure) {
         response.writeHead(429, { "Content-Type": "application/json" });
-        response.end(JSON.stringify({ error: { message: "provider-internal diagnostic with sensitive details", request_id: "provider-secret-request-id" } }));
+        response.end(JSON.stringify({
+          error: {
+            message: "provider-internal diagnostic with sensitive details",
+            request_id: "provider-secret-request-id",
+          },
+        }));
         return;
       }
       if (returnMalformedCompletion) {
         response.writeHead(200, { "Content-Type": "application/json" });
-        response.end(JSON.stringify({ error: { message: "provider-internal malformed completion diagnostic", request_id: "provider-malformed-secret-request-id" }, choices: [] }));
+        response.end(JSON.stringify({
+          error: {
+            message: "provider-internal malformed completion diagnostic",
+            request_id: "provider-malformed-secret-request-id",
+          },
+          choices: [],
+        }));
         return;
       }
       response.writeHead(200, { "Content-Type": "application/json" });
       response.end(
         JSON.stringify({
           model: confirmedModel,
-          choices: [{ message: { content: "The redacted repair is safe to apply." } }],
-          usage: { prompt_tokens: 31, completion_tokens: 9 },
+          choices: [{ message: { content: "bounded response" } }],
         }),
       );
       return;
@@ -387,6 +401,7 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
 
   try {
     const baseUrl = `http://127.0.0.1:${apiPort}/api`;
+
     await waitFor(async () => {
       try {
         return (await fetch(`${baseUrl}/healthz`)).ok;
@@ -394,9 +409,19 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
         return false;
       }
     }, "API server did not start");
+
+    const unauthenticatedCatalogue = await fetch(`${baseUrl}/port/poe/models`);
+    assert.ok([401, 503].includes(unauthenticatedCatalogue.status));
+    const unauthenticatedBody = await unauthenticatedCatalogue.json() as Json;
+    assert.match(
+      String(unauthenticatedBody.code),
+      /^AUTHENTICATION_(REQUIRED|NOT_CONFIGURED)$/,
+    );
+    assert.equal(poeRequests.length, 0);
+
     const catalogue = await jsonRequest(`${baseUrl}/port/poe/models`);
     assert.equal(catalogue.status, 200);
-    assert.deepEqual(catalogue.body.models, [confirmedModel, "another-confirmed-model"]);
+    assert.deepEqual(catalogue.body.models, [confirmedModel]);
 
     const successfulChat = await jsonRequest(`${baseUrl}/port/poe/chat`, {
       method: "POST",
@@ -409,9 +434,8 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
     });
     assert.equal(successfulChat.status, 200);
     assert.deepEqual(successfulChat.body, {
-      content: "The redacted repair is safe to apply.",
+      content: "bounded response",
       model: confirmedModel,
-      usage: { promptTokens: 31, completionTokens: 9 },
     });
 
     const forwardedChat = poeRequests.find(
@@ -434,10 +458,11 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
         messages: redactedMessages,
       }),
     });
-    assert.equal(failedChat.status, 503);
+    assert.equal(failedChat.status, 429);
     assert.deepEqual(failedChat.body, {
-      error:
-        "Poe returned 429. Check POE_API_KEY, account access, and the exact model identifier.",
+      error: "Poe is temporarily rate limited. Wait a moment, then try again.",
+      code: "POE_RATE_LIMITED",
+      retryAfterSeconds: 5,
     });
     assert.doesNotMatch(
       JSON.stringify(failedChat.body),
@@ -456,7 +481,8 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
     });
     assert.equal(malformedChat.status, 503);
     assert.deepEqual(malformedChat.body, {
-      error: "Poe returned a completion without text content.",
+      error: "Poe returned an invalid text completion. Try again.",
+      code: "POE_COMPLETION_INVALID",
     });
     assert.doesNotMatch(
       JSON.stringify(malformedChat.body),
@@ -520,15 +546,7 @@ test("bounds public Poe traffic before provider forwarding and caches models", a
   const apiPort = await unusedPort();
   const api = spawn(process.execPath, ["--enable-source-maps", "dist/index.mjs"], {
     cwd: new URL("../../", import.meta.url).pathname,
-    env: {
-      ...process.env,
-      PORT: String(apiPort),
-      POE_API_KEY: "test-poe-key",
-      POE_API_BASE_URL: `http://127.0.0.1:${poePort}/v1`,
-      REPLIT_CLI: "/bin/false",
-      REPL_IDENTITY: "test-repl-identity",
-      NODE_ENV: "test",
-    },
+    env: { ...apiEnvironment, PORT: String(apiPort) },
     stdio: "ignore",
   });
   let secondApi: ChildProcess | undefined;
@@ -715,8 +733,10 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
     ],
   );
   const source = `<!doctype html>
-<html><head><title>Byte exact Poe app</title></head>
-<body><script>fetch("/ai")</script></body></html>`;
+<html>
+  <head><title>Project handoff fixture</title></head>
+  <body><main>Source must remain unchanged.</main></body>
+</html>`;
 
   const setupSkills: Array<{ name: string; slug: string }> = [];
   const connectorNames: string[] = [];
@@ -784,6 +804,7 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
 
   try {
     const baseUrl = `http://127.0.0.1:${apiPort}/api`;
+
     const browserOrigin = `http://127.0.0.1:${apiPort}`;
     const ownerHeaders = { "x-test-clerk-user-id": ownerId };
     const otherOwnerHeaders = { "x-test-clerk-user-id": otherOwnerId };
