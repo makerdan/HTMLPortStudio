@@ -16,6 +16,75 @@ async function assertSourceEntrypointFocus(page: import("@playwright/test").Page
   }
 }
 
+async function applyRenderedBrowserZoom(
+  page: import("@playwright/test").Page,
+  zoom: 0.75 | 1.5,
+) {
+  await page.evaluate((value) => {
+    document.documentElement.style.zoom = `${value * 100}%`;
+    document.documentElement.dataset.testZoom = `${value * 100}%`;
+  }, zoom);
+  await expect(page.locator("html")).toHaveAttribute("data-test-zoom", `${zoom * 100}%`);
+}
+
+async function assertSourceChoicesReachable(page: import("@playwright/test").Page) {
+  for (const label of ["Import GitHub repository", "Import CodePen / JSFiddle"]) {
+    const tab = page.getByRole("tab", { name: new RegExp(label, "i") });
+    const labelBox = tab.locator(".source-mode-choice__label").first();
+    await expect(tab).toBeVisible();
+    await expect(labelBox).toContainText(label);
+    await expect
+      .poll(() => labelBox.evaluate((element) => element.scrollWidth <= element.clientWidth + 1))
+      .toBe(true);
+
+    const layout = await tab.evaluate((element) => {
+      const tabBox = element.getBoundingClientRect();
+      const labelElement = element.querySelector(".source-mode-choice__label");
+      const labelRect = labelElement?.getBoundingClientRect();
+      return {
+        tab: {
+          left: tabBox.left,
+          right: tabBox.right,
+          top: tabBox.top,
+          bottom: tabBox.bottom,
+          width: tabBox.width,
+          height: tabBox.height,
+        },
+        label: {
+          width: labelRect?.width ?? 0,
+          height: labelRect?.height ?? 0,
+        },
+        viewport: {
+          width: window.innerWidth,
+          height: window.innerHeight,
+        },
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      };
+    });
+
+    expect(layout.label.width).toBeGreaterThan(0);
+    expect(layout.label.height).toBeGreaterThan(0);
+    expect(layout.tab.left).toBeGreaterThanOrEqual(-1);
+    expect(layout.tab.right).toBeLessThanOrEqual(layout.viewport.width + 1);
+    expect(layout.tab.top).toBeGreaterThanOrEqual(-1);
+    expect(layout.tab.bottom).toBeLessThanOrEqual(layout.viewport.height + 1);
+    expect(layout.overflow).toBeLessThanOrEqual(1);
+
+    await tab.focus();
+    await expect(tab).toBeFocused();
+    const hasTouch = await page.evaluate(() => navigator.maxTouchPoints > 0);
+    if (hasTouch) {
+      await page.touchscreen.tap(
+        layout.tab.left + layout.tab.width / 2,
+        layout.tab.top + layout.tab.height / 2,
+      );
+    } else {
+      await tab.click();
+    }
+    await expect(tab).toHaveAttribute("aria-selected", "true");
+  }
+}
+
 test("[cross-browser] keeps source choices readable without document overflow at supported widths", async ({
   page,
 }) => {
@@ -48,6 +117,18 @@ test("[cross-browser] keeps source choices readable without document overflow at
         )
         .toBe(true);
     }
+  }
+});
+
+test("[cross-browser] [headed-zoom] keeps source choices readable and reachable at 75% and 150% zoom", async ({
+  page,
+}) => {
+  await page.route("**/__clerk/**", (route) => route.abort());
+  await page.goto("/");
+
+  for (const zoom of [0.75, 1.5] as const) {
+    await applyRenderedBrowserZoom(page, zoom);
+    await assertSourceChoicesReachable(page);
   }
 });
 

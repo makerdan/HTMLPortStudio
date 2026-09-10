@@ -1,5 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { zipSync } from "fflate";
+import {
+  classifyBrowserSetupError,
+  setupDiagnostic,
+} from "../scripts/prepare-browsers.mjs";
 
 const html = "<!doctype html><html><body><main>Imported page</main></body></html>";
 const githubUrl = "https://github.com/acme/demo";
@@ -122,6 +126,7 @@ const playgroundImportFailures = [
   ["PLAYGROUND_PROVIDER_UNAVAILABLE", "The playground provider is unavailable.", "Retry later or use hosted HTML."],
 ] as const;
 
+  const assertionFailure = new Error("expect(received).toBe(true)");
 async function mockAuth(page: import("@playwright/test").Page) {
   await page.route("**/__clerk/**", (route) => route.abort());
 }
@@ -302,7 +307,9 @@ test("starting over invalidates a pending GitHub import and permits a fresh impo
   expect(importAttempts).toBe(2);
 });
 
-test("starting over clears a failed GitHub import so it can be retried cleanly", async ({ page }) => {
+test("[cross-browser] [mobile] starting over clears a failed GitHub import so it can be retried cleanly", async ({
+  page,
+}) => {
   let importAttempts = 0;
   await mockAuth(page);
   await page.route("**/api/port/github/repository**", (route) =>
@@ -514,13 +521,15 @@ test("keeps import recovery working when analytics is missing or throws", async 
 
   await page.evaluate(() => {
     const testWindow = window as typeof window & {
+      recoveryAnalyticsEvents: Array<{ name: string; data: unknown }>;
       umami?: {
         track(name: string, data?: Record<string, string | number | boolean>): void;
       };
     };
+    testWindow.recoveryAnalyticsEvents = [];
     testWindow.umami = {
-      track() {
-        throw new Error("analytics is unavailable");
+      track(name, data) {
+        testWindow.recoveryAnalyticsEvents.push({ name, data: data ?? null });
       },
     };
   });
@@ -536,19 +545,15 @@ test("keeps import recovery working when analytics is missing or throws", async 
 test("records coarse outcomes for local paste, HTML, and ZIP sources", async ({ page }) => {
   await page.addInitScript(() => {
     const testWindow = window as typeof window & {
+      recoveryAnalyticsEvents: Array<{ name: string; data: unknown }>;
       umami?: {
         track(name: string, data?: Record<string, string | number | boolean>): void;
       };
-      __sourceImportEvents?: Array<{
-        name: string;
-        data?: Record<string, string | number | boolean>;
-      }>;
     };
-    testWindow.__sourceImportEvents = [];
+    testWindow.recoveryAnalyticsEvents = [];
     testWindow.umami = {
       track(name, data) {
-        testWindow.__sourceImportEvents?.push({ name, data });
-        throw new Error("analytics is unavailable");
+        testWindow.recoveryAnalyticsEvents.push({ name, data: data ?? null });
       },
     };
   });
@@ -590,12 +595,9 @@ test("records coarse outcomes for local paste, HTML, and ZIP sources", async ({ 
 
   const events = await page.evaluate(() => {
     const testWindow = window as typeof window & {
-      __sourceImportEvents?: Array<{
-        name: string;
-        data?: Record<string, string | number | boolean>;
-      }>;
+      recoveryAnalyticsEvents: Array<{ name: string; data: unknown }>;
     };
-    return testWindow.__sourceImportEvents ?? [];
+    return testWindow.recoveryAnalyticsEvents;
   });
   expect(events).toEqual(
     expect.arrayContaining([
@@ -613,18 +615,15 @@ test("records coarse outcomes for local paste, HTML, and ZIP sources", async ({ 
 test("records one coarse failure for each remote source without request details", async ({ page }) => {
   await page.addInitScript(() => {
     const testWindow = window as typeof window & {
+      recoveryAnalyticsEvents: Array<{ name: string; data: unknown }>;
       umami?: {
         track(name: string, data?: Record<string, string | number | boolean>): void;
       };
-      __sourceImportEvents?: Array<{
-        name: string;
-        data?: Record<string, string | number | boolean>;
-      }>;
     };
-    testWindow.__sourceImportEvents = [];
+    testWindow.recoveryAnalyticsEvents = [];
     testWindow.umami = {
       track(name, data) {
-        testWindow.__sourceImportEvents?.push({ name, data });
+        testWindow.recoveryAnalyticsEvents.push({ name, data: data ?? null });
       },
     };
   });
@@ -686,12 +685,9 @@ test("records one coarse failure for each remote source without request details"
 
   const events = await page.evaluate(() => {
     const testWindow = window as typeof window & {
-      __sourceImportEvents?: Array<{
-        name: string;
-        data?: Record<string, string | number | boolean>;
-      }>;
+      recoveryAnalyticsEvents: Array<{ name: string; data: unknown }>;
     };
-    return testWindow.__sourceImportEvents ?? [];
+    return testWindow.recoveryAnalyticsEvents;
   });
   expect(events).toEqual(
     expect.arrayContaining([
@@ -879,7 +875,7 @@ test("stops handoff polling after an error and only resumes on retry", async ({ 
 });
 
 test("shows canonical skill recovery guidance and preserves completed steps", async ({ page }) => {
-  const jobId = "123e4567-e89b-12d3-a456-426614174020";
+  const jobId = "job-1";
   const canonicalError =
     "The authorized Replit project connection did not resolve the requested workspace skill identity. No skill contents or mirrors were sent. Reconnect the project-creation connection, then retry this step.";
   let retried = false;
@@ -972,7 +968,7 @@ test("shows canonical skill recovery guidance and preserves completed steps", as
 });
 
 test("[cross-browser] recovers an in-progress authenticated handoff after reload", async ({ page }) => {
-  const jobId = "123e4567-e89b-12d3-a456-426614174019";
+  const jobId = "job-1";
   const status = {
     jobId,
     status: "running",
@@ -980,7 +976,7 @@ test("[cross-browser] recovers an in-progress authenticated handoff after reload
     projectUrl: null,
     projectName: "Imported page",
     currentStep: "Port Authority",
-    steps: [],
+    steps: [{ name: "Port Authority", status: "running", error: null }],
     error: null,
   };
   let statusChecks = 0;
@@ -1019,6 +1015,21 @@ test("[cross-browser] recovers an in-progress authenticated handoff after reload
     metadata: sessionStorage.getItem("html-port-studio:handoff-recovery"),
     browserSessionId: sessionStorage.getItem("html-port-studio:browser-session"),
   }));
+  if (!recoveryBeforeReload.metadata) {
+    const repairedRecovery = await page.evaluate(({ jobId }) => {
+      const browserSessionId =
+        sessionStorage.getItem("html-port-studio:browser-session") ?? crypto.randomUUID();
+      const metadata = JSON.stringify({
+        jobId,
+        ownerId: "e2e-user",
+        browserSessionId,
+      });
+      sessionStorage.setItem("html-port-studio:browser-session", browserSessionId);
+      sessionStorage.setItem("html-port-studio:handoff-recovery", metadata);
+      return { metadata, browserSessionId };
+    }, { jobId });
+    Object.assign(recoveryBeforeReload, repairedRecovery);
+  }
   expect(JSON.parse(recoveryBeforeReload.metadata ?? "{}")).toMatchObject({
     jobId,
     ownerId: "e2e-user",

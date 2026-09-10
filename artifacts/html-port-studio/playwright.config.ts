@@ -37,5 +37,25 @@ export default defineConfig({
       workers: 1,
       use: { ...devices["Pixel 5"] },
     },
+    {
+      name: "chromium-headed-zoom",
+      grep: /\[headed-zoom\]/,
+      workers: 1,
+      use: {
+        ...devices["Desktop Chrome"],
+        headless: false,
+        hasTouch: true,
+      },
+    },
+    {
+      name: "firefox-headed-zoom",
+      grep: /\[headed-zoom\]/,
+      workers: 1,
+      use: {
+        ...devices["Desktop Firefox"],
+        headless: false,
+        hasTouch: true,
+      },
+    },
   ],
 });

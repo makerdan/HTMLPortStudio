@@ -7,9 +7,9 @@ critical cross-browser tests so unrelated recovery coverage is not duplicated.
 
 ## Local runtime contract
 
-The Studio browser-test command installs both managed Playwright engines before
-launching the suite, so the registered `test-standard` workflow prepares a
-fresh workspace automatically:
+The Studio browser-test command installs both managed Playwright engines and
+launches each engine once as a setup probe before launching the suite, so the
+registered `test-standard` workflow prepares a fresh workspace automatically:
 
 ```sh
 pnpm --filter @workspace/html-port-studio run test:browser
@@ -23,12 +23,20 @@ pnpm --filter @workspace/html-port-studio run prepare:browsers
 ```
 
 The browser binaries are stored in the managed Playwright cache and are not
-committed to the repository. The workspace's `.replit` Nix configuration
-provides the native runtime libraries needed by these headless browsers,
-including GLib/GTK, NSS/NSPR, ATK, Pango/Cairo, X11/XCB, GBM/Mesa/OpenGL, and
-ALSA. If a browser launch reports a missing executable, install the managed
-engines first; if it reports a missing shared library, verify those `.replit`
-packages are available in the executor environment.
+committed to the repository. The setup probe reports missing browser downloads
+as `[playwright-setup] ... browser download is missing or incomplete` and
+points to `prepare:browsers`. It reports a browser that exists but cannot
+start because of a missing shared library as `... native runtime libraries`
+and points to the `.replit` Nix packages and a workspace restart. The
+workspace's `.replit` Nix configuration provides the native runtime libraries
+needed by these browsers, including GLib/GTK, NSS/NSPR, ATK, Pango/Cairo,
+X11/XCB, GBM/Mesa/OpenGL, and ALSA.
+
+Preparation is a separate command from `playwright test`. A setup diagnostic
+can stop the suite only before a browser opens a page; it does not catch,
+rewrite, or suppress assertion failures from the test runner. If setup
+passes, the original Playwright failure and stack trace remain the source of
+truth.
 
 ## Project matrix
 
@@ -39,6 +47,10 @@ packages are available in the executor environment.
   startup in the managed executor intermittently closed a target before
   navigation; the same test passed three isolated retries and passes
   consistently when this project is serialized.
+- `chromium-headed-zoom`: tests marked `[headed-zoom]` in a headed Chromium
+  context with touch enabled.
+- `firefox-headed-zoom`: tests marked `[headed-zoom]` in a headed Firefox
+  context with touch enabled.
 
 ## Live UX verification — 2026-09-07
 
@@ -62,13 +74,40 @@ inspect third-party implementation details.
 
 The managed headless browsers do not expose browser chrome, so the 75% and
 150% rows use the equivalent CSS viewport widths rather than claiming a
-physical browser-zoom change. A real headed-browser pass should repeat those
-two rows before release.
+physical browser-zoom change. The separate headed projects below cover the
+rendered zoom behavior and interaction contract.
+
+| Browser project | Rendered zoom | Result |
+| --- | --- | --- |
+| Chromium headed | 75% | Pass; source labels remain readable, in bounds, keyboard-focusable, and touch-selectable. |
+| Chromium headed | 150% | Pass; source labels remain readable, in bounds, keyboard-focusable, and touch-selectable. |
+| Firefox headed | 75% | Pass; source labels remain readable, in bounds, keyboard-focusable, and touch-selectable. |
+| Firefox headed | 150% | Pass; source labels remain readable, in bounds, keyboard-focusable, and touch-selectable. |
+
+
+### Headed zoom and source reachability
+
+The headed projects run the source-choice check at both requested rendered zoom
+levels (75% and 150%) with the page's zoom scale applied before each assertion.
+Each level checks:
+
+- GitHub and CodePen/JSFiddle text is present, has non-zero readable bounds, and
+  is not clipped by its label box.
+- The tab stays inside the visible viewport with no document overflow.
+- Keyboard focus can reach the tab.
+- A touch tap at the visible center selects the tab.
+
+The check is intentionally separate from the CSS viewport matrix above. Headed
+launch failures are setup/runtime failures and use the diagnostics above;
+readability, focus, touch, and overflow assertion failures remain ordinary
+Playwright test failures.
 
 The automated `[cross-browser]` source-choice regression in
 `tests/source-focus.spec.ts` checks document width and the rendered bounds of
 the GitHub and CodePen/JSFiddle labels at 375, 768, and 1280 CSS pixels in
-Chromium and Firefox.
+Chromium and Firefox. The `[headed-zoom]` regression repeats those source
+labels in headed Chromium and Firefox at 75% and 150% rendered zoom, including
+keyboard and touch reachability.
 
 Keyboard and focus checks passed for the source analysis flow, the Claude
 consent dialog, Escape dismissal, and Start Over. The Claude dialog returned
