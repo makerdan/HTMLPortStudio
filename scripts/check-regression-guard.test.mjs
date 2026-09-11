@@ -14,6 +14,8 @@ import {
 const root = path.resolve(import.meta.dirname, "..");
 const checker = path.join(root, "scripts/check-regression-guard.mjs");
 const planner = path.join(root, "scripts/new-plan.mjs");
+const failureGateSkill = path.join(root, ".agents/skills/failure-gate/SKILL.md");
+const projectGuidance = path.join(root, "replit.md");
 
 const baseline = `## Pre-existing failures to ignore
 None known at plan time.
@@ -46,6 +48,38 @@ function temporaryPlan(text, extension = ".md") {
   const file = path.join(directory, `plan${extension}`);
   fs.writeFileSync(file, text);
   return { directory, file };
+}
+
+function extractGuardExamples(text, sourceLabel) {
+  const block = [...text.matchAll(/```(?:sh|bash)\n([\s\S]*?)\n```/g)]
+    .map((match) => match[1].trim())
+    .find(
+      (candidate) =>
+        candidate.includes("# Concrete guard") &&
+        candidate.includes("# N/A guard") &&
+        candidate.includes("# Self-satisfying guard"),
+    );
+  assert.ok(
+    block,
+    `[REGRESSION-GUARD-DOCS] ${sourceLabel} is missing the complete Concrete, N/A, and self-satisfying examples.`,
+  );
+  return block;
+}
+
+function extractGuardOptions(text, sourceLabel, documentation = false) {
+  const sectionPattern = documentation
+    ? /(?:^|\n)# (Concrete guard|N\/A guard|Self-satisfying guard)\n([\s\S]*?)(?=\n# |\s*$)/g
+    : /(?:^|\n) {2}(Concrete guard|N\/A guard|Self-satisfying guard):\n((?: {4}--[^\n]+\n?)+)/g;
+  const sections = [...text.matchAll(sectionPattern)].map((match) => ({
+    label: match[1],
+    options: [...new Set(match[2].match(/--[a-z-]+/g) ?? [])],
+  }));
+  assert.equal(
+    sections.length,
+    3,
+    `[REGRESSION-GUARD-DOCS] ${sourceLabel} is missing one or more of the Concrete, N/A, and self-satisfying examples.`,
+  );
+  return sections;
 }
 
 test("accepts a concrete guard with the required fields and placement", () => {
@@ -299,6 +333,28 @@ test("plan creation help lists non-guard options and safe evidence examples", ()
   assert.match(result.stdout, /does not lower the validation tier/);
   assert.match(result.stdout, /BASE-ACTIVE/);
   assert.match(result.stdout, /environment-observation/);
+});
+
+test("keeps guard examples synchronized across the planner and canonical guidance", () => {
+  const help = spawnSync(process.execPath, [planner, "--help"], { cwd: root, encoding: "utf8" });
+  assert.equal(help.status, 0, help.stderr);
+  const plannerOptions = extractGuardOptions(help.stdout, "scripts/new-plan.mjs --help");
+
+  for (const [sourceLabel, file] of [
+    [".agents/skills/failure-gate/SKILL.md", failureGateSkill],
+    ["replit.md", projectGuidance],
+  ]) {
+    const documentation = fs.readFileSync(file, "utf8");
+    const documentationExamples = extractGuardExamples(documentation, sourceLabel);
+    const documentationOptions = extractGuardOptions(documentationExamples, sourceLabel, true);
+    assert.deepEqual(
+      documentationOptions,
+      plannerOptions,
+      `[REGRESSION-GUARD-DOCS] ${sourceLabel} examples drifted from scripts/new-plan.mjs --help.\n` +
+        `Expected the planner's supported guard option forms:\n${JSON.stringify(plannerOptions, null, 2)}\n` +
+        `Found in ${sourceLabel}:\n${JSON.stringify(documentationOptions, null, 2)}`,
+    );
+  }
 });
 
 test("plan creation points missing guard decisions to the supported examples", () => {
