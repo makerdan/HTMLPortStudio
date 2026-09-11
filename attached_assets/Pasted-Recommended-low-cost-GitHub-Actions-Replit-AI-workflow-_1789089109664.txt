@@ -1,0 +1,305 @@
+Recommended low-cost GitHub Actions + Replit + AI workflow
+
+The most effective strategy is not to make AI inspect every failure or rerun every suite. Instead, make CI produce compact, structured evidence and only involve AI when the evidence is insufficient.
+
+### 1. Text: use compact machine-readable handoffs
+
+Every AI handoff should contain only:
+
+- Repository revision
+- Branch and pull request number
+- Changed-file list
+- Exact command that failed
+- Job and matrix/project name
+- Exit code
+- Short failure excerpt
+- Whether the failure was canceled, skipped, retried, or timed out
+- Links or identifiers for retained artifacts
+- Local comparison result, if available
+
+Avoid sending:
+
+- Full repository dumps
+- Full dependency logs
+- Imported HTML source
+- Environment files
+- Entire Playwright traces
+- Repeated logs from the same failure
+
+A compact failure envelope reduces token usage and makes the AI’s diagnosis more reliable.
+
+Suggested format:
+
+```text
+Revision: <sha>
+Branch: <branch>
+Workflow: GitHub Validation
+Job: test-standard
+Command: pnpm run test-standard
+Result: failed
+Exit code: <code>
+Changed files:
+- <path>
+- <path>
+
+Failure excerpt:
+<bounded excerpt>
+
+Artifacts:
+- <artifact identifier>
+- <artifact identifier>
+
+Local comparison:
+<passed | failed | not run>
+```
+
+### 2. Checkpoints: stop AI work at evidence boundaries
+
+Use explicit checkpoints instead of letting an agent continue through a long uncertain workflow.
+
+Recommended checkpoints:
+
+1. **Before editing**
+   - Confirm the target branch and clean working tree.
+   - Record the issue or objective.
+   - Capture the initial validation baseline.
+
+2. **After the smallest code change**
+   - Run the narrowest relevant check.
+   - Do not ask AI to inspect unrelated files.
+
+3. **Before opening a pull request**
+   - Run the canonical local validation.
+   - Record the revision and command result.
+
+4. **After GitHub validation**
+   - Ask AI to interpret only the failed job and its artifacts.
+   - Do not rerun broad validation automatically.
+
+5. **Before merge**
+   - Confirm the aggregate check, not just an individual matrix or upstream job.
+   - Confirm branch policy separately.
+
+6. **After merge**
+   - Use post-merge validation for monitoring, not as a substitute for PR validation.
+
+Checkpoints prevent a failed command from triggering uncontrolled retries, broad repository analysis, or repeated AI diagnosis.
+
+### 3. Branches: isolate work and keep AI context narrow
+
+Use short-lived branches with one objective each:
+
+```text
+fix/<area>-<problem>
+test/<area>-<regression>
+ci/<workflow>-<change>
+docs/<topic>-<change>
+```
+
+Recommended rules:
+
+- One behavior change per branch
+- One validation contract change per branch
+- Avoid mixing workflow changes with application changes
+- Keep unrelated formatting and dependency upgrades out of feature branches
+- Rebase or merge only after the branch has a fresh local checkpoint
+- Use a new branch for a second attempted fix after a failed approach
+
+This makes the changed-file set meaningful and limits the context AI must inspect.
+
+### 4. CI summaries: make the first AI read cheap
+
+The workflow currently has logs and failure screenshots, but no explicit job summary is visible in `.github/workflows/validation.yml`.
+
+Add a compact summary strategy in a future authorized implementation:
+
+- Command executed
+- Result
+- Duration
+- Revision
+- Event type
+- Changed-file category
+- Browser project or API validation scope
+- Artifact names
+- Retry/cancellation status
+- Suggested next diagnostic command
+
+The summary should be the first thing a human or AI reads. Full logs should be a second-level escalation.
+
+A useful summary should not include source contents, secrets, or raw provider diagnostics.
+
+### 5. Failure artifacts: separate diagnostic value from data exposure
+
+Current behavior is intentionally conservative:
+
+- Uploads only PNG screenshots
+- Uploads only after failure
+- Retains artifacts for three days
+- Ignores empty artifact directories
+- Excludes traces, videos, DOM/error-context files, logs, source bundles, and environment files
+
+This is safe, but it limits debugging information.
+
+A cost- and privacy-conscious improvement would be to add only bounded, redacted artifacts:
+
+- Test result summary
+- Sanitized error text
+- Exit status
+- Browser project name
+- Timing data
+- Explicitly redacted Playwright metadata
+
+Avoid automatically uploading:
+
+- HTML snapshots
+- Full traces
+- Videos
+- Imported source
+- Network bodies
+- Environment dumps
+- Provider request/response payloads
+
+Artifacts should be uploaded only on failure, with short retention, and should never determine the validation result.
+
+### 6. Agent rules: keep the current rules authoritative
+
+`replit.md` already contains strong agent rules:
+
+- Failure Gate
+- Regression Guard
+- Validation-tier ceilings
+- Baseline ownership rules
+- Task-plan locking
+- No escalation beyond the selected validation tier
+
+These rules should remain the source of truth for Replit task agents.
+
+Do not duplicate the full rules into:
+
+- GitHub workflow YAML
+- Pull request templates
+- AI prompts
+- README files
+- Generated runtime mirrors
+
+Instead, AI prompts should reference the relevant rule and provide only the evidence needed to apply it.
+
+For example:
+
+```text
+Apply the repository Failure Gate rules.
+Do not classify this failure as pre-existing from a passing retry.
+Use the revision, changed files, and baseline evidence below.
+```
+
+This prevents rule drift and reduces prompt size.
+
+### 7. Small diffs: optimize for review and recovery
+
+Agent instructions should require:
+
+- No opportunistic refactors
+- No unrelated formatting
+- No dependency changes unless necessary
+- No generated-file churn without a source change
+- One logical change per commit
+- Tests added beside the behavior they protect
+- A short explanation of why each touched file is necessary
+
+A small diff reduces:
+
+- AI context size
+- Review effort
+- CI runtime
+- Failure ambiguity
+- Revert complexity
+
+### 8. Revert strategy: make rollback cheaper than repair
+
+Every workflow or validation change should have a rollback plan before it is merged.
+
+Recommended approach:
+
+1. Put workflow changes in their own commit or small branch.
+2. Keep stable job names unchanged unless a deliberate migration is planned.
+3. Do not remove an old required check until the replacement has run successfully.
+4. Before disabling a workflow, inspect branch protection or ruleset references.
+5. Revert the smallest commit that introduced the problem.
+6. Preserve local Replit validation while remote workflow changes are rolled back.
+7. If a workflow change changes artifact names or summaries, document the compatibility impact.
+
+The existing `docs/validation/github-actions.md` already warns that removing the workflow before updating branch policy can leave a required check permanently pending.
+
+## Cost-reduction priorities
+
+Ranked from lowest risk to highest:
+
+### Priority 1: Improve evidence before reducing validation
+
+- Add compact job summaries.
+- Keep failure artifacts bounded and redacted.
+- Have AI consume summaries before logs.
+- Stop repeated AI retries after one evidence-backed diagnosis.
+
+This should reduce AI usage without weakening CI coverage.
+
+### Priority 2: Make AI escalation conditional
+
+Only invoke AI when:
+
+- A job fails
+- The failure is not already classified
+- The summary is insufficient
+- A human or automation explicitly requests diagnosis
+
+Do not invoke AI for:
+
+- Green jobs
+- Expected cancellations
+- Known baseline failures
+- Duplicate error reports
+- Successful retries without new evidence
+
+### Priority 3: Measure before changing CI scope
+
+Collect, for each job:
+
+- Median and p95 duration
+- Dependency-install duration
+- Browser-install duration
+- Failure rate
+- Retry rate
+- Cancellation rate
+- Artifact size
+- Failure categories
+- Files changed when failures occur
+
+Without this data, disabling browser tests or adding aggressive path filters would be guesswork.
+
+### Priority 4: Optimize repeated setup carefully
+
+Potential future optimizations:
+
+- Use a lockfile-keyed dependency cache
+- Reuse setup through a reusable workflow or composite action
+- Avoid API validation when API contract inputs are unchanged, if the skip behavior is made explicit and safe
+- Separate cheap static checks from expensive browser checks
+- Keep a required aggregate that fails closed when an applicable job is unexpectedly skipped
+
+These changes need measurement and must not create false-green required checks.
+
+### Priority 5: Do not weaken merge protection to save cost
+
+Avoid:
+
+- `continue-on-error` on required checks
+- `|| true`
+- Silent path-filter skips
+- Replacing the aggregate with a single matrix leg
+- Retrying tests until one pass hides a failure
+- Giving PR jobs write permissions or secrets
+- Using `pull_request_target` to access privileged context
+- Sending full source or logs to AI by default
+
+
+The largest remaining opportunity is not immediately removing tests. It is improving the evidence pipeline so that humans and AI receive a small, structured failure summary first. That should lower AI usage and cost while preserving validation quality.
