@@ -46,6 +46,7 @@ test("every registered tier has a unique executable root package command", () =>
   );
   for (const tier of registry.tiers) {
     assert.equal(tier.command, `pnpm run ${tier.name}`);
+    assert.ok(Number.isSafeInteger(tier.timeoutMs) && tier.timeoutMs > 0);
     assert.equal(typeof packageJson.scripts[tier.name], "string");
     assert.ok(packageJson.scripts[tier.name].trim());
   }
@@ -56,8 +57,8 @@ test("registry loading rejects duplicate names and missing command targets", asy
   const duplicate = createRegistry({
     version: 1,
     tiers: [
-      { name: "test-fast", command: "pnpm run test-fast" },
-      { name: "test-fast", command: "pnpm run test-fast" },
+      { name: "test-fast", command: "pnpm run test-fast", timeoutMs: 1000 },
+      { name: "test-fast", command: "pnpm run test-fast", timeoutMs: 1000 },
     ],
   });
   const missingCommand = createRegistry({
@@ -93,18 +94,22 @@ test("locked runner executes exactly the tier selected by the plan", () => {
       {
         name: "test-fast",
         command: `node -e "require('fs').writeFileSync('${marker}', 'fast')"`,
+        timeoutMs: 1000,
       },
       {
         name: "test-standard",
         command: `node -e "require('fs').writeFileSync('${marker}', 'standard')"`,
+        timeoutMs: 1000,
       },
       {
         name: "test-standard-plus",
         command: `node -e "require('fs').writeFileSync('${marker}', 'standard-plus')"`,
+        timeoutMs: 1000,
       },
       {
         name: "test-heavy",
         command: `node -e "require('fs').writeFileSync('${marker}', 'heavy')"`,
+        timeoutMs: 1000,
       },
     ],
   };

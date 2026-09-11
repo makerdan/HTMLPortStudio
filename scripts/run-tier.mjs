@@ -9,7 +9,17 @@ export function runTier(tierName, { env = process.env, tier: lockedTier } = {}) 
     throw new Error(`Validation-tier registry ${TIER_REGISTRY_LABEL} does not define requested tier "${tierName}"; check the registered tiers in ${TIER_REGISTRY_LABEL}.`);
   }
   console.log(`[VALIDATION] Running tier "${tierName}": ${tier.command}`);
-  const result = spawnSync(tier.command, { cwd: process.cwd(), env, shell: true, stdio: "inherit" });
+  const result = spawnSync(`exec ${tier.command}`, {
+    cwd: process.cwd(),
+    env,
+    shell: true,
+    stdio: "inherit",
+    timeout: tier.timeoutMs,
+  });
+  if (result.error?.code === "ETIMEDOUT") {
+    console.error(`[VALIDATION] Tier "${tierName}" exceeded its ${tier.timeoutMs}ms timeout and was terminated. Repair the stalled validation or its environment, then rerun the same locked tier; do not substitute another command.`);
+    return 124;
+  }
   if (result.error) throw result.error;
   return result.status ?? 1;
 }

@@ -85,6 +85,7 @@ test("rejects empty tier names and commands with field-specific diagnostics", ()
   const cases = [
     [{ version: 1, tiers: [{ name: "", command: "node -e \"process.exit(0)\"" }] }, /tier name must be a non-empty string/],
     [{ version: 1, tiers: [{ name: "empty-command", command: "  " }] }, /tier command must be a non-empty string/],
+    [{ version: 1, tiers: [{ name: "invalid-timeout", command: "true", timeoutMs: 0 }] }, /tier timeoutMs must be a positive safe integer/],
   ];
   for (const [registry, diagnostic] of cases) {
     assert.throws(() => withTierRegistry(registry, () => loadTierRegistry()), diagnostic);
@@ -95,8 +96,8 @@ test("rejects duplicate tier names and identifies both declarations", () => {
   assert.throws(() => withTierRegistry({
     version: 1,
     tiers: [
-      { name: "duplicate", command: "node -e \"process.exit(0)\"" },
-      { name: "duplicate", command: "node -e \"process.exit(0)\"" },
+      { name: "duplicate", command: "node -e \"process.exit(0)\"", timeoutMs: 1000 },
+      { name: "duplicate", command: "node -e \"process.exit(0)\"", timeoutMs: 1000 },
     ],
   }, () => loadTierRegistry()), /duplicate tier name "duplicate" at index 1; already declared at index 0/);
 });
@@ -236,7 +237,7 @@ test("locked runner invokes the exact command returned by the registered tier", 
   const command = `node -e "require('fs').writeFileSync('${marker}', 'registry-command')"`;
   const result = withTierRegistry({
     version: 1,
-    tiers: [{ name: "test-standard", command }],
+    tiers: [{ name: "test-standard", command, timeoutMs: 1000 }],
   }, () => spawnSync(process.execPath, [runner, file], {
     cwd: root,
     env: process.env,
@@ -245,6 +246,46 @@ test("locked runner invokes the exact command returned by the registered tier", 
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, new RegExp(`Running tier "test-standard": ${command.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
   assert.equal(fs.readFileSync(marker, "utf8"), "registry-command");
+  fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test("locked runner preserves a registered command's non-zero exit status", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "failure-gate-exit-"));
+  const file = path.join(directory, "plan.md");
+  const lockedValid = `${valid}\n## Regression Guard\n**Covers:** The locked runner must preserve a validation command's non-zero exit status.\n**Test location:** scripts/check-failure-gate.test.mjs\n**What it checks:** A deterministic failing fixture returns its original exit status instead of being treated as a timeout.\n`;
+  fs.writeFileSync(file, lockedValid);
+  const result = withTierRegistry({
+    version: 1,
+    tiers: [{ name: "test-standard", command: `node -e "process.exit(7)"`, timeoutMs: 1000 }],
+  }, () => spawnSync(process.execPath, [runner, file], {
+    cwd: root,
+    env: process.env,
+    encoding: "utf8",
+  }));
+  assert.equal(result.status, 7);
+  assert.doesNotMatch(result.stderr, /timeout|terminated/i);
+  fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test("locked runner terminates a hung tier with safe recovery guidance", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "failure-gate-timeout-"));
+  const file = path.join(directory, "plan.md");
+  const lockedValid = `${valid}\n## Regression Guard\n**Covers:** The locked runner must terminate a stalled validation command.\n**Test location:** scripts/check-failure-gate.test.mjs\n**What it checks:** A registered timeout terminates a harmless deterministic fixture and reports recovery guidance.\n`;
+  fs.writeFileSync(file, lockedValid);
+  const timeoutMs = 100;
+  const command = `node -e "setTimeout(() => {}, 5000)"`;
+  const result = withTierRegistry({
+    version: 1,
+    tiers: [{ name: "test-standard", command, timeoutMs }],
+  }, () => spawnSync(process.execPath, [runner, file], {
+    cwd: root,
+    env: process.env,
+    encoding: "utf8",
+  }));
+  assert.equal(result.status, 124);
+  assert.match(result.stderr, new RegExp(`Tier "test-standard" exceeded its ${timeoutMs}ms timeout and was terminated`));
+  assert.match(result.stderr, /rerun the same locked tier/);
+  assert.doesNotMatch(result.stderr, /setTimeout/);
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
@@ -312,6 +353,7 @@ test("locked runner explains malformed registry data and stops before running", 
       {
         name: "test-standard",
         command: `node -e "require('fs').writeFileSync('${marker}', 'ran')"`,
+        timeoutMs: 1000,
       },
       { name: "malformed-tier" },
     ],
@@ -375,6 +417,7 @@ test("direct runner explains malformed registry data and stops before running", 
       {
         name: "test-standard",
         command: `node -e "require('fs').writeFileSync('${marker}', 'ran')"`,
+        timeoutMs: 1000,
       },
       { name: "malformed-tier" },
     ],

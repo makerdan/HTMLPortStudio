@@ -315,7 +315,7 @@ test("plan creation writes a compliant section for every supported decision", ()
   fs.mkdirSync(path.join(directory, ".local/tasks"), { recursive: true });
   fs.writeFileSync(path.join(fixtureDocs, "validation/validation-tiers.json"), JSON.stringify({
     version: 1,
-    tiers: [{ name: "test-standard", command: "true" }],
+    tiers: [{ name: "test-standard", command: "true", timeoutMs: 1000 }],
   }));
 
   const decisions = [

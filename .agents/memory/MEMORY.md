@@ -26,3 +26,4 @@
 - [Hosted URL fixture ports](hosted-url-fixture-boundary.md) — Local hosted-URL HTTPS fixtures must map ephemeral ports inside injected transport because canonical imports allow only 80/443.
 - [Validation registry test isolation](validation-registry-test-isolation.md) — Use temporary registry and baseline fixtures instead of rewriting tracked catalogs when validation tests run in parallel.
 - [Acceptance blocker provenance](acceptance-blocker-provenance.md) — Separate repository-wide gate/catalog drift from task-owned runtime checks before claiming final acceptance.
+- [Validation timeout process cleanup](validation-timeout-process-cleanup.md) — Shell timeouts can orphan child commands; replace the wrapper shell so termination reaches the actual validator.

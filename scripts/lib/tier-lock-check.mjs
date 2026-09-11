@@ -45,6 +45,9 @@ export function loadTierRegistry(registryPath) {
     if (tiers.has(tier.name)) {
       throw new Error(`Validation-tier registry ${label} has duplicate tier name "${tier.name}" at index ${index}; already declared at index ${tierIndexes.get(tier.name)}.`);
     }
+    if (!Number.isSafeInteger(tier.timeoutMs) || tier.timeoutMs <= 0) {
+      throw new Error(`Validation-tier registry ${label} has malformed tier at index ${index}: tier timeoutMs must be a positive safe integer.`);
+    }
     tiers.set(tier.name, tier);
     tierIndexes.set(tier.name, index);
   }
