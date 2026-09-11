@@ -25,3 +25,4 @@
 - [Validation registry drift](validation-registry-drift.md) — Locked validation can stop before project tests when the tier registry contains malformed entries.
 - [Hosted URL fixture ports](hosted-url-fixture-boundary.md) — Local hosted-URL HTTPS fixtures must map ephemeral ports inside injected transport because canonical imports allow only 80/443.
 - [Validation registry test isolation](validation-registry-test-isolation.md) — Use temporary registry and baseline fixtures instead of rewriting tracked catalogs when validation tests run in parallel.
+- [Acceptance blocker provenance](acceptance-blocker-provenance.md) — Separate repository-wide gate/catalog drift from task-owned runtime checks before claiming final acceptance.
