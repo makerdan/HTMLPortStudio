@@ -126,7 +126,48 @@ mixed, or placeholder decisions fail before the output file is created. These
 inputs only generate the additive Regression Guard section; they do not alter
 Failure Gate fields or the selected validation tier.
 
-Run `node scripts/new-plan.mjs --help` (or `-h`) for the same inline examples:
+Run `node scripts/new-plan.mjs --help` (or `-h`) for the same inline guidance,
+including the supported non-guard options:
+
+- `--title` and `--why` are required plan metadata.
+- `--slug` overrides the output filename slug.
+- `--validation-tier` selects one registered validation tier (default:
+  `test-standard`).
+- `--baseline-id` records an unrelated active catalog baseline, while
+  `--owned-baseline-id` records a baseline this task repairs.
+- `--pre-existing` records task-local failure evidence; it does not authorize
+  ignoring a failure.
+- `--environment-observation` records temporary harness or resource limits; it
+  does not weaken the execution gate.
+- `--output` chooses the plan file location instead of the default
+  `.local/tasks/<slug>.md`.
+
+For example, tier and baseline selection can be recorded without changing the
+strict validation contract:
+
+```sh
+node scripts/new-plan.mjs --title "Refresh imports" \
+  --why "Keep imported content current." \
+  --validation-tier test-standard-plus --baseline-id BASE-ACTIVE \
+  --guard-self-satisfying "the Regression Guard checker and focused recurrence test" \
+  --output .local/tasks/refresh-imports.md
+```
+
+Environment evidence is also additive and does not weaken validation:
+
+```sh
+node scripts/new-plan.mjs --title "Fix browser startup" \
+  --why "Make browser checks reliable." \
+  --validation-tier test-standard \
+  --environment-observation "The headed browser is unavailable in this container." \
+  --guard-na-reason "The failure is a visual regression with no screenshot infrastructure."
+```
+
+Missing or invalid non-guard values point back to this help section. A
+baseline or environment observation never changes the selected tier or permits
+an otherwise unowned failure to be ignored.
+
+The guard decision examples are:
 
 ```sh
 # Concrete guard

@@ -286,6 +286,21 @@ test("plan creation help lists all supported guard decisions", () => {
   }
 });
 
+test("plan creation help lists non-guard options and safe evidence examples", () => {
+  const result = spawnSync(process.execPath, [planner, "--help"], { cwd: root, encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+  for (const option of [
+    "--title", "--why", "--slug", "--validation-tier", "--baseline-id",
+    "--owned-baseline-id", "--pre-existing", "--environment-observation", "--output",
+  ]) {
+    assert.match(result.stdout, new RegExp(option.replaceAll("-", "\\-")));
+  }
+  assert.match(result.stdout, /test-standard-plus/);
+  assert.match(result.stdout, /does not lower the validation tier/);
+  assert.match(result.stdout, /BASE-ACTIVE/);
+  assert.match(result.stdout, /environment-observation/);
+});
+
 test("plan creation points missing guard decisions to the supported examples", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "regression-guard-plan-help-"));
   const file = path.join(directory, "missing.md");
@@ -303,6 +318,36 @@ test("plan creation points missing guard decisions to the supported examples", (
     assert.equal(fs.existsSync(file), false);
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("plan creation points invalid non-guard inputs to the help section", () => {
+  const cases = [
+    ["--validation-tier", "unknown-tier", /validation-tier option and registered tier examples/],
+    ["--baseline-id", "TODO", /non-guard options and examples/],
+    ["--baseline-id", "UNKNOWN-BASELINE", /non-guard options and examples/],
+    ["--environment-observation", undefined, /non-guard options and examples/],
+  ];
+  for (const [option, value, expected] of cases) {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "non-guard-plan-help-"));
+    const file = path.join(directory, "invalid.md");
+    const args = [
+      planner,
+      "--title", "Invalid non-guard input",
+      "--why", "The planner should explain how to repair non-guard inputs.",
+      "--guard-self-satisfying", "the Regression Guard checker and focused recurrence test",
+      "--output", file,
+      option,
+    ];
+    if (value !== undefined) args.push(value);
+    try {
+      const result = spawnSync(process.execPath, args, { cwd: root, encoding: "utf8" });
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, expected);
+      assert.equal(fs.existsSync(file), false);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
   }
 });
 

@@ -7,7 +7,39 @@ import { validateRegressionGuardText } from "./lib/regression-guard.mjs";
 
 const args = process.argv.slice(2);
 const GUARD_HELP = `Usage:
-  node scripts/new-plan.mjs --title "<title>" --why "<why>" <guard decision> [options]
+  node scripts/new-plan.mjs --title "<title>" --why "<why>" <guard decision> [non-guard options]
+
+Required plan inputs:
+  --title "<title>"              Short plan title.
+  --why "<why>"                  Why the work is needed and what it should accomplish.
+
+Non-guard options:
+  --slug "<slug>"                Override the output filename slug derived from --title.
+  --validation-tier "<tier>"     Select the registered validation tier for the plan.
+                                  Defaults to test-standard. Available tiers include
+                                  test-fast, test-standard, test-standard-plus, and test-heavy.
+  --baseline-id "<id>"           Record an active catalog baseline to ignore; repeat for multiple
+                                  unrelated baselines. This does not lower the validation tier.
+  --owned-baseline-id "<id>"     Record an active or repairable catalog baseline this task owns;
+                                  repeat for multiple repairs.
+  --pre-existing "<evidence>"    Add task-local evidence about a suspected pre-existing failure;
+                                  repeat as needed. This is evidence, not permission to ignore a failure.
+  --environment-observation "<observation>"
+                                  Record a temporary harness or resource observation; repeat as needed.
+                                  This does not weaken the execution gate.
+  --output "<path>"              Write the plan to this path instead of .local/tasks/<slug>.md.
+
+Examples:
+  # Select a registered tier and document a known unrelated baseline.
+  node scripts/new-plan.mjs --title "Refresh imports" --why "Keep imported content current." \\
+    --validation-tier test-standard-plus --baseline-id BASE-ACTIVE \\
+    --guard-self-satisfying "the Regression Guard checker and focused recurrence test" \\
+    --output .local/tasks/refresh-imports.md
+
+  # Record environment evidence without changing the selected validation tier.
+  node scripts/new-plan.mjs --title "Fix browser startup" --why "Make browser checks reliable." \\
+    --validation-tier test-standard --environment-observation "The headed browser is unavailable in this container." \\
+    --guard-na-reason "The failure is a visual regression with no screenshot infrastructure."
 
 Regression Guard decision (provide exactly one):
 
@@ -41,9 +73,16 @@ function many(name) {
   }
   return values;
 }
+function missingValue(name) {
+  return args.some((value, index) => value === name
+    && (!args[index + 1] || args[index + 1].startsWith("--")));
+}
 function fail(message) {
   console.error(`[PLAN-SCAFFOLD] ${message}`);
   process.exit(1);
+}
+function helpHint(section = "the non-guard options and examples") {
+  return ` Run \`node scripts/new-plan.mjs --help\` to review ${section}.`;
 }
 function guardHint(example) {
   return ` Run \`node scripts/new-plan.mjs --help\` to see ${example}.`;
@@ -56,7 +95,7 @@ function guardText(value, label, example) {
 }
 function realText(value, label) {
   if (!value?.trim() || /(?:<[^>]+>|\b(?:TODO|TBD|FIXME|REQUIRED)\b|\.\.\.)/i.test(value)) {
-    fail(`${label} must be a real, non-placeholder value.`);
+    fail(`${label} must be a real, non-placeholder value.${helpHint()}`);
   }
   return value.trim();
 }
@@ -76,8 +115,11 @@ function hasOption(names) {
 
 const title = realText(option("--title"), "--title");
 const why = realText(option("--why"), "--why");
+for (const name of ["--slug", "--validation-tier", "--baseline-id", "--owned-baseline-id", "--pre-existing", "--environment-observation", "--output"]) {
+  if (missingValue(name)) fail(`${name} requires a value.${helpHint()}`);
+}
 const slug = slugify(option("--slug", title));
-if (!slug) fail("Unable to derive a plan filename; provide --slug.");
+if (!slug) fail(`Unable to derive a plan filename; provide --slug.${helpHint()}`);
 
 const guardCovers = firstOption(["--guard-covers", "--regression-guard-covers"]);
 const guardLocation = firstOption(["--guard-test-location", "--regression-guard-test-location"]);
@@ -125,17 +167,17 @@ if (concreteGuardPresent) {
 const tierName = option("--validation-tier", "test-standard");
 const tiers = loadTierRegistry();
 const tier = tiers.get(tierName);
-if (!tier) fail(`Unknown validation tier "${tierName}".`);
+if (!tier) fail(`Unknown validation tier "${tierName}".${helpHint("the validation-tier option and registered tier examples")}`);
 
 const baselineIds = many("--baseline-id");
 const ownedIds = many("--owned-baseline-id");
 if (new Set([...baselineIds, ...ownedIds]).size !== baselineIds.length + ownedIds.length) {
-  fail("A baseline ID may be declared only once.");
+  fail(`A baseline ID may be declared only once.${helpHint("the baseline and evidence options")}`);
 }
 const baselineLines = [...baselineIds.map((id) => `- **Ignored baseline:** \`${realText(id, "--baseline-id")}\` — match the exact recorded suite, test, and signature.`),
   ...ownedIds.map((id) => `- **Owned baseline repair:** \`${realText(id, "--owned-baseline-id")}\` — this task owns repair of the exact recorded suite, test, and signature.`)];
-const preExisting = many("--pre-existing");
-const observations = many("--environment-observation");
+const preExisting = many("--pre-existing").map((entry) => realText(entry, "--pre-existing"));
+const observations = many("--environment-observation").map((entry) => realText(entry, "--environment-observation"));
 const output = path.resolve(ROOT, option("--output", path.join(".local/tasks", `${slug}.md`)));
 if (fs.existsSync(output)) fail(`Plan already exists: ${path.relative(ROOT, output)}.`);
 
@@ -163,11 +205,10 @@ ${observations.length ? `\n## Task-local environment observations\n${observation
 **Do not escalate:** Run exactly this command. Pre-existing, intermittent, or environment-limited failures are not a reason to run a heavier tier.
 
 ${regressionGuard}`;
-const errors = [
-  ...validatePlanText(plan, path.relative(ROOT, output)),
-  ...validateRegressionGuardText(plan, path.relative(ROOT, output)),
-];
-if (errors.length) fail(errors.join("\n"));
+const planErrors = validatePlanText(plan, path.relative(ROOT, output));
+if (planErrors.length) fail(`${planErrors.join("\n")}${helpHint("the non-guard options and examples")}`);
+const guardErrors = validateRegressionGuardText(plan, path.relative(ROOT, output));
+if (guardErrors.length) fail(`${guardErrors.join("\n")}${guardHint("the guard examples")}`);
 fs.mkdirSync(path.dirname(output), { recursive: true });
 fs.writeFileSync(output, `${plan.trimEnd()}\n`);
 console.log(`[PLAN-SCAFFOLD] Created ${path.relative(ROOT, output)} using tier "${tierName}".`);

@@ -126,7 +126,43 @@ Create plans with `scripts/new-plan.mjs`, which requires exactly one of:
 - `--guard-self-satisfying` naming the guard-writing deliverable
 
 Run `node scripts/new-plan.mjs --help` (or `-h`) for inline guidance and
-examples:
+examples. Supported non-guard options are:
+
+- `--title` and `--why` for required plan metadata
+- `--slug` to override the output filename slug
+- `--validation-tier` to select a registered validation tier (defaults to
+  `test-standard`)
+- `--baseline-id` for an unrelated active catalog baseline
+- `--owned-baseline-id` for a baseline this task explicitly repairs
+- `--pre-existing` for task-local failure evidence
+- `--environment-observation` for temporary harness or resource observations
+- `--output` to choose the plan file location instead of
+  `.local/tasks/<slug>.md`
+
+Baseline, pre-existing, and environment options are documentation only: they
+do not lower the selected validation tier or weaken the execution gate. For
+example:
+
+```sh
+node scripts/new-plan.mjs --title "Refresh imports" \
+  --why "Keep imported content current." \
+  --validation-tier test-standard-plus --baseline-id BASE-ACTIVE \
+  --guard-self-satisfying "the Regression Guard checker and focused recurrence test" \
+  --output .local/tasks/refresh-imports.md
+```
+
+To record temporary environment evidence while retaining strict validation:
+
+```sh
+node scripts/new-plan.mjs --title "Fix browser startup" \
+  --why "Make browser checks reliable." \
+  --validation-tier test-standard \
+  --environment-observation "The headed browser is unavailable in this container." \
+  --guard-na-reason "The failure is a visual regression with no screenshot infrastructure."
+```
+
+Missing or invalid non-guard inputs point back to this help section. The
+Regression Guard decision examples are:
 
 ```sh
 # Concrete guard
