@@ -8,7 +8,7 @@
     "build": "vite build --config vite.config.ts",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:unit": "node --experimental-strip-types --test src/pages/home.test.ts src/lib/source-adapters.test.ts src/lib/source-editor.test.ts",
+    "test:unit": "node --experimental-strip-types --test scripts/prepare-browsers.test.mjs src/pages/home.test.ts src/lib/source-adapters.test.ts src/lib/source-editor.test.ts",
     "test:home": "pnpm run test:unit",
     "prepare:browsers": "node scripts/prepare-browsers.mjs",
     "test:browser": "pnpm run prepare:browsers && playwright test"

@@ -7,9 +7,11 @@ critical cross-browser tests so unrelated recovery coverage is not duplicated.
 
 ## Local runtime contract
 
-The Studio browser-test command installs both managed Playwright engines and
-launches each engine once as a setup probe before launching the suite, so the
-registered `test-standard` workflow prepares a fresh workspace automatically:
+The Studio browser-test command checks both managed Playwright engine
+executables, installs them only when one is missing or incomplete, and launches
+each engine once as a setup probe before launching the suite. This keeps the
+registered `test-standard` workflow automatic for a fresh workspace without
+redownloading browsers that are already present:
 
 ```sh
 pnpm --filter @workspace/html-port-studio run test:browser
@@ -23,11 +25,13 @@ pnpm --filter @workspace/html-port-studio run prepare:browsers
 ```
 
 The browser binaries are stored in the managed Playwright cache and are not
-committed to the repository. The setup probe reports missing browser downloads
-as `[playwright-setup] ... browser download is missing or incomplete` and
-points to `prepare:browsers`. It reports a browser that exists but cannot
-start because of a missing shared library as `... native runtime libraries`
-and points to the `.replit` Nix packages and a workspace restart. The
+committed to the repository. If either executable is missing, the setup
+command installs both managed engines through the package-local Playwright
+command. The setup probe reports missing browser downloads as
+`[playwright-setup] ... browser download is missing or incomplete` and points
+to `prepare:browsers`. It reports a browser that exists but cannot start
+because of a missing shared library as `... native runtime libraries` and
+points to the `.replit` Nix packages and a workspace restart. The
 workspace's `.replit` Nix configuration provides the native runtime libraries
 needed by these browsers, including GLib/GTK, NSS/NSPR, ATK, Pango/Cairo,
 X11/XCB, GBM/Mesa/OpenGL, and ALSA.

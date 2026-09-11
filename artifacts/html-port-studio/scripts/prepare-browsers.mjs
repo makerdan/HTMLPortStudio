@@ -48,6 +48,15 @@ export function setupDiagnostic(browser, kind, detail = "") {
   Action: inspect the setup detail below and repair the workspace browser/runtime prerequisites; product assertions are not being reclassified.${suffix}`;
 }
 
+export function getMissingBrowsers(
+  browserList = browsers,
+  executableExists = existsSync,
+) {
+  return browserList.filter(
+    ({ type }) => !executableExists(type.executablePath()),
+  );
+}
+
 function installBrowsers() {
   const result = spawnSync("playwright", ["install", "chromium", "firefox"], {
     cwd: process.cwd(),
@@ -60,7 +69,9 @@ function installBrowsers() {
   }
 
   if (result.status !== 0) {
-    throw new Error(`Playwright browser download exited with status ${result.status}.`);
+    throw new Error(
+      `Playwright browser download exited with status ${result.status}.`,
+    );
   }
 }
 
@@ -87,20 +98,35 @@ async function verifyBrowser(browser) {
 }
 
 export async function main() {
-  installBrowsers();
+  const missingBrowsers = getMissingBrowsers();
+  if (missingBrowsers.length > 0) {
+    installBrowsers();
+  } else {
+    console.log(
+      "[playwright-setup] Chromium and Firefox are already installed; skipping browser download.",
+    );
+  }
+
   const results = await Promise.all(browsers.map(verifyBrowser));
   if (results.some((result) => !result)) {
     process.exitCode = 1;
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   try {
     await main();
   } catch (error) {
     for (const browser of browsers) {
       console.error(
-        setupDiagnostic(browser.name, classifyBrowserSetupError(error, false), error?.message),
+        setupDiagnostic(
+          browser.name,
+          classifyBrowserSetupError(error, false),
+          error?.message,
+        ),
       );
     }
     process.exitCode = 1;
