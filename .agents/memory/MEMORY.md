@@ -20,7 +20,7 @@
 - [Regression guard test paths](validation-guard-path-format.md) — Keep concrete test paths at line end or followed by whitespace; punctuation/backticks can fail the strict validator.
 - [Headed browser validation](headed-browser-validation.md) — Separate Playwright binary/native-runtime probes from headed source-choice zoom assertions.
 - [Completion validation polling](completion-validation-polling.md) — Managed completion checks can exhaust their poll budget while manual validation has already produced usable evidence.
-- [Node test detached fixtures](node-test-detached-fixtures.md) — Use temporary readiness files instead of inherited IPC for detached process fixtures.
+- [Node process fixtures](node-test-detached-fixtures.md) — Use explicit readiness and signal-aware exit handling for child-process lifecycle tests.
 - [OpenAPI integer codegen](openapi-integer-codegen.md) — This Orval/Zod setup emits unsupported zod.int for OpenAPI integer fields; use numeric schemas for generated contracts.
 - [Validation registry drift](validation-registry-drift.md) — Locked validation can stop before project tests when the tier registry contains malformed entries.
 - [Hosted URL fixture ports](hosted-url-fixture-boundary.md) — Local hosted-URL HTTPS fixtures must map ephemeral ports inside injected transport because canonical imports allow only 80/443.

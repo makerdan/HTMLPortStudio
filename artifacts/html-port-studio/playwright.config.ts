@@ -7,17 +7,19 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
   throw new Error(`Invalid PLAYWRIGHT_PORT value: "${rawPort}"`);
 }
 
+const serverUrl = `http://127.0.0.1:${port}`;
+
 export default defineConfig({
   testDir: "./tests",
   fullyParallel: true,
   reporter: "list",
   use: {
-    baseURL: `http://127.0.0.1:${port}`,
+    baseURL: serverUrl,
     trace: "retain-on-failure",
   },
   webServer: {
     command: `node ../../scripts/free-ports.mjs ${port} && BASE_PATH=/ PORT=${port} VITE_CLERK_PUBLISHABLE_KEY= VITE_STUDIO_E2E_AUTH=true pnpm run dev`,
-    url: `http://127.0.0.1:${port}/`,
+    url: `${serverUrl}/api/healthz`,
     reuseExistingServer: false,
   },
   projects: [

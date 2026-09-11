@@ -49,7 +49,16 @@ async function waitForHealth(url, child) {
     }
     try {
       const response = await fetch(url);
-      if (response.ok) return;
+      if (!response.ok) {
+        await response.arrayBuffer();
+      } else if (
+        response.headers.get("content-type")?.includes("application/json") &&
+        (await response.json()).status === "ok"
+      ) {
+        return;
+      } else {
+        await response.arrayBuffer();
+      }
     } catch {
       // The service may still be compiling or binding its listener.
     }
@@ -172,7 +181,9 @@ test("reports the tracked port contract and startup cleanup wiring", () => {
   const playwright = readFileSync(new URL("../artifacts/html-port-studio/playwright.config.ts", import.meta.url), "utf8");
   assert.match(playwright, /PLAYWRIGHT_PORT/);
   assert.match(playwright, /free-ports\.mjs/);
-  assert.match(playwright, /baseURL: `http:\/\/127\.0\.0\.1:\$\{port\}`/);
+  assert.match(playwright, /const serverUrl = `http:\/\/127\.0\.0\.1:\$\{port\}`/);
+  assert.match(playwright, /baseURL: serverUrl/);
+  assert.match(playwright, /url: `\$\{serverUrl\}\/api\/healthz`/);
 
   for (const { port, artifact } of Object.values(PORT_CONTRACT)) {
     if (!artifact) continue;
