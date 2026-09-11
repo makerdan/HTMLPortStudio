@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import {
   copyFileSync,
+  mkdtempSync,
   mkdirSync,
   readFileSync,
   rmSync,
@@ -10,10 +11,13 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(import.meta.dirname, "..");
-const validationRoot = resolve(root, ".cache", "api-validation");
+const validationCacheRoot = resolve(root, ".cache");
+let validationRoot;
 
 function cleanValidationOutput() {
-  rmSync(validationRoot, { force: true, recursive: true });
+  if (validationRoot) {
+    rmSync(validationRoot, { force: true, recursive: true });
+  }
 }
 
 function fail(message, exitCode = 1) {
@@ -37,6 +41,26 @@ function runStep(label, command, args, env = {}) {
   if (result.status !== 0) {
     fail(`${label} failed.`, result.status ?? 1);
   }
+}
+
+function writeValidationConfig(name, sourceConfig, { include, outDir, rootDir, tsBuildInfoFile, paths }) {
+  const configDirectory = resolve(validationRoot, "configs");
+  mkdirSync(configDirectory, { recursive: true });
+  const configPath = resolve(configDirectory, name);
+  const config = {
+    extends: resolve(root, sourceConfig),
+    compilerOptions: {
+      ...(outDir ? { outDir: resolve(validationRoot, outDir) } : {}),
+      ...(rootDir ? { rootDir: resolve(validationRoot, rootDir) } : {}),
+      ...(tsBuildInfoFile
+        ? { tsBuildInfoFile: resolve(validationRoot, tsBuildInfoFile) }
+        : {}),
+      ...(paths ? { paths } : {}),
+    },
+    ...(include ? { include: [resolve(validationRoot, include)] } : {}),
+  };
+  writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
+  return configPath;
 }
 
 function compareGeneratedSource(label, committedPath, generatedPath) {
@@ -248,8 +272,8 @@ function validateSourceLimitBoundary(generatedZodPath) {
 }
 
 function main() {
-  cleanValidationOutput();
-  mkdirSync(validationRoot, { recursive: true });
+  mkdirSync(validationCacheRoot, { recursive: true });
+  validationRoot = mkdtempSync(resolve(validationCacheRoot, "api-validation-"));
   copyFileSync(
     resolve(root, "lib", "api-client-react", "src", "custom-fetch.ts"),
     resolve(validationRoot, "custom-fetch.ts"),
@@ -299,6 +323,35 @@ function main() {
     'export * from "./generated/api";\nexport * from "./generated/types";\n',
   );
 
+  const apiZodValidationConfig = writeValidationConfig(
+    "api-zod.tsconfig.json",
+    "lib/api-zod/tsconfig.validation.json",
+    {
+      include: "api-zod",
+      outDir: "api-zod-dist",
+      rootDir: "api-zod",
+      tsBuildInfoFile: "api-zod.tsbuildinfo",
+      paths: {
+        zod: [resolve(root, "lib/api-zod/node_modules/zod")],
+      },
+    },
+  );
+  const apiClientValidationConfig = writeValidationConfig(
+    "api-client-react.tsconfig.json",
+    "lib/api-client-react/tsconfig.validation.json",
+    {
+      include: "api-client-react",
+      outDir: "api-client-react-dist",
+      rootDir: "api-client-react",
+      tsBuildInfoFile: "api-client-react.tsbuildinfo",
+      paths: {
+        "@tanstack/react-query": [
+          resolve(root, "lib/api-client-react/node_modules/@tanstack/react-query"),
+        ],
+      },
+    },
+  );
+
   validateSourceLimitBoundary(
     resolve(validationRoot, "api-zod", "generated", "api.ts"),
   );
@@ -308,7 +361,7 @@ function main() {
     "tsc",
     "--build",
     "--force",
-    "lib/api-zod/tsconfig.validation.json",
+    apiZodValidationConfig,
   ]);
 
   runStep("Force-refreshing React API client declarations", "pnpm", [
@@ -316,8 +369,32 @@ function main() {
     "tsc",
     "--build",
     "--force",
-    "lib/api-client-react/tsconfig.validation.json",
+    apiClientValidationConfig,
   ]);
+
+  const apiServerValidationConfig = writeValidationConfig(
+    "api-server.tsconfig.json",
+    "artifacts/api-server/tsconfig.declarations.json",
+    {
+      paths: {
+        "@workspace/api-zod": [
+          resolve(validationRoot, "api-zod-dist", "index.d.ts"),
+        ],
+      },
+    },
+  );
+  const studioValidationConfig = writeValidationConfig(
+    "html-port-studio.tsconfig.json",
+    "artifacts/html-port-studio/tsconfig.declarations.json",
+    {
+      paths: {
+        "@/*": [resolve(root, "artifacts/html-port-studio/src/*")],
+        "@workspace/api-client-react": [
+          resolve(validationRoot, "api-client-react-dist", "index.d.ts"),
+        ],
+      },
+    },
+  );
 
   runStep(
     "Typechecking the API server against refreshed declarations",
@@ -328,7 +405,7 @@ function main() {
       "exec",
       "tsc",
       "-p",
-      "tsconfig.declarations.json",
+      apiServerValidationConfig,
       "--noEmit",
     ],
   );
@@ -342,7 +419,7 @@ function main() {
       "exec",
       "tsc",
       "-p",
-      "tsconfig.declarations.json",
+      studioValidationConfig,
       "--noEmit",
     ],
   );
@@ -350,12 +427,12 @@ function main() {
   compareGeneratedSource(
     "React client",
     "lib/api-client-react/src/generated",
-    ".cache/api-validation/api-client-react/generated",
+    resolve(validationRoot, "api-client-react", "generated"),
   );
   compareGeneratedSource(
     "Zod",
     "lib/api-zod/src/generated",
-    ".cache/api-validation/api-zod/generated",
+    resolve(validationRoot, "api-zod", "generated"),
   );
 
   cleanValidationOutput();

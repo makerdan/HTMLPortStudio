@@ -54,7 +54,7 @@ validation contract.
 `test-standard` continues to cover Failure Gate validation, workspace
 typechecks, focused script/API/Studio tests, and the browser phase. The
 separate API job runs the same generated-source comparison and isolated
-declaration checks as `validate:api`; its temporary `.cache/api-validation`
+declaration checks as `validate:api`; its temporary `.cache/api-validation-*`
 output is cleaned by the validator and is never committed.
 
 ## Runtime and service prerequisites

@@ -24,4 +24,4 @@
 - [OpenAPI integer codegen](openapi-integer-codegen.md) — This Orval/Zod setup emits unsupported zod.int for OpenAPI integer fields; use numeric schemas for generated contracts.
 - [Validation registry drift](validation-registry-drift.md) — Locked validation can stop before project tests when the tier registry contains malformed entries.
 - [Hosted URL fixture ports](hosted-url-fixture-boundary.md) — Local hosted-URL HTTPS fixtures must map ephemeral ports inside injected transport because canonical imports allow only 80/443.
-- [Validation registry test isolation](validation-registry-test-isolation.md) — Use temporary registry fixtures instead of rewriting the tracked catalog when validation tests run in parallel.
+- [Validation registry test isolation](validation-registry-test-isolation.md) — Use temporary registry and baseline fixtures instead of rewriting tracked catalogs when validation tests run in parallel.

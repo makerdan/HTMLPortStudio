@@ -2,7 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { ROOT, extractSectionBody, loadTierRegistry, validatePlanPath } from "./tier-lock-check.mjs";
 
-const BASELINE_FILE = path.join(ROOT, "docs/validation/failure-baseline.json");
+const BASELINE_FILE = process.env.FAILURE_BASELINE_FILE
+  ? path.resolve(process.env.FAILURE_BASELINE_FILE)
+  : path.join(ROOT, "docs/validation/failure-baseline.json");
 const REQUIRED_SECTIONS = ["Pre-existing failures to ignore", "Validation"];
 const PLACEHOLDER = /(?:<[^>]+>|\b(?:TODO|TBD|FIXME|REQUIRED)\b|\[(?:fill|choose|reason|command)[^\]]*\]|\.\.\.)/i;
 const BASELINE_STATUSES = new Set(["active", "needs-review", "intermittent", "environment-limited", "resolved"]);

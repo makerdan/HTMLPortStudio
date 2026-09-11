@@ -4,22 +4,22 @@
     {
       "name": "test-fast",
       "command": "pnpm run test-fast",
-      "description": "Workspace typechecks without starting services or browser tests."
+      "description": "Typechecks and lints the workspace without running service, data, code-generation, or browser checks."
     },
     {
       "name": "test-standard",
       "command": "pnpm run test-standard",
-      "description": "Workspace typechecks and the project's focused API and Studio checks."
+      "description": "Runs static, unit, API/data, and browser checks for the primary application validation."
     },
     {
       "name": "test-standard-plus",
       "command": "pnpm run test-standard-plus",
-      "description": "Complete non-browser validation, including API and Studio unit checks."
+      "description": "Runs all non-Playwright validation, including isolated API code-generation checks."
     },
     {
       "name": "test-heavy",
       "command": "pnpm run test-heavy",
-      "description": "Full validation including the Studio Playwright browser suite."
+      "description": "Runs the complete validation suite, including API schema freshness and browser coverage."
     }
   ]
 }

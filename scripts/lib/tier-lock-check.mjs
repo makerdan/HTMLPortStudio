@@ -12,8 +12,8 @@ function registryFile() {
     : TIER_REGISTRY_FILE;
 }
 
-export function loadTierRegistry() {
-  const file = registryFile();
+export function loadTierRegistry(registryPath) {
+  const file = registryPath ? path.resolve(registryPath) : registryFile();
   const label = path.relative(ROOT, file) || file;
   let parsed;
   try {
