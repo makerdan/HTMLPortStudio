@@ -244,7 +244,8 @@ test("locked runner invokes the exact command returned by the registered tier", 
     encoding: "utf8",
   }));
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, new RegExp(`Running tier "test-standard": ${command.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+  assert.match(result.stdout, /Running tier "test-standard"/);
+  assert.doesNotMatch(result.stdout, new RegExp(command.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.equal(fs.readFileSync(marker, "utf8"), "registry-command");
   fs.rmSync(directory, { recursive: true, force: true });
 });
@@ -267,13 +268,14 @@ test("locked runner preserves a registered command's non-zero exit status", () =
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
-test("locked runner terminates a hung tier with safe recovery guidance", () => {
+test("locked runner force-terminates a tier that ignores the initial signal", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "failure-gate-timeout-"));
   const file = path.join(directory, "plan.md");
+  const pidFile = path.join(directory, "child.pid");
   const lockedValid = `${valid}\n## Regression Guard\n**Covers:** The locked runner must terminate a stalled validation command.\n**Test location:** scripts/check-failure-gate.test.mjs\n**What it checks:** A registered timeout terminates a harmless deterministic fixture and reports recovery guidance.\n`;
   fs.writeFileSync(file, lockedValid);
   const timeoutMs = 100;
-  const command = `node -e "setTimeout(() => {}, 5000)"`;
+  const command = `node -e "require('fs').writeFileSync('${pidFile}', String(process.pid)); process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)"`;
   const result = withTierRegistry({
     version: 1,
     tiers: [{ name: "test-standard", command, timeoutMs }],
@@ -285,7 +287,10 @@ test("locked runner terminates a hung tier with safe recovery guidance", () => {
   assert.equal(result.status, 124);
   assert.match(result.stderr, new RegExp(`Tier "test-standard" exceeded its ${timeoutMs}ms timeout and was terminated`));
   assert.match(result.stderr, /rerun the same locked tier/);
-  assert.doesNotMatch(result.stderr, /setTimeout/);
+  assert.doesNotMatch(result.stderr, /SIGTERM|setInterval/);
+  const childPid = Number(fs.readFileSync(pidFile, "utf8"));
+  assert.ok(Number.isInteger(childPid) && childPid > 0);
+  assert.throws(() => process.kill(childPid, 0), { code: "ESRCH" });
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
