@@ -31,6 +31,7 @@ import {
   sanitizeUntrustedRepairText,
 } from "../lib/credential-safety.ts";
 import {
+  SOURCE_IMPORT_ANALYTICS_CONTRACT,
   trackEvent,
   trackSourceImportOutcome,
 } from "../lib/analytics.ts";
@@ -155,9 +156,17 @@ test("keeps analytics optional and non-blocking when the tracker is missing or f
   }
 });
 
-test("limits source import analytics to the fixed privacy-safe vocabulary", () => {
+test("keeps source import analytics contract synchronized across code and documentation", async () => {
   const originalWindow = (globalThis as { window?: unknown }).window;
   const calls: Array<{ name: string; data?: Record<string, string | number | boolean> }> = [];
+  const analyticsSource = await readFile(
+    new URL("../lib/analytics.ts", import.meta.url),
+    "utf8",
+  );
+  const documentation = await readFile(
+    new URL("../../docs/source-import-funnel.md", import.meta.url),
+    "utf8",
+  );
 
   try {
     Object.defineProperty(globalThis, "window", {
@@ -171,19 +180,85 @@ test("limits source import analytics to the fixed privacy-safe vocabulary", () =
       },
     });
 
-    for (const sourceType of ["paste", "html", "zip", "github", "hosted", "playground"] as const) {
-      for (const outcome of ["cancelled", "completed", "failed"] as const) {
+    for (const sourceType of SOURCE_IMPORT_ANALYTICS_CONTRACT.sourceTypes) {
+      for (const outcome of SOURCE_IMPORT_ANALYTICS_CONTRACT.outcomes) {
         trackSourceImportOutcome(sourceType, outcome);
       }
     }
 
-    assert.equal(calls.length, 18);
+    assert.match(
+      analyticsSource,
+      /trackEvent\(SOURCE_IMPORT_ANALYTICS_CONTRACT\.eventName/,
+    );
+    assert.match(
+      analyticsSource,
+      /SOURCE_IMPORT_ANALYTICS_CONTRACT\.dimensions\.sourceType/,
+    );
+    assert.match(
+      analyticsSource,
+      /SOURCE_IMPORT_ANALYTICS_CONTRACT\.dimensions\.outcome/,
+    );
+
+    assert.equal(
+      calls.length,
+      SOURCE_IMPORT_ANALYTICS_CONTRACT.sourceTypes.length *
+        SOURCE_IMPORT_ANALYTICS_CONTRACT.outcomes.length,
+    );
     for (const call of calls) {
-      assert.equal(call.name, "source_import_outcome");
-      assert.deepEqual(Object.keys(call.data ?? {}).sort(), ["outcome", "source_type"]);
-      assert.match(String(call.data?.source_type), /^(paste|html|zip|github|hosted|playground)$/);
-      assert.match(String(call.data?.outcome), /^(cancelled|completed|failed)$/);
+      assert.equal(call.name, SOURCE_IMPORT_ANALYTICS_CONTRACT.eventName);
+      assert.deepEqual(
+        Object.keys(call.data ?? {}).sort(),
+        Object.values(SOURCE_IMPORT_ANALYTICS_CONTRACT.dimensions).sort(),
+      );
+      assert.ok(
+        (SOURCE_IMPORT_ANALYTICS_CONTRACT.sourceTypes as readonly string[]).includes(
+          String(call.data?.[SOURCE_IMPORT_ANALYTICS_CONTRACT.dimensions.sourceType]),
+        ),
+      );
+      assert.ok(
+        (SOURCE_IMPORT_ANALYTICS_CONTRACT.outcomes as readonly string[]).includes(
+          String(call.data?.[SOURCE_IMPORT_ANALYTICS_CONTRACT.dimensions.outcome]),
+        ),
+      );
     }
+
+    const contractBlock = documentation.match(/```text\n([\s\S]*?)\n```/);
+    assert.ok(contractBlock, "documentation must include the checked contract block");
+
+    const documentedDimensions = Object.fromEntries(
+      contractBlock[1]
+        .trim()
+        .split("\n")
+        .map((line) => {
+          const match = line.match(/^([a-z_]+):\s*(.+)$/);
+          assert.ok(match, `invalid analytics contract line: ${line}`);
+          const values = [...match[2].matchAll(/"([^"]+)"/g)].map(
+            ([, value]) => value,
+          );
+          assert.ok(values.length > 0, `dimension has no quoted values: ${line}`);
+          assert.equal(
+            match[2].replace(/"[^"]+"/g, "").replace(/\s*\|\s*/g, "").trim(),
+            "",
+            `dimension contains a free-form value: ${line}`,
+          );
+          return [match[1], values];
+        }),
+    );
+
+    assert.deepEqual(
+      Object.keys(documentedDimensions).sort(),
+      Object.values(SOURCE_IMPORT_ANALYTICS_CONTRACT.dimensions).sort(),
+    );
+    assert.deepEqual(
+      documentedDimensions[
+        SOURCE_IMPORT_ANALYTICS_CONTRACT.dimensions.sourceType
+      ],
+      SOURCE_IMPORT_ANALYTICS_CONTRACT.sourceTypes,
+    );
+    assert.deepEqual(
+      documentedDimensions[SOURCE_IMPORT_ANALYTICS_CONTRACT.dimensions.outcome],
+      SOURCE_IMPORT_ANALYTICS_CONTRACT.outcomes,
+    );
   } finally {
     if (originalWindow === undefined) {
       Reflect.deleteProperty(globalThis, "window");
