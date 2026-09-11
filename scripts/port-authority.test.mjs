@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:net";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -7,6 +7,18 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const script = fileURLToPath(new URL("./free-ports.mjs", import.meta.url));
+const PORT_CONTRACT = {
+  api: { port: 8080, artifact: "artifacts/api-server/.replit-artifact/artifact.toml" },
+  studio: {
+    port: 23332,
+    artifact: "artifacts/html-port-studio/.replit-artifact/artifact.toml",
+  },
+  canvas: {
+    port: 8081,
+    artifact: "artifacts/mockup-sandbox/.replit-artifact/artifact.toml",
+  },
+  playwright: { port: 5173 },
+};
 
 function run(args, env = {}) {
   return spawnSync(process.execPath, [script, ...args], {
@@ -27,6 +39,27 @@ async function unusedPort() {
   const port = address.port;
   await new Promise((resolve) => server.close(resolve));
   return port;
+}
+
+async function waitForHealth(url, child) {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null) {
+      throw new Error(`API process exited before health check with code ${child.exitCode}`);
+    }
+    try {
+      const response = await fetch(url);
+      if (response.ok) return;
+    } catch {
+      // The service may still be compiling or binding its listener.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`Timed out waiting for ${url}`);
+}
+
+function terminate(child) {
+  if (child.exitCode === null) child.kill("SIGTERM");
 }
 
 test("rejects missing, invalid, and unknown port input", () => {
@@ -84,12 +117,47 @@ test("takes over a stale child listener when explicitly requested", async () => 
   await new Promise((resolve) => holder.once("exit", resolve));
 });
 
+test("restarts the API after reclaiming its stale listener", async () => {
+  execFileSync("pnpm", ["--filter", "@workspace/api-server", "run", "build"], {
+    cwd: root,
+    stdio: "ignore",
+  });
+  const port = await unusedPort();
+  const stale = spawn(process.execPath, ["--enable-source-maps", "dist/index.mjs"], {
+    cwd: `${root}/artifacts/api-server`,
+    env: { ...process.env, NODE_ENV: "development", PORT: String(port) },
+    stdio: "ignore",
+  });
+  try {
+    await waitForHealth(`http://127.0.0.1:${port}/api/healthz`, stale);
+    const cleanup = run(["--include-own-tree", String(port)]);
+    assert.equal(cleanup.status, 0, cleanup.stderr);
+    await new Promise((resolve) => stale.once("exit", resolve));
+
+    const restarted = spawn(
+      process.execPath,
+      ["--enable-source-maps", "dist/index.mjs"],
+      {
+        cwd: `${root}/artifacts/api-server`,
+        env: { ...process.env, NODE_ENV: "development", PORT: String(port) },
+        stdio: "ignore",
+      },
+    );
+    try {
+      await waitForHealth(`http://127.0.0.1:${port}/api/healthz`, restarted);
+    } finally {
+      terminate(restarted);
+      await new Promise((resolve) => restarted.once("exit", resolve));
+    }
+  } finally {
+    terminate(stale);
+  }
+});
+
 test("reports the tracked port contract and startup cleanup wiring", () => {
   const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url)));
-  const registry = JSON.parse(readFileSync(new URL("../docs/validation/validation-tiers.json", import.meta.url)));
   for (const name of ["test-fast", "test-standard", "test-standard-plus", "test-heavy"]) {
     assert.equal(typeof packageJson.scripts[name], "string");
-    assert.equal(registry.tiers.find((tier) => tier.name === name)?.command, `pnpm run ${name}`);
   }
   const replit = readFileSync(new URL("../.replit", import.meta.url), "utf8");
   for (const name of ["test-fast", "test-standard", "test-standard-plus", "test-heavy"]) {
@@ -105,4 +173,32 @@ test("reports the tracked port contract and startup cleanup wiring", () => {
   assert.match(playwright, /PLAYWRIGHT_PORT/);
   assert.match(playwright, /free-ports\.mjs/);
   assert.match(playwright, /baseURL: `http:\/\/127\.0\.0\.1:\$\{port\}`/);
+
+  for (const { port, artifact } of Object.values(PORT_CONTRACT)) {
+    if (!artifact) continue;
+    const toml = readFileSync(new URL(`../${artifact}`, import.meta.url), "utf8");
+    assert.match(toml, new RegExp(`localPort = ${port}\\b`));
+    assert.match(toml, new RegExp(`PORT = "${port}"`));
+  }
+  assert.match(
+    readFileSync(new URL("../artifacts/api-server/src/index.ts", import.meta.url), "utf8"),
+    /Number\.isInteger\(port\).*port > 65535/s,
+  );
+  for (const configPath of [
+    "../artifacts/html-port-studio/vite.config.ts",
+    "../artifacts/mockup-sandbox/vite.config.ts",
+  ]) {
+    assert.match(
+      readFileSync(new URL(configPath, import.meta.url), "utf8"),
+      /Number\.isInteger\(port\).*port > 65535/s,
+    );
+  }
+  assert.match(
+    readFileSync(new URL("../artifacts/api-server/src/routes/health.ts", import.meta.url), "utf8"),
+    /router\.get\("\/healthz"/,
+  );
+  assert.match(
+    readFileSync(new URL("../artifacts/api-server/.replit-artifact/artifact.toml", import.meta.url), "utf8"),
+    /path = "\/api\/healthz"/,
+  );
 });

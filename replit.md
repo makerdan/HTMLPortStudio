@@ -4,6 +4,11 @@ Import pasted, single-file, or public GitHub HTML apps as normalized source bund
 
 ## Run & Operate
 
+- Managed development workflows own these services and inject their configured
+  ports: `artifacts/api-server: API Server` (`8080`),
+  `artifacts/html-port-studio: web` (`23332`), and
+  `artifacts/mockup-sandbox: Component Preview Server` (`8081`). Use those
+  named workflows to start or restart services instead of background shells.
 - `PORT=8080 pnpm --filter @workspace/api-server run dev` — run the API server; its health route is `/api/healthz`
 - `PORT=23332 BASE_PATH=/ pnpm --filter @workspace/html-port-studio run dev` — run the HTML Port Studio web app
 - `PORT=8081 BASE_PATH=/__mockup pnpm --filter @workspace/mockup-sandbox run dev` — run the Canvas component preview

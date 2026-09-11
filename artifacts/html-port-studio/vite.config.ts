@@ -15,8 +15,10 @@ if (!rawPort) {
 
 const port = Number(rawPort);
 
-if (Number.isNaN(port) || port <= 0) {
-  throw new Error(`Invalid PORT value: "${rawPort}"`);
+if (!Number.isInteger(port) || port < 1 || port > 65535) {
+  throw new Error(
+    `Invalid PORT value: "${rawPort}". Expected an integer from 1 to 65535.`,
+  );
 }
 
 const basePath = process.env.BASE_PATH;
