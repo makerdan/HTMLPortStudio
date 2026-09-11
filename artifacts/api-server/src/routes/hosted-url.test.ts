@@ -233,6 +233,89 @@ test("aborting a stalled pinned HTTPS response closes its client connection", as
   }
 });
 
+test("cancels concurrent stalled pinned HTTPS responses and closes every client connection", async () => {
+  const importCount = 4;
+  const timeoutMs = 50;
+  let requestCount = 0;
+  let resolveRequestsReceived: (() => void) | undefined;
+  const requestsReceived = new Promise<void>((resolve) => {
+    resolveRequestsReceived = resolve;
+  });
+  const closedConnections: Promise<void>[] = [];
+  const server = createServer(
+    { key: LOCAL_HTTPS_KEY, cert: LOCAL_HTTPS_CERT },
+    (_request, response) => {
+      requestCount += 1;
+      if (requestCount === importCount) resolveRequestsReceived?.();
+      response.writeHead(200, { "content-type": "text/html" });
+      response.write("<!doctype html><title>Stalled</title>");
+    },
+  );
+  server.on("connection", (socket) => {
+    closedConnections.push(
+      new Promise<void>((resolve) => {
+        socket.once("close", () => resolve());
+      }),
+    );
+  });
+  const port = await listen(server);
+
+  try {
+    const operations = Array.from({ length: importCount }, (_, index) => {
+      const startedAt = Date.now();
+      return rejectsWith(
+        fetchHostedUrl(`https://source.virtual-host.test/stalled-${index}`, {
+          lookup: publicLookup,
+          timeoutMs,
+          fetch: (url, init, _pinnedAddress) => {
+            const localUrl = new URL(url);
+            localUrl.port = String(port);
+            return fetchPinnedUrl(localUrl.toString(), init, "127.0.0.1", {
+              ca: LOCAL_HTTPS_CERT,
+            });
+          },
+        }),
+        "HOSTED_URL_TIMEOUT",
+      ).then((error) => ({ error, elapsedMs: Date.now() - startedAt }));
+    });
+
+    await Promise.race([
+      requestsReceived,
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () =>
+            reject(
+              new Error("HTTPS fixture did not receive every stalled request"),
+            ),
+          1_000,
+        ),
+      ),
+    ]);
+    const outcomes = await Promise.all(operations);
+
+    assert.equal(outcomes.length, importCount);
+    for (const { error, elapsedMs } of outcomes) {
+      assert.equal(error.code, "HOSTED_URL_TIMEOUT");
+      assert.ok(
+        elapsedMs < timeoutMs + 500,
+        `stalled import exceeded its configured timeout: ${elapsedMs}ms`,
+      );
+    }
+    assert.equal(closedConnections.length, importCount);
+    await Promise.race([
+      Promise.all(closedConnections),
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error("Not every stalled HTTPS connection closed")),
+          1_000,
+        ),
+      ),
+    ]);
+  } finally {
+    await close(server);
+  }
+});
+
 test("blocks loopback and private destinations before fetch", async () => {
   let fetchCalls = 0;
   await rejectsWith(
