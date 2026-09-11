@@ -6,6 +6,29 @@ import { validatePlanText } from "./lib/failure-gate.mjs";
 import { validateRegressionGuardText } from "./lib/regression-guard.mjs";
 
 const args = process.argv.slice(2);
+const GUARD_HELP = `Usage:
+  node scripts/new-plan.mjs --title "<title>" --why "<why>" <guard decision> [options]
+
+Regression Guard decision (provide exactly one):
+
+  Concrete guard:
+    --guard-covers "A concrete scenario or invariant."
+    --guard-test-location "path/to/recurrence.test.mjs"
+    --guard-checks "The assertion that fails if the old behavior returns."
+
+  N/A guard:
+    --guard-na-reason "The failure is a race condition requiring real timing: genuine wall-clock concurrency cannot be faithfully reproduced with fake timers."
+
+  Self-satisfying guard:
+    --guard-self-satisfying "the Regression Guard checker and focused recurrence test"
+
+Use --help or -h to print this guidance.`;
+
+if (args.includes("--help") || args.includes("-h")) {
+  console.log(GUARD_HELP);
+  process.exit(0);
+}
+
 function option(name, fallback = undefined) {
   const index = args.indexOf(name);
   const value = index === -1 ? undefined : args[index + 1];
@@ -21,6 +44,15 @@ function many(name) {
 function fail(message) {
   console.error(`[PLAN-SCAFFOLD] ${message}`);
   process.exit(1);
+}
+function guardHint(example) {
+  return ` Run \`node scripts/new-plan.mjs --help\` to see ${example}.`;
+}
+function guardText(value, label, example) {
+  if (!value?.trim() || /(?:<[^>]+>|\b(?:TODO|TBD|FIXME|REQUIRED)\b|\.\.\.)/i.test(value)) {
+    fail(`${label} must be a real, non-placeholder value.${guardHint(example)}`);
+  }
+  return value.trim();
 }
 function realText(value, label) {
   if (!value?.trim() || /(?:<[^>]+>|\b(?:TODO|TBD|FIXME|REQUIRED)\b|\.\.\.)/i.test(value)) {
@@ -66,27 +98,27 @@ const guardModes = [
   selfGuardPresent,
 ].filter(Boolean).length;
 if (guardModes !== 1) {
-  fail("Provide exactly one Regression Guard decision: --guard-covers with --guard-test-location and --guard-checks, --guard-na-reason, or --guard-self-satisfying.");
+  fail(`Provide exactly one Regression Guard decision: --guard-covers with --guard-test-location and --guard-checks, --guard-na-reason, or --guard-self-satisfying.${guardHint("the concrete, N/A, and self-satisfying examples")}`);
 }
 
 let regressionGuard;
 if (concreteGuardPresent) {
   if (guardCovers.value === undefined || guardLocation.value === undefined || guardAssertion.value === undefined) {
-    fail("A concrete Regression Guard requires --guard-covers, --guard-test-location, and --guard-checks.");
+    fail(`A concrete Regression Guard requires --guard-covers, --guard-test-location, and --guard-checks.${guardHint("the complete concrete guard example")}`);
   }
   regressionGuard = `## Regression Guard
-**Covers:** ${realText(guardCovers.value, guardCovers.name)}
-**Test location:** ${realText(guardLocation.value, guardLocation.name)}
-**What it checks:** ${realText(guardAssertion.value, guardAssertion.name)}
+**Covers:** ${guardText(guardCovers.value, guardCovers.name, "the complete concrete guard example")}
+**Test location:** ${guardText(guardLocation.value, guardLocation.name, "the complete concrete guard example")}
+**What it checks:** ${guardText(guardAssertion.value, guardAssertion.name, "the complete concrete guard example")}
 `;
 } else if (naGuardPresent) {
   regressionGuard = `## Regression Guard
 **N/A**
-**Why N/A:** ${realText(guardNaReason.value, guardNaReason.name)}
+**Why N/A:** ${guardText(guardNaReason.value, guardNaReason.name, "the N/A guard example")}
 `;
 } else if (selfGuardPresent) {
   regressionGuard = `## Regression Guard
-**Self-satisfying** — this task's deliverable is ${realText(guardSelfSatisfying.value, guardSelfSatisfying.name)}.
+**Self-satisfying** — this task's deliverable is ${guardText(guardSelfSatisfying.value, guardSelfSatisfying.name, "the self-satisfying guard example")}.
 `;
 }
 

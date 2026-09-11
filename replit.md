@@ -125,6 +125,22 @@ Create plans with `scripts/new-plan.mjs`, which requires exactly one of:
 - `--guard-na-reason` with a permitted N/A reason
 - `--guard-self-satisfying` naming the guard-writing deliverable
 
+Run `node scripts/new-plan.mjs --help` (or `-h`) for inline guidance and
+examples:
+
+```sh
+# Concrete guard
+node scripts/new-plan.mjs --guard-covers "A concrete scenario or invariant." \
+  --guard-test-location "path/to/recurrence.test.mjs" \
+  --guard-checks "The assertion that fails if the old behavior returns."
+
+# N/A guard
+node scripts/new-plan.mjs --guard-na-reason "The failure is a race condition requiring real timing: genuine wall-clock concurrency cannot be faithfully reproduced with fake timers."
+
+# Self-satisfying guard
+node scripts/new-plan.mjs --guard-self-satisfying "the Regression Guard checker and focused recurrence test"
+```
+
 Incomplete or mixed decisions fail before a plan is written. To inspect
 environment-local history without changing it, run
 `node scripts/check-regression-guard.mjs --archive`. That command produces a

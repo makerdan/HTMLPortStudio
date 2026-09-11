@@ -265,6 +265,41 @@ test("plan creation rejects a missing or incomplete guard before creating a file
     ], { cwd: root, encoding: "utf8" });
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /requires --guard-covers, --guard-test-location, and --guard-checks/);
+    assert.match(result.stderr, /node scripts\/new-plan\.mjs --help/);
+    assert.match(result.stderr, /complete concrete guard example/);
+    assert.equal(fs.existsSync(file), false);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("plan creation help lists all supported guard decisions", () => {
+  for (const flag of ["--help", "-h"]) {
+    const result = spawnSync(process.execPath, [planner, flag], { cwd: root, encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Concrete guard:/);
+    assert.match(result.stdout, /--guard-covers .*--guard-test-location .*--guard-checks/s);
+    assert.match(result.stdout, /N\/A guard:/);
+    assert.match(result.stdout, /--guard-na-reason/);
+    assert.match(result.stdout, /Self-satisfying guard:/);
+    assert.match(result.stdout, /--guard-self-satisfying/);
+  }
+});
+
+test("plan creation points missing guard decisions to the supported examples", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "regression-guard-plan-help-"));
+  const file = path.join(directory, "missing.md");
+  try {
+    const result = spawnSync(process.execPath, [
+      planner,
+      "--title", "Missing guard",
+      "--why", "The plan must explain how to choose a Regression Guard.",
+      "--output", file,
+    ], { cwd: root, encoding: "utf8" });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Provide exactly one Regression Guard decision/);
+    assert.match(result.stderr, /node scripts\/new-plan\.mjs --help/);
+    assert.match(result.stderr, /concrete, N\/A, and self-satisfying examples/);
     assert.equal(fs.existsSync(file), false);
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });

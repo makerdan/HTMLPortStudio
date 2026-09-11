@@ -126,6 +126,21 @@ mixed, or placeholder decisions fail before the output file is created. These
 inputs only generate the additive Regression Guard section; they do not alter
 Failure Gate fields or the selected validation tier.
 
+Run `node scripts/new-plan.mjs --help` (or `-h`) for the same inline examples:
+
+```sh
+# Concrete guard
+node scripts/new-plan.mjs --guard-covers "A concrete scenario or invariant." \
+  --guard-test-location "path/to/recurrence.test.mjs" \
+  --guard-checks "The assertion that fails if the old behavior returns."
+
+# N/A guard
+node scripts/new-plan.mjs --guard-na-reason "The failure is a race condition requiring real timing: genuine wall-clock concurrency cannot be faithfully reproduced with fake timers."
+
+# Self-satisfying guard
+node scripts/new-plan.mjs --guard-self-satisfying "the Regression Guard checker and focused recurrence test"
+```
+
 ## Execute-time decision path
 
 Read the plan's baseline and validation sections before editing. A task-driven
