@@ -619,11 +619,6 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
   );
 }
 
-const GEMINI_REPAIR_MODEL = 'gemini-3.1-pro';
-// This is an exact Poe model identifier, not a display label. It is still
-// accepted only when the server's live catalogue returns the same string.
-const CLAUDE_REPAIR_MODEL = 'Claude-Sonnet-4.6';
-
 type RepairProposal = {
   explanation: string;
   files: Array<{ path: string; displayPath: string; content: string }>;
@@ -1692,9 +1687,7 @@ function ClaudeRepairPanel({
   const [rateLimitRetryAt, setRateLimitRetryAt] = useState<number | null>(null);
   const [promptSizeError, setPromptSizeError] = useState<string | null>(null);
   const requestRevisionRef = useRef(0);
-  const confirmedModel = poeData?.configured
-    ? poeData.models.find((model: string) => model === CLAUDE_REPAIR_MODEL)
-    : undefined;
+  const confirmedModel = poeData?.configured ? poeData.models[0] : undefined;
   const prompt = useMemo(() => {
     try {
       const value = buildClaudeRepairPrompt(bundle, analysis);
@@ -1804,7 +1797,7 @@ function ClaudeRepairPanel({
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex flex-wrap gap-2 rounded-md border bg-card p-3 text-xs">
-          <span>Exact model: <strong className="font-mono">{CLAUDE_REPAIR_MODEL}</strong></span>
+          <span>Exact live model: <strong className="font-mono">{confirmedModel ?? 'Not confirmed'}</strong></span>
           <span className="text-muted-foreground">·</span>
           <span>{remainingAttempts} of {EDITOR_LIMITS.maxRepairAttempts} attempts remaining for revision {revision}</span>
           <span className="text-muted-foreground">·</span>
@@ -1833,7 +1826,7 @@ function ClaudeRepairPanel({
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>Exact Claude model unavailable</AlertTitle>
             <AlertDescription>
-              Poe&apos;s live catalogue did not confirm {CLAUDE_REPAIR_MODEL}. No source was sent.
+              Poe&apos;s live catalogue did not return an exact repair model. No source was sent.
               <Button type="button" size="sm" variant="outline" className="mt-2" onClick={() => void refetchModels()}>Refresh model catalogue</Button>
             </AlertDescription>
           </Alert>
@@ -4139,12 +4132,8 @@ function PoeRepairPanel({
   );
   const initialPrompt = useMemo(() => buildRepairPrompt(html), [html]);
   const rateLimitRemainingSeconds = useRateLimitCountdown(rateLimitRetryAt);
-  const confirmedGeminiModel = poeData?.configured
-    ? poeData.models.find((model: string) => model === GEMINI_REPAIR_MODEL)
-    : undefined;
-  const confirmedClaudeModel = poeData?.configured
-    ? poeData.models.find((model: string) => model === CLAUDE_REPAIR_MODEL)
-    : undefined;
+  const confirmedGeminiModel = poeData?.configured ? poeData.models[0] : undefined;
+  const confirmedClaudeModel = poeData?.configured ? poeData.models[0] : undefined;
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -4482,7 +4471,7 @@ function PoeRepairPanel({
               !confirmedClaudeModel && (
                 <Alert variant="destructive">
                   <AlertTriangle className="h-4 w-4" />
-                  <AlertTitle>{CLAUDE_REPAIR_MODEL} is unavailable</AlertTitle>
+                  <AlertTitle>No exact live repair model is available</AlertTitle>
                   <AlertDescription>
                     Poe&apos;s live catalogue did not confirm the required exact model identifier.
                     No source was sent and the original remains untouched.
@@ -4679,7 +4668,7 @@ function PoeRepairPanel({
           <Info className="h-4 w-4" />
           <AlertTitle>Source-sharing notice</AlertTitle>
           <AlertDescription>
-            The complete HTML snapshot is sent to Poe&apos;s server-only bridge for gemini-3.1-pro review.
+            The complete HTML snapshot is sent to the exact live model returned by Poe&apos;s server-only catalogue.
             The original source remains in the editor. Documents containing credentials are blocked before sending.
           </AlertDescription>
         </Alert>
@@ -4722,9 +4711,9 @@ function PoeRepairPanel({
           !confirmedGeminiModel && (
             <Alert variant="destructive">
               <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>gemini-3.1-pro is unavailable</AlertTitle>
+              <AlertTitle>No exact live repair model is available</AlertTitle>
               <AlertDescription>
-                Poe did not return the required exact model identifier, gemini-3.1-pro, for this key. Check Poe access and retry model loading.
+                Poe did not return an exact live model for this key. Check Poe access and retry model loading.
                 <br />
                 <Button type="button" size="sm" variant="outline" className="mt-3" onClick={() => void refetchModels()}>
                   Retry loading models

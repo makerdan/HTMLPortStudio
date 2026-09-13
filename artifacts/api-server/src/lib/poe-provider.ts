@@ -131,7 +131,7 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 }
 
 export async function poeRequest(path: string, init: RequestInit = {}): Promise<Response> {
-  const apiKey = process.env.POE_API_KEY;
+  const apiKey = process.env.POE_API_KEY2;
   if (!apiKey) throw new PoeProviderError("POE_NOT_CONFIGURED");
   const configuredBase = `${baseUrl()}/`;
   const url = new URL(`.${path.startsWith("/") ? path : `/${path}`}`, configuredBase);

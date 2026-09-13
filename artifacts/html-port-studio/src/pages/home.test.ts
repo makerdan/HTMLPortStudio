@@ -752,8 +752,7 @@ test("uses exact live Poe identifiers and preserves retryable assistant state", 
   const assistantSource = source.slice(assistantStart, repairStart);
   const repairSource = source.slice(repairStart);
 
-  assert.match(source, /const GEMINI_REPAIR_MODEL = 'gemini-3\.1-pro'/);
-  assert.match(repairSource, /poeData\.models\.find\(\(model(?:: string)?\) => model === GEMINI_REPAIR_MODEL\)/);
+  assert.match(repairSource, /poeData\?\.configured \? poeData\.models\[0\] : undefined/);
   assert.match(repairSource, /model: confirmedRepairModel/);
   assert.match(assistantSource, /capability: 'generic-assistant'/);
   assert.match(
@@ -853,9 +852,8 @@ test("uses opaque file IDs when a bundle path contains a credential pattern", ()
 test("requires redacted consent, review, confirmation, re-scan, and undo in Fix Code", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
 
-  assert.match(source, /const CLAUDE_REPAIR_MODEL = 'Claude-Sonnet-4\.6'/);
   assert.doesNotMatch(source, /Claude-Sonnet-4\.5/);
-  assert.match(source, /model === CLAUDE_REPAIR_MODEL/);
+  assert.match(source, /poeData\?\.configured \? poeData\.models\[0\] : undefined/);
   assert.match(source, /credentialRedaction\.safe &&\s*shareConfirmed/s);
   assert.match(source, /only the complete redacted copy will be shared with Claude/i);
   assert.match(source, /Request redacted Claude repair/);

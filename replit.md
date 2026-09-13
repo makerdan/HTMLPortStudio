@@ -21,7 +21,7 @@ Import pasted, single-file, or public GitHub HTML apps as normalized source bund
 - `pnpm workspace-skill:status -- --skill <skill-id>` — read-only parity check for the disposable runtime mirror
 - Runtime port ownership is explicit: API `8080`, Studio `23332`, Canvas `8081`, and Playwright `5173` by default. Development startup runs `scripts/free-ports.mjs` for its owned port before launching; `PORT` is always supplied by the artifact/workflow environment.
 - `pnpm run test-fast` runs typecheck and lint, `pnpm run test-standard` adds unit, API/data, and browser checks, `pnpm run test-standard-plus` covers all non-Playwright validation including isolated API code-generation checks, and `pnpm run test-heavy` runs the complete suite. This workspace has one browser suite, so it does not use Port Authority Heavy locking.
-- Optional env: `POE_API_KEY` — enables live Poe model discovery and the server-side chat bridge
+- Optional secret: `POE_API_KEY2` — enables live Poe model discovery and the server-side chat bridge
 - GitHub remote validation is documented in `docs/validation/github-actions.md`; the tracked workflow preserves `test-standard` as the primary check and runs `validate:api` separately.
 - Clerk account authentication uses `CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, and `VITE_CLERK_PUBLISHABLE_KEY`. Set these through Replit’s environment/secrets tools; never put the secret key in browser code, imported HTML, source bundles, or logs.
 - Required for project handoff: an attached authorized Replit project-creation connection. The Studio’s **Set up project creation** screen opens Replit’s supported Integrations surface; the capability must be available in the workspace catalog. No project-creation URL or token is configured in the browser or source.
@@ -47,7 +47,7 @@ Import pasted, single-file, or public GitHub HTML apps as normalized source bund
 
 - Imported source bundles stay in the browser session until a signed-in user starts a handoff. Handoff source and setup state are then stored in the database, scoped to that user, so an interrupted setup can safely resume after a restart.
 - Browser reload recovery stores only a validated job ID, owner ID, tab-scoped browser-session ID, and timestamp in `sessionStorage`. Raw HTML, analysis, credentials, and source-derived content are never stored there; reloads recover status only after authenticated server reconciliation, and reset, source replacement, logout, completion, or failed ownership checks clear the record.
-- Poe requests run only on the API server so `POE_API_KEY` never reaches a browser or imported page.
+- Poe requests run only on the API server so `POE_API_KEY2` never reaches a browser or imported page.
 - Poe model discovery and chat require the authenticated Clerk Studio session before catalogue, quota, or provider work. The route accepts only the exact, case-sensitive model ID returned by the live catalogue and never substitutes a fallback model.
 - The public Poe contract exposes the server-owned text-only capability registry: `generic-assistant` uses ordinary user content, while `gemini-repair` and `claude-repair` require the client’s redacted-source repair flow. Vision, tool calling, structured output, and streaming are explicitly unavailable; capability fallback metadata is descriptive only and does not trigger automatic model substitution.
 - Poe route failures use the generated `PoeErrorResponse` union. Studio allowlists the stable code and message, while bounded `retryAfterSeconds`/`Retry-After` metadata is used only for retryable rate-limit, timeout, and provider-unavailable states. Provider bodies, request IDs, credentials, full prompts, and server diagnostics are never returned or rendered.
@@ -64,7 +64,7 @@ Import pasted, single-file, or public GitHub HTML apps as normalized source bund
 - Import public CodePen exports or a JSFiddle rendered result through provider-specific server adapters; attribution and provider limitations stay on the normalized bundle.
 - Receive a compact readiness report for scripts, external assets, browser-side requests, and likely AI calls.
 - Preview the document in a sandbox, then follow a tailored migration checklist.
-- When `POE_API_KEY` is configured, choose a live Poe model and ask for targeted porting help.
+- When `POE_API_KEY2` is configured, choose a live Poe model and ask for targeted porting help.
 - Assistant, Gemini repair, and redacted Claude repair send an explicit capability with each request. Repair source, consent, history, pending prompt, exact model selection, cooldown, and retry state remain local to the current Studio revision; delayed responses cannot overwrite a newer source or request.
 - After analysis, sign in, then use **Create Replit Project** to create a separate runnable HTML project. The setup status is shown step-by-step in this order: Port Authority, Failure Gate, Regression Guard, Skill Mirror Sync, App Support Ops, then Poe Setup. Each step is resolved by canonical workspace skill identity through the authorized project-creation connection, so new projects receive the latest workspace version rather than repository copies or disposable mirrors. A failed step can be retried without repeating completed steps, including after a server restart.
 
@@ -78,7 +78,7 @@ Import pasted, single-file, or public GitHub HTML apps as normalized source bund
 - After changing `lib/api-spec/openapi.yaml`, run `pnpm --filter @workspace/api-spec run codegen` before using generated client or Zod types.
 - Poe model IDs are case-sensitive. Use the exact identifier returned by Poe's live model catalogue.
 - Do not call Poe from browser code or imported HTML, add a provider SDK, log raw provider responses, or silently fall back to another model. Update `lib/api-spec/openapi.yaml` first and run `pnpm --filter @workspace/api-spec run codegen` whenever the Poe request, model metadata, response, or error union changes.
-- Set `POE_API_KEY` through Replit Secrets and restart the API server after changing it.
+- Set `POE_API_KEY2` through Replit Secrets and restart the API server after changing it.
 - The landing header provides **Sign in** before import. The handoff panel keeps **Log in to create** for users who defer sign-in; both open the same Clerk `/sign-in` flow without clearing the in-memory import, analysis, or preview.
 - Configure the Clerk instance’s allowed origins with the Studio’s development and published HTTPS origins. Configure redirect URLs for the Studio base path plus `/sign-in/*` and `/sign-up/*`; the app uses `/sign-in` and `/sign-up` as its browser routes. The production server-side Clerk proxy is available at `/api/__clerk`.
 - If Clerk configuration is missing, import, analysis, preview, and assistant features remain usable and the UI shows a safe sign-in-unavailable state. Protected API operations return an actionable configuration error instead of attempting legacy OIDC redirects.

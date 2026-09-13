@@ -20,6 +20,7 @@ const requireFromDb = createRequire(
 const { Pool } = requireFromDb("pg");
 
 type Json = Record<string, unknown>;
+const connectionPort = 1;
 
   const diagnostic = canonicalSkillResolutionDiagnostic();
 function testClientIp(): string {
@@ -86,7 +87,7 @@ async function jsonRequest(url: string, init?: RequestInit): Promise<{
 const credentialRegressionMatrix = [
   { name: "OpenAI", value: "sk-proj-imported-secret-value", source: "const apiKey = VALUE;" },
   { name: "Anthropic", value: "sk-ant-api03-imported-secret-value", source: "api_key: 'VALUE'" },
-  { name: "Poe", value: "poe-imported-secret-value", source: "POE_API_KEY=VALUE" },
+  { name: "Poe", value: "poe-imported-secret-value", source: "POE_API_KEY2=VALUE" },
   { name: "Perplexity", value: "pplx-imported-secret-value", source: "token = `VALUE`" },
   { name: "Google AI", value: "AIzaSyImportedSecretValue123", source: '"apiToken": "VALUE"' },
   { name: "Replicate", value: "r8_imported-secret-value", source: "secret: VALUE" },
@@ -504,7 +505,7 @@ test("bounds public Poe traffic before provider forwarding and caches models", a
   const poePort = await listen(poe);
   const apiEnvironment = {
     ...process.env,
-    POE_API_KEY: "test-poe-key",
+    POE_API_KEY2: "test-poe-key",
     POE_API_BASE_URL: `http://127.0.0.1:${poePort}/v1`,
     NODE_ENV: "test",
   };
