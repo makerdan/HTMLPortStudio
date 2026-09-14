@@ -929,8 +929,9 @@ function playgroundImportRateLimited(request: { ip?: string }): boolean {
 router.post("/port/analyze", async (req, res): Promise<void> => {
   const boundaryCode = getAnalysisBoundaryCode(req.body);
   if (boundaryCode) {
-      const tooLarge =
-        code === "BUNDLE_TOO_LARGE" || code === "BUNDLE_FILE_TOO_LARGE";
+    const tooLarge =
+      boundaryCode === "BUNDLE_TOO_LARGE" ||
+      boundaryCode === "BUNDLE_FILE_TOO_LARGE";
     res.status(tooLarge ? 413 : 400).json({
       error: `Provide exactly one valid source bundle no larger than ${SOURCE_TEXT_LIMIT_LABEL}.`,
       code: boundaryCode,
@@ -938,7 +939,7 @@ router.post("/port/analyze", async (req, res): Promise<void> => {
     return;
   }
 
-    const parsed = RetryReplitProjectSetupParams.safeParse(req.params);
+  const parsed = AnalyzeHtmlBody.safeParse(req.body);
   if (!parsed.success) {
     req.log.warn({ errors: parsed.error.message }, "Invalid HTML analysis request");
     res.status(400).json({
@@ -949,16 +950,15 @@ router.post("/port/analyze", async (req, res): Promise<void> => {
   }
 
   try {
-    let bundle: SourceBundle;
-    try {
-      bundle = normalizeBundle(
-        parsed.data as { html?: string; bundle?: SourceBundle },
-      );
-    } catch (error) {
-      const code =
-        error instanceof Error ? error.message : "INVALID_SOURCE_BUNDLE";
-      const tooLarge =
-        code === "BUNDLE_TOO_LARGE" || code === "BUNDLE_FILE_TOO_LARGE";
+    const bundle = normalizeBundle(
+      parsed.data as { html?: string; bundle?: SourceBundle },
+    );
+    res.json(AnalyzeHtmlResponse.parse(analyzeBundle(bundle)));
+  } catch (error) {
+    const code =
+      error instanceof Error ? error.message : "INVALID_SOURCE_BUNDLE";
+    const tooLarge =
+      code === "BUNDLE_TOO_LARGE" || code === "BUNDLE_FILE_TOO_LARGE";
     res.status(tooLarge ? 413 : 400).json({
       error: `Provide exactly one valid source bundle no larger than ${SOURCE_TEXT_LIMIT_LABEL}.`,
       code,
@@ -980,18 +980,30 @@ router.post("/port/hosted-url", async (req, res): Promise<void> => {
     typeof req.body === "object" && req.body !== null
       ? (req.body as { url?: unknown })
       : {};
-  if (typeof body.url !== "string" || !body.url.trim()) {
+  if (typeof body.url !== "string") {
     res.status(400).json({
-      error: "Provide one complete public CodePen or JSFiddle URL.",
-      code: "PLAYGROUND_URL_INVALID",
-      action: "Use a public HTTPS link from CodePen or JSFiddle.",
+      error: "Provide one complete public HTTP(S) URL.",
+      code: "HOSTED_URL_INVALID",
+      action: "Use a URL beginning with https:// that serves an HTML document.",
     });
     return;
   }
 
   try {
-    const result = await importPlayground(body.url);
-    let bundle: SourceBundle;
+    const result = await fetchHostedUrl(body.url);
+    const bundle: SourceBundle = {
+      version: 1,
+      sourceType: "hosted_page",
+      files: [{ path: "index.html", content: result.html }],
+      entrypoint: "index.html",
+      metadata: {
+        displayName: extractTitle(result.html),
+        sourceUrl: result.originalUrl,
+        originalUrl: result.originalUrl,
+        finalUrl: result.finalUrl,
+        warnings: result.warnings,
+      },
+    };
     res.json({
       originalUrl: result.originalUrl,
       finalUrl: result.finalUrl,
@@ -1008,11 +1020,18 @@ router.post("/port/hosted-url", async (req, res): Promise<void> => {
             "The hosted page could not be fetched. Check the public URL and try again.",
           );
     const status =
-      code === "PLAYGROUND_RESPONSE_TOO_LARGE"
+      hostedError.code === "HOSTED_URL_TOO_LARGE"
         ? 413
-        : code === "PLAYGROUND_PROVIDER_UNAVAILABLE" || code === "PLAYGROUND_TIMEOUT"
-          ? 502
-          : 400;
+        : hostedError.code === "HOSTED_URL_RATE_LIMITED"
+          ? 429
+          : hostedError.code.startsWith("HOSTED_URL_FETCH") ||
+              hostedError.code === "HOSTED_URL_TIMEOUT" ||
+              hostedError.code === "HOSTED_URL_DNS_FAILED" ||
+              hostedError.code === "HOSTED_URL_DNS_REBINDING" ||
+              hostedError.code === "HOSTED_URL_HTTP_ERROR" ||
+              hostedError.code === "HOSTED_URL_NOT_HTML"
+            ? 502
+            : 400;
     req.log.warn({ code: hostedError.code, ip: req.ip }, "Hosted URL import rejected");
     res.status(status).json({
       error: hostedError.message,
@@ -1052,8 +1071,8 @@ router.post("/port/playground/import", async (req, res): Promise<void> => {
     const result = await importPlayground(body.url);
     res.json(ImportPlaygroundResponse.parse(result));
   } catch (error) {
-      const code =
-        error instanceof Error ? error.message : "INVALID_SOURCE_BUNDLE";
+    const code =
+      error instanceof Error ? error.message : "INVALID_SOURCE_BUNDLE";
     const status =
       code === "PLAYGROUND_RESPONSE_TOO_LARGE"
         ? 413
@@ -1095,7 +1114,7 @@ router.get("/port/poe/models", requireAuth, async (_req, res): Promise<void> => 
 });
 
 router.post("/port/poe/chat", requireAuth, async (req, res): Promise<void> => {
-    const parsed = RetryReplitProjectSetupParams.safeParse(req.params);
+  const parsed = ChatWithPoeBody.safeParse(req.body);
   if (!parsed.success) {
     const requestedTokens =
       typeof req.body === "object" &&
@@ -1390,11 +1409,12 @@ router.post(
   requireTrustedCookieOrigin,
   requireAuth,
   async (req, res): Promise<void> => {
-    const parsed = RetryReplitProjectSetupParams.safeParse(req.params);
+    const parsed = CreateReplitProjectBody.safeParse(req.body);
     if (!parsed.success) {
       req.log.warn({ errors: parsed.error.message }, "Invalid Replit project handoff request");
-      const tooLarge =
-        code === "BUNDLE_TOO_LARGE" || code === "BUNDLE_FILE_TOO_LARGE";
+      const tooLarge = parsed.error.issues.some(
+        (issue: { code: string }) => issue.code === "too_big",
+      );
       res.status(tooLarge ? 413 : 400).json({
         error: `Provide exactly one valid source bundle no larger than ${SOURCE_TEXT_LIMIT_LABEL}.`,
         code: tooLarge ? "PROJECT_HANDOFF_SOURCE_TOO_LARGE" : "INVALID_PROJECT_HANDOFF",
@@ -1441,7 +1461,23 @@ router.post(
 
     const entrypointHtml =
       bundle.files.find((file) => file.path === bundle.entrypoint)?.content ?? "";
-    const job = await loadJob(parsed.data.jobId, req.dbUser!.id);
+    const job: HandoffJob = {
+      id: randomUUID(),
+      sourceHtml: entrypointHtml,
+      sourceBundle: bundle,
+      projectName: safeProjectName(bundle),
+      status: "queued",
+      projectId: null,
+      projectUrl: null,
+      currentStep: null,
+      steps: SETUP_STEPS.map(({ name }) => ({
+        name,
+        status: "pending",
+        error: null,
+      })),
+      error: null,
+      leaseToken: null,
+    };
     await db.transaction(async (tx) => {
       await tx.insert(handoffJobsTable).values({
         id: job.id,
@@ -1466,6 +1502,21 @@ router.post(
     void runHandoffJob(job.id);
   },
 );
+
+router.get("/port/replit-projects/:jobId", requireAuth, async (req, res): Promise<void> => {
+  const parsed = GetReplitProjectStatusParams.safeParse(req.params);
+  const job = parsed.success
+    ? await loadJob(parsed.data.jobId, req.dbUser!.id)
+    : null;
+  if (!job) {
+    res.status(404).json({
+      error: "That Replit project creation job was not found or has expired.",
+      code: "PROJECT_HANDOFF_NOT_FOUND",
+    });
+    return;
+  }
+  res.json(GetReplitProjectStatusResponse.parse(publicJob(job)));
+});
 
 router.post(
   "/port/replit-projects/:jobId/retry",

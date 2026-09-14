@@ -20,7 +20,7 @@ const requireFromDb = createRequire(
 const { Pool } = requireFromDb("pg");
 
 type Json = Record<string, unknown>;
-  const connectionPort = await listen(connection);
+const connectionPort = 1;
 
   const diagnostic = canonicalSkillResolutionDiagnostic();
 function testClientIp(): string {
@@ -118,7 +118,7 @@ test("covers the analysis boundary matrix and origin routing", async () => {
     env: {
       ...process.env,
       PORT: String(apiPort),
-      REPLIT_CONNECTORS_HOSTNAME: `http://127.0.0.1:${connectionPort}`,
+      HTML_PORT_STUDIO_ORIGINS: splitOrigin,
       REPLIT_CLI: "/bin/false",
       REPL_IDENTITY: "test-repl-identity",
       NODE_ENV: "test",
@@ -340,7 +340,16 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
   let returnFailure = false;
   let returnMalformedCompletion = false;
   const poe = http.createServer(async (request, response) => {
-    const path = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
+    const url = new URL(request.url ?? "/", "http://127.0.0.1");
+    const body =
+      request.method === "POST" ? (JSON.parse(await readBody(request)) as Json) : null;
+    poeRequests.push({
+      method: request.method ?? "",
+      path: url.pathname,
+      authorization: request.headers.authorization,
+      body,
+    });
+    const path = url.pathname;
     if (request.method === "GET" && path === "/v1/models") {
       modelRequests += 1;
       response.writeHead(200, { "Content-Type": "application/json" });
@@ -349,7 +358,27 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
     }
     if (request.method === "POST" && path === "/v1/chat/completions") {
       completionRequests += 1;
-      await readBody(request);
+      if (returnFailure) {
+        response.writeHead(429, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({
+          error: {
+            message: "provider-internal diagnostic with sensitive details",
+            request_id: "provider-secret-request-id",
+          },
+        }));
+        return;
+      }
+      if (returnMalformedCompletion) {
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({
+          error: {
+            message: "provider-internal malformed completion diagnostic",
+            request_id: "provider-malformed-secret-request-id",
+          },
+          choices: [],
+        }));
+        return;
+      }
       response.writeHead(200, { "Content-Type": "application/json" });
       response.end(
         JSON.stringify({
@@ -369,6 +398,8 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
     env: {
       ...process.env,
       PORT: String(apiPort),
+      POE_API_KEY2: "test-poe-key",
+      POE_API_BASE_URL: `http://127.0.0.1:${poePort}/v1`,
       REPLIT_CONNECTORS_HOSTNAME: `http://127.0.0.1:${connectionPort}`,
       REPLIT_CLI: "/bin/false",
       REPL_IDENTITY: "test-repl-identity",
@@ -524,14 +555,7 @@ test("bounds public Poe traffic before provider forwarding and caches models", a
   const apiPort = await unusedPort();
   const api = spawn(process.execPath, ["--enable-source-maps", "dist/index.mjs"], {
     cwd: new URL("../../", import.meta.url).pathname,
-    env: {
-      ...process.env,
-      PORT: String(apiPort),
-      REPLIT_CONNECTORS_HOSTNAME: `http://127.0.0.1:${connectionPort}`,
-      REPLIT_CLI: "/bin/false",
-      REPL_IDENTITY: "test-repl-identity",
-      NODE_ENV: "test",
-    },
+    env: { ...apiEnvironment, PORT: String(apiPort) },
     stdio: "ignore",
   });
   let secondApi: ChildProcess | undefined;
@@ -717,7 +741,11 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
       `${otherOwnerId}@example.test`,
     ],
   );
-  const source = await readFile(new URL("./port.ts", import.meta.url), "utf8");
+  const source = `<!doctype html>
+<html>
+  <head><title>Project handoff fixture</title></head>
+  <body><main>Source must remain unchanged.</main></body>
+</html>`;
 
   const setupSkills: Array<{ name: string; slug: string }> = [];
 
