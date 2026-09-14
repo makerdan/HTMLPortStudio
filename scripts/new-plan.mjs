@@ -4,6 +4,7 @@ import path from "node:path";
 import { ROOT, loadTierRegistry } from "./lib/tier-lock-check.mjs";
 import { validatePlanText } from "./lib/failure-gate.mjs";
 import { validateRegressionGuardText } from "./lib/regression-guard.mjs";
+import { renderPlannerGuardExamples } from "./lib/regression-guard-guidance.mjs";
 
 const args = process.argv.slice(2);
 
@@ -46,16 +47,7 @@ Examples:
 
 Regression Guard decision (provide exactly one):
 
-  Concrete guard:
-    --guard-covers "A concrete scenario or invariant."
-    --guard-test-location "path/to/recurrence.test.mjs"
-    --guard-checks "The assertion that fails if the old behavior returns."
-
-  N/A guard:
-    --guard-na-reason "The failure is a race condition requiring real timing: genuine wall-clock concurrency cannot be faithfully reproduced with fake timers."
-
-  Self-satisfying guard:
-    --guard-self-satisfying "the Regression Guard checker and focused recurrence test"
+${renderPlannerGuardExamples()}
 
 Use --help or -h to print this guidance.`;
 }

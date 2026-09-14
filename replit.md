@@ -164,6 +164,7 @@ node scripts/new-plan.mjs --title "Fix browser startup" \
 Missing or invalid non-guard inputs point back to this help section. The
 Regression Guard decision examples are:
 
+<!-- BEGIN GENERATED REGRESSION GUARD EXAMPLES -->
 ```sh
 # Concrete guard
 node scripts/new-plan.mjs --guard-covers "A concrete scenario or invariant." \
@@ -176,6 +177,7 @@ node scripts/new-plan.mjs --guard-na-reason "The failure is a race condition req
 # Self-satisfying guard
 node scripts/new-plan.mjs --guard-self-satisfying "the Regression Guard checker and focused recurrence test"
 ```
+<!-- END GENERATED REGRESSION GUARD EXAMPLES -->
 
 Incomplete or mixed decisions fail before a plan is written. To inspect
 environment-local history without changing it, run

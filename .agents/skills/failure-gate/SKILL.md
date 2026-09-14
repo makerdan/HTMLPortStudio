@@ -169,6 +169,7 @@ an otherwise unowned failure to be ignored.
 
 The guard decision examples are:
 
+<!-- BEGIN GENERATED REGRESSION GUARD EXAMPLES -->
 ```sh
 # Concrete guard
 node scripts/new-plan.mjs --guard-covers "A concrete scenario or invariant." \
@@ -181,6 +182,7 @@ node scripts/new-plan.mjs --guard-na-reason "The failure is a race condition req
 # Self-satisfying guard
 node scripts/new-plan.mjs --guard-self-satisfying "the Regression Guard checker and focused recurrence test"
 ```
+<!-- END GENERATED REGRESSION GUARD EXAMPLES -->
 
 ## Execute-time decision path
 

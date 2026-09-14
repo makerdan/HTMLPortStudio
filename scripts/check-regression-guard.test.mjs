@@ -10,6 +10,12 @@ import {
   inspectRegressionGuardFile,
   validateRegressionGuardText,
 } from "./lib/regression-guard.mjs";
+import {
+  REGRESSION_GUARD_GUIDANCE_END,
+  REGRESSION_GUARD_GUIDANCE_START,
+  renderDocumentationGuardExamples,
+  renderPlannerGuardExamples,
+} from "./lib/regression-guard-guidance.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const checker = path.join(root, "scripts/check-regression-guard.mjs");
@@ -51,35 +57,25 @@ function temporaryPlan(text, extension = ".md") {
 }
 
 function extractGuardExamples(text, sourceLabel) {
-  const block = [...text.matchAll(/```(?:sh|bash)\n([\s\S]*?)\n```/g)]
-    .map((match) => match[1].trim())
-    .find(
-      (candidate) =>
-        candidate.includes("# Concrete guard") &&
-        candidate.includes("# N/A guard") &&
-        candidate.includes("# Self-satisfying guard"),
-    );
+  const blocks = [
+    ...text.matchAll(
+      /<!-- BEGIN GENERATED REGRESSION GUARD EXAMPLES -->\n([\s\S]*?)\n<!-- END GENERATED REGRESSION GUARD EXAMPLES -->/g,
+    ),
+  ];
+  assert.equal(
+    blocks.length,
+    1,
+    `[REGRESSION-GUARD-DOCS] ${sourceLabel} must contain exactly one generated guidance block.`,
+  );
+  const block = blocks[0]?.[1].trim();
   assert.ok(
-    block,
+    block?.startsWith("```sh\n") &&
+      block.includes("# Concrete guard") &&
+      block.includes("# N/A guard") &&
+      block.includes("# Self-satisfying guard"),
     `[REGRESSION-GUARD-DOCS] ${sourceLabel} is missing the complete Concrete, N/A, and self-satisfying examples.`,
   );
   return block;
-}
-
-function extractGuardOptions(text, sourceLabel, documentation = false) {
-  const sectionPattern = documentation
-    ? /(?:^|\n)# (Concrete guard|N\/A guard|Self-satisfying guard)\n([\s\S]*?)(?=\n# |\s*$)/g
-    : /(?:^|\n) {2}(Concrete guard|N\/A guard|Self-satisfying guard):\n((?: {4}--[^\n]+\n?)+)/g;
-  const sections = [...text.matchAll(sectionPattern)].map((match) => ({
-    label: match[1],
-    options: [...new Set(match[2].match(/--[a-z-]+/g) ?? [])],
-  }));
-  assert.equal(
-    sections.length,
-    3,
-    `[REGRESSION-GUARD-DOCS] ${sourceLabel} is missing one or more of the Concrete, N/A, and self-satisfying examples.`,
-  );
-  return sections;
 }
 
 test("accepts a concrete guard with the required fields and placement", () => {
@@ -355,7 +351,14 @@ test("plan creation help lists exactly the registered validation tiers", () => {
 test("keeps guard examples synchronized across the planner and canonical guidance", () => {
   const help = spawnSync(process.execPath, [planner, "--help"], { cwd: root, encoding: "utf8" });
   assert.equal(help.status, 0, help.stderr);
-  const plannerOptions = extractGuardOptions(help.stdout, "scripts/new-plan.mjs --help");
+  const plannerExamples = help.stdout.match(
+    /(?:^|\n)(  Concrete guard:[\s\S]*?)(?=\n\nUse --help)/,
+  )?.[1];
+  assert.equal(
+    plannerExamples,
+    renderPlannerGuardExamples(),
+    "[REGRESSION-GUARD-DOCS] planner help examples drifted from the shared definition.",
+  );
 
   for (const [sourceLabel, file] of [
     [".agents/skills/failure-gate/SKILL.md", failureGateSkill],
@@ -363,13 +366,11 @@ test("keeps guard examples synchronized across the planner and canonical guidanc
   ]) {
     const documentation = fs.readFileSync(file, "utf8");
     const documentationExamples = extractGuardExamples(documentation, sourceLabel);
-    const documentationOptions = extractGuardOptions(documentationExamples, sourceLabel, true);
-    assert.deepEqual(
-      documentationOptions,
-      plannerOptions,
-      `[REGRESSION-GUARD-DOCS] ${sourceLabel} examples drifted from scripts/new-plan.mjs --help.\n` +
-        `Expected the planner's supported guard option forms:\n${JSON.stringify(plannerOptions, null, 2)}\n` +
-        `Found in ${sourceLabel}:\n${JSON.stringify(documentationOptions, null, 2)}`,
+    assert.equal(
+      `${REGRESSION_GUARD_GUIDANCE_START}\n${documentationExamples}\n${REGRESSION_GUARD_GUIDANCE_END}`,
+      renderDocumentationGuardExamples(),
+      `[REGRESSION-GUARD-DOCS] ${sourceLabel} generated examples are stale. ` +
+        "Run node scripts/update-regression-guard-guidance.mjs.",
     );
   }
 });
