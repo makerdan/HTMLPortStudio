@@ -16,6 +16,7 @@ const tierNames = [
   "test-standard-plus",
   "test-heavy",
   "production-build",
+  "studio-analytics-privacy",
 ];
 
 function readJson(file) {

@@ -30,6 +30,12 @@
       "command": "pnpm run production-build",
       "timeoutMs": 900000,
       "description": "Runs the Failure Gate and complete workspace production build without live-provider or browser checks."
+    },
+    {
+      "name": "studio-analytics-privacy",
+      "command": "pnpm run studio-analytics-privacy",
+      "timeoutMs": 120000,
+      "description": "Checks the provider-independent Studio source-import analytics contract against its privacy documentation."
     }
   ]
 }

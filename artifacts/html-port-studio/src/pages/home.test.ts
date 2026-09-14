@@ -32,6 +32,8 @@ import {
 } from "../lib/credential-safety.ts";
 import {
   SOURCE_IMPORT_ANALYTICS_CONTRACT,
+  STUDIO_ANALYTICS_CONTRACT,
+  isAllowedAnalyticsEvent,
   trackEvent,
   trackSourceImportOutcome,
 } from "../lib/analytics.ts";
@@ -122,7 +124,10 @@ test("keeps analytics optional and non-blocking when the tracker is missing or f
   try {
     Reflect.deleteProperty(globalThis, "window");
     assert.doesNotThrow(() => {
-      trackEvent("source_import_outcome", { source_type: "hosted", outcome: "cancelled" });
+      trackEvent("source_import_outcome", {
+        source_type: "hosted",
+        outcome: "cancelled",
+      });
       trackSourceImportOutcome("hosted", "cancelled");
     });
 
@@ -140,8 +145,15 @@ test("keeps analytics optional and non-blocking when the tracker is missing or f
     });
 
     assert.doesNotThrow(() => {
-      trackEvent("source_import_outcome", { source_type: "hosted", outcome: "completed" });
+      trackEvent("source_import_outcome", {
+        source_type: "hosted",
+        outcome: "completed",
+      });
       trackSourceImportOutcome("hosted", "completed");
+      trackEvent("unknown_event");
+      trackEvent("credential_recovery_action", {
+        action: "free-form user content",
+      });
     });
     assert.equal(trackerCalls, 2);
   } finally {
@@ -156,9 +168,69 @@ test("keeps analytics optional and non-blocking when the tracker is missing or f
   }
 });
 
+test("enforces the reviewed Studio analytics vocabulary before provider dispatch", () => {
+  assert.equal(isAllowedAnalyticsEvent("credential_recovery_opened"), true);
+  assert.equal(
+    isAllowedAnalyticsEvent("credential_recovery_action", { action: "apply" }),
+    true,
+  );
+  assert.equal(
+    isAllowedAnalyticsEvent("credential_recovery_rescan", { result: "passed" }),
+    true,
+  );
+  assert.equal(
+    isAllowedAnalyticsEvent("source_import_outcome", {
+      source_type: "github",
+      outcome: "completed",
+    }),
+    true,
+  );
+
+  assert.equal(isAllowedAnalyticsEvent("unknown_event"), false);
+  assert.equal(
+    isAllowedAnalyticsEvent("credential_recovery_opened", { detail: "opened" }),
+    false,
+  );
+  assert.equal(
+    isAllowedAnalyticsEvent("credential_recovery_action", {
+      action: "user supplied action",
+    }),
+    false,
+  );
+  assert.equal(
+    isAllowedAnalyticsEvent("source_import_outcome", {
+      source_type: "https://private.example/source",
+      outcome: "completed",
+    }),
+    false,
+  );
+  assert.equal(
+    isAllowedAnalyticsEvent("credential_recovery_rescan", {
+      result: "passed",
+      filename: "index.html",
+    }),
+    false,
+  );
+
+  assert.deepEqual(
+    Object.keys(STUDIO_ANALYTICS_CONTRACT.events).sort(),
+    [
+      "credential_recovery_action",
+      "credential_recovery_consent",
+      "credential_recovery_opened",
+      "credential_recovery_proposal_requested",
+      "credential_recovery_rescan",
+      "source_import_outcome",
+    ].sort(),
+  );
+});
+
 test("keeps source import analytics contract synchronized across code and documentation", async () => {
   const originalWindow = (globalThis as { window?: unknown }).window;
-  const calls: Array<{ name: string; data?: Record<string, string | number | boolean> }> = [];
+  const calls: Array<{
+    name: string;
+    data?: Record<string, string | number | boolean>;
+  }> = [];
   const analyticsSource = await readFile(
     new URL("../lib/analytics.ts", import.meta.url),
     "utf8",
@@ -173,7 +245,10 @@ test("keeps source import analytics contract synchronized across code and docume
       configurable: true,
       value: {
         umami: {
-          track(name: string, data?: Record<string, string | number | boolean>) {
+          track(
+            name: string,
+            data?: Record<string, string | number | boolean>,
+          ) {
             calls.push({ name, data });
           },
         },
