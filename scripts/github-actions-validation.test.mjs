@@ -68,6 +68,17 @@ test("post-merge jobs use read-only permissions and no privileged credentials", 
   assert.match(postMergeWorkflow, /run: pnpm run production-build/);
 });
 
+test("post-merge history inspection uses one bounded successful-run page", () => {
+  assert.match(
+    postMergeWorkflow,
+    /history_page_size=100[\s\S]*status=success&per_page=\$\{history_page_size\}/,
+  );
+  assert.doesNotMatch(
+    postMergeWorkflow,
+    /gh api --paginate[\s\S]*actions\/workflows\/production-build\.yml\/runs/,
+  );
+});
+
 test("post-merge policy requires four commits or a quiet window", () => {
   assert.equal(decision().run, false);
   assert.equal(decision({ commitsSinceLastSuccess: 4 }).run, true);

@@ -48,6 +48,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # Keep eligibility work bounded as workflow history grows. The job
+          # lookup below still distinguishes a skipped build from a verified
+          # post-merge run.
+          history_page_size=100
           prior_head=""
           current_verified="false"
           while IFS=$'\t' read -r run_id head_sha; do
@@ -64,8 +68,8 @@ jobs:
               fi
             fi
           done < <(
-            gh api --paginate \
-              "/repos/${GITHUB_REPOSITORY}/actions/workflows/production-build.yml/runs?branch=main&status=success&per_page=100" \
+            gh api \
+              "/repos/${GITHUB_REPOSITORY}/actions/workflows/production-build.yml/runs?branch=main&status=success&per_page=${history_page_size}" \
               --jq '.workflow_runs[] | [.id, .head_sha] | @tsv'
           )
           echo "current-verified=$current_verified" >> "$GITHUB_OUTPUT"
