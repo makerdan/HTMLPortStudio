@@ -52,6 +52,16 @@ function withCatalog(records, callback) {
   }
 }
 
+function withCatalogDocument(document, callback) {
+  const original = fs.readFileSync(baselineFile, "utf8");
+  try {
+    fs.writeFileSync(baselineFile, JSON.stringify(document, null, 2));
+    return callback();
+  } finally {
+    fs.writeFileSync(baselineFile, original);
+  }
+}
+
 function withTierRegistry(registry, callback) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "failure-gate-registry-"));
   const file = path.join(directory, "validation-tiers.json");
@@ -141,6 +151,24 @@ test("accepts an active, unexpired ignored baseline", () => {
   const errors = withCatalog([baselineRecord("BASE-ACTIVE")], () =>
     validatePlanText(planWithReference("Ignored baseline", "BASE-ACTIVE"), "active baseline plan"));
   assert.deepEqual(errors, []);
+});
+
+test("accepts the supported baseline catalog version", () => {
+  const errors = withCatalogDocument({ version: 1, records: [] }, () =>
+    validatePlanText(valid, "supported catalog version plan"));
+  assert.deepEqual(errors, []);
+});
+
+test("rejects a missing baseline catalog version with a schema diagnostic", () => {
+  const errors = withCatalogDocument({ records: [] }, () =>
+    validatePlanText(valid, "missing catalog version plan"));
+  assert.ok(errors.some((error) => error.includes("baseline catalog") && error.includes("missing its version") && error.includes("expected supported version 1")));
+});
+
+test("rejects an unsupported baseline catalog version with a schema diagnostic", () => {
+  const errors = withCatalogDocument({ version: 2, records: [] }, () =>
+    validatePlanText(valid, "unsupported catalog version plan"));
+  assert.ok(errors.some((error) => error.includes("baseline catalog") && error.includes("unsupported version 2") && error.includes("expected supported version 1")));
 });
 
 test("rejects an expired ignored baseline and names the repair action", () => {

@@ -5,6 +5,7 @@ import { ROOT, extractSectionBody, loadTierRegistry, validatePlanPath } from "./
 const BASELINE_FILE = process.env.FAILURE_BASELINE_FILE
   ? path.resolve(process.env.FAILURE_BASELINE_FILE)
   : path.join(ROOT, "docs/validation/failure-baseline.json");
+const SUPPORTED_BASELINE_VERSION = 1;
 const REQUIRED_SECTIONS = ["Pre-existing failures to ignore", "Validation"];
 const PLACEHOLDER = /(?:<[^>]+>|\b(?:TODO|TBD|FIXME|REQUIRED)\b|\[(?:fill|choose|reason|command)[^\]]*\]|\.\.\.)/i;
 const BASELINE_STATUSES = new Set(["active", "needs-review", "intermittent", "environment-limited", "resolved"]);
@@ -30,14 +31,27 @@ function sectionExists(text, heading) {
 export function loadBaselineCatalog() {
   try {
     const catalog = JSON.parse(fs.readFileSync(BASELINE_FILE, "utf8"));
-    if (!catalog || typeof catalog !== "object" || !Array.isArray(catalog.records)) {
+    if (!catalog || typeof catalog !== "object" || Array.isArray(catalog)) {
       return {
         records: [],
-        errors: [`baseline catalog ${path.relative(ROOT, BASELINE_FILE)} must contain a records array.`],
+        errors: [`baseline catalog ${path.relative(ROOT, BASELINE_FILE)} must be an object with version ${SUPPORTED_BASELINE_VERSION} and a records array.`],
       };
     }
 
     const errors = [];
+    if (catalog.version !== SUPPORTED_BASELINE_VERSION) {
+      const catalogPath = path.relative(ROOT, BASELINE_FILE);
+      if (Object.hasOwn(catalog, "version")) {
+        errors.push(`baseline catalog ${catalogPath} has unsupported version ${JSON.stringify(catalog.version)}; expected supported version ${SUPPORTED_BASELINE_VERSION}.`);
+      } else {
+        errors.push(`baseline catalog ${catalogPath} is missing its version; expected supported version ${SUPPORTED_BASELINE_VERSION}.`);
+      }
+    }
+    if (!Array.isArray(catalog.records)) {
+      errors.push(`baseline catalog ${path.relative(ROOT, BASELINE_FILE)} must contain a records array.`);
+      return { records: [], errors };
+    }
+
     const ids = new Map();
     for (const [index, record] of catalog.records.entries()) {
       if (!record || typeof record !== "object" || Array.isArray(record)) {

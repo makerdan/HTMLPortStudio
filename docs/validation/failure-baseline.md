@@ -5,6 +5,10 @@ test-suite failures. A record may authorize a plan to ignore a failure only
 when its status is `active`, its review deadline has not passed, and the
 observed suite, test, and failure signature match exactly.
 
+The catalog must declare the supported schema `"version": 1`. Failure Gate
+rejects missing or unsupported catalog versions as schema problems before any
+record can authorize an ignored failure.
+
 Each record must have a unique non-empty `id`, one of the lifecycle statuses
 `active`, `needs-review`, `intermittent`, `environment-limited`, or `resolved`,
 and valid `firstObserved`, `lastVerified`, and `reviewDeadline` dates. Records
