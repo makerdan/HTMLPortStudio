@@ -6,7 +6,10 @@ import { validatePlanText } from "./lib/failure-gate.mjs";
 import { validateRegressionGuardText } from "./lib/regression-guard.mjs";
 
 const args = process.argv.slice(2);
-const GUARD_HELP = `Usage:
+
+function planHelp() {
+  const tierNames = [...loadTierRegistry().keys()];
+  return `Usage:
   node scripts/new-plan.mjs --title "<title>" --why "<why>" <guard decision> [non-guard options]
 
 Required plan inputs:
@@ -17,7 +20,7 @@ Non-guard options:
   --slug "<slug>"                Override the output filename slug derived from --title.
   --validation-tier "<tier>"     Select the registered validation tier for the plan.
                                   Defaults to test-standard. Available tiers include
-                                  test-fast, test-standard, test-standard-plus, and test-heavy.
+                                  ${tierNames.join(", ")}.
   --baseline-id "<id>"           Record an active catalog baseline to ignore; repeat for multiple
                                   unrelated baselines. This does not lower the validation tier.
   --owned-baseline-id "<id>"     Record an active or repairable catalog baseline this task owns;
@@ -55,9 +58,10 @@ Regression Guard decision (provide exactly one):
     --guard-self-satisfying "the Regression Guard checker and focused recurrence test"
 
 Use --help or -h to print this guidance.`;
+}
 
 if (args.includes("--help") || args.includes("-h")) {
-  console.log(GUARD_HELP);
+  console.log(planHelp());
   process.exit(0);
 }
 

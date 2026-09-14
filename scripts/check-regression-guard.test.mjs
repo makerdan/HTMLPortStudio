@@ -335,6 +335,23 @@ test("plan creation help lists non-guard options and safe evidence examples", ()
   assert.match(result.stdout, /environment-observation/);
 });
 
+test("plan creation help lists exactly the registered validation tiers", () => {
+  const registry = JSON.parse(
+    fs.readFileSync(path.join(root, "docs/validation/validation-tiers.json"), "utf8"),
+  );
+  const result = spawnSync(process.execPath, [planner, "--help"], { cwd: root, encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+
+  const helpTierMatch = result.stdout.match(/Available tiers include\s+([^.]+)\./);
+  assert.ok(helpTierMatch, "plan help must include its registered validation tier list");
+  const tierList = helpTierMatch[1].split(",").map((tier) => tier.trim());
+  assert.deepEqual(
+    tierList,
+    registry.tiers.map((tier) => tier.name),
+    "plan help must stay synchronized with docs/validation/validation-tiers.json",
+  );
+});
+
 test("keeps guard examples synchronized across the planner and canonical guidance", () => {
   const help = spawnSync(process.execPath, [planner, "--help"], { cwd: root, encoding: "utf8" });
   assert.equal(help.status, 0, help.stderr);
