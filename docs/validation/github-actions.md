@@ -1,10 +1,11 @@
 # GitHub Actions validation
 
-This repository's primary remote validation processor is the tracked workflow
-at `.github/workflows/validation.yml`. The workflow is an installable
-repository contract, not evidence that GitHub has activated it, run it
-successfully, or made it a required check. Those facts remain unknown until a
-real run is observed in the private repository.
+This repository's primary remote validation processors are the tracked
+workflows at `.github/workflows/validation.yml` and
+`.github/workflows/production-build.yml`. They are installable repository
+contracts, not evidence that GitHub has activated them, run them successfully,
+or made a check required. Those facts remain unknown until real runs are
+observed in the private repository.
 
 ## Scope and evidence
 
@@ -23,10 +24,11 @@ authenticated GitHub connection, found:
 
 - The repository exists, is private, and has `main` as its default branch.
 - `GET /actions/runs` returned zero workflow runs.
-- `GET /actions/workflows/validation.yml` returned `404`, so GitHub has not
-  activated this workflow on the remote default branch. The workflow file is
-  present locally but is not yet available in the GitHub repository revision
-  being inspected.
+- `GET /actions/workflows/validation.yml` and
+  `GET /actions/workflows/production-build.yml` returned `404`, so GitHub has
+  not activated either workflow on the remote default branch. The workflow
+  files are present locally but are not yet available in the GitHub repository
+  revision being inspected.
 - `main` reported `protected: false`.
 - Both the branch-protection and repository-rulesets endpoints returned
   `403` with GitHub's message that the feature requires GitHub Pro or a public
@@ -36,12 +38,14 @@ authenticated GitHub connection, found:
   observation. No secrets or write-capable workflow permissions were added.
 
 This is evidence that remote activation and branch protection are not complete,
-not evidence that the workflow jobs pass. A real pull-request or `main` push
-run must be observed after `.github/workflows/validation.yml` reaches GitHub.
+not evidence that the workflow jobs pass. A real pull-request, `main` push, or
+scheduled post-merge run must be observed after both workflow files reach
+GitHub.
 
 The existing Replit workflows remain the local validation owners. This note
-does not replace `.replit`, change package scripts, or add a second application
-validation contract.
+does not replace `.replit` or add a second application validation contract;
+`production-build` is the registered local contract used by both GitHub
+workflows.
 
 ## Local-to-remote coverage
 
@@ -49,17 +53,22 @@ validation contract.
 | ---------------------------------------- | ---------------------------------------- | --------------- | ----------------------------------------------------------- |
 | Primary application validation           | Replit `test-standard` workflow          | `test-standard` | `pnpm run test-standard`, unchanged                         |
 | Generated API freshness and declarations | Replit `api-validation` workflow         | `validate-api`  | `pnpm run validate:api`, separately visible and fail-closed |
-| Stable required-check candidate          | Replit workflow aggregate is not changed | `validation`    | Fails unless both upstream jobs finish with `success`       |
+| Pull-request production build             | Replit `production-build` workflow       | `production-build` | `pnpm run production-build`, required by `validation` |
+| Stable pull-request aggregate             | Replit workflow aggregate                | `validation`    | Fails unless all three upstream jobs finish with `success` |
+| Advisory post-merge production build      | Replit `production-build` workflow       | `post-merge-build` | Same command, coalesced by `production-build.yml` |
 
 `test-standard` continues to cover Failure Gate validation, workspace
 typechecks, focused script/API/Studio tests, and the browser phase. The
 separate API job runs the same generated-source comparison and isolated
 declaration checks as `validate:api`; its temporary `.cache/api-validation-*`
 output is cleaned by the validator and is never committed.
+The production-build job runs the registered `production-build` command, which
+enters the Failure Gate before invoking `pnpm run build` for every workspace
+package.
 
 ## Runtime and service prerequisites
 
-Both jobs use GitHub-hosted `ubuntu-24.04`, Node 24, and exactly pnpm
+All jobs use GitHub-hosted `ubuntu-24.04`, Node 24, and exactly pnpm
 10.26.1. Dependencies are installed with `pnpm install --frozen-lockfile`.
 The application job installs the existing Playwright Chromium and Firefox
 engines with their Linux dependencies before invoking the canonical command.
@@ -75,6 +84,11 @@ unverified matrix:
 - `mobile-recovery`: tests tagged `[mobile]`, using the existing Pixel 5
   device profile
 
+The production build intentionally does not install browsers or contact live
+services. It checks the complete workspace build only, so it remains portable
+and does not require production, deployment, database, Clerk, or Poe
+credentials.
+
 The validation jobs do not receive production, database, Clerk, Poe, or
 deployment credentials. The focused tests use their existing local fixtures
 and configuration; live provider behavior, database migrations, deployment
@@ -82,15 +96,20 @@ checks, and release behavior are intentionally outside this portable contract.
 
 ## Event scopes and security
 
-The workflow listens for:
+The pull-request workflow listens for:
 
 - all `pull_request` events
 - pushes to `main`
 - `merge_group` `checks_requested` events when GitHub supplies merge queues
 - explicit `workflow_dispatch` requests
 
-The workflow-wide permission is `contents: read`. It does not request or
-consume repository secrets. Pull requests from forks use the normal
+The post-merge workflow listens only for pushes to `main` and a schedule every
+30 minutes. Its eligibility job reads the current default-branch head and the
+history of successful `post-merge-build` jobs through the read-only Actions
+API. Neither workflow requests production credentials or consumes repository
+secrets. The pull-request workflow-wide permission is `contents: read`; the
+post-merge workflow adds only `actions: read` so it can inspect its own prior
+verification history. Pull requests from forks use the normal
 read-only `pull_request` token boundary and do not receive privileged tokens
 or secrets. GitHub may apply its own first-contributor approval policy before a
 fork workflow is allowed to run; that repository setting is not configured or
@@ -99,6 +118,8 @@ claimed here.
 Pull-request runs share a concurrency group and cancel superseded pull-request
 runs. Push and merge-group runs are not canceled by this expression, so
 protected-branch or merge-queue validation is not displaced by later work.
+Post-merge runs share a separate main-branch group and cancel obsolete queued
+or in-progress work. A later push or schedule can retry a canceled run.
 Each job has a finite timeout.
 
 Every third-party action is pinned to an immutable commit reviewed for this
@@ -126,10 +147,35 @@ traces, DOM/error-context files, videos, source bundles, logs, or environment
 files because those can contain imported content or other sensitive details.
 Artifact upload cannot change the validation result.
 
-There is one GitHub workflow with two visible validation jobs and one stable
-aggregate. The Replit validation workflows are intentionally retained as the
-local owners; no duplicate package script, validation tier, or application
-test was introduced.
+Pull-request validation has three visible upstream jobs and one stable
+aggregate. Post-merge verification is intentionally separate and advisory:
+its eligibility job can skip without claiming that a build passed, while its
+`post-merge-build` job reports success only after the canonical build command
+completes. The Replit validation workflows are retained as the local owners;
+no duplicate package script, validation tier, or application test was
+introduced.
+
+## Post-merge coalescing policy
+
+The post-merge workflow is advisory and never substitutes for the
+pull-request `validation` check. On each `main` push and every 30-minute
+schedule tick, it considers the current default-branch head:
+
+1. If that exact commit already has a successful `post-merge-build` job, it is
+   skipped and is not rebuilt.
+2. Otherwise, it runs when at least four commits have accumulated since the
+   newest successful post-merge verification.
+3. It also runs when the newest default-branch commit has been quiet for at
+   least 30 minutes, even if fewer than four commits have accumulated.
+4. If no successful verification exists yet, the commit count starts at the
+   repository root, allowing the first eligible verification to establish the
+   history.
+
+Only successful build jobs are used as history. Failed or canceled workflow
+runs are not recorded as successful verification, so the same head remains
+eligible on a later push or schedule tick. A canceled eligibility/build run
+also cannot make the pull-request aggregate pass: that aggregate is in the
+separate workflow and requires its own production-build job result.
 
 ## Exclusions and remaining evidence gaps
 
@@ -142,33 +188,36 @@ This change does not:
 - add release, deployment, performance, security-scanner, migration, or live
   provider jobs
 
-Still unavailable locally are proof that GitHub accepted and activated the
-workflow, a passing remote run, the exact check name shown by GitHub, private
+Still unavailable locally are proof that GitHub accepted and activated either
+workflow, passing remote runs, the exact check names shown by GitHub, private
 repository plan support for merge queues, and any branch policy requiring the
-`validation` check. These must not be inferred from this file.
+`validation` check. These must not be inferred from these files.
 
 ## Remaining manual GitHub settings
 
-After the first real pull-request or `main` run is verified in GitHub:
+After the first real pull-request, `main` push, and scheduled post-merge run
+are verified in GitHub:
 
-1. Confirm the workflow is active and both upstream jobs plus `validation`
+1. Confirm both workflows are active and the pull-request jobs
+   `test-standard`, `validate-api`, `production-build`, and `validation`
    appear with the expected names.
-2. Confirm fork and first-contributor behavior is acceptable for the private
+2. Confirm the post-merge workflow's eligibility decision and
+   `post-merge-build` result match the current head and policy.
+3. Confirm fork and first-contributor behavior is acceptable for the private
    repository without granting secrets or write permissions.
-3. Separately authorized repository administrators may require the stable
+4. Separately authorized repository administrators may require the stable
    `validation` check in branch protection or a ruleset. That setting is not
    part of this task.
-4. If merge queues are enabled and supported by the repository plan, confirm
+5. If merge queues are enabled and supported by the repository plan, confirm
    the `merge_group` event produces the same aggregate check.
 
 ## Rollback and follow-up actions
 
-Before removing or disabling `.github/workflows/validation.yml`, check whether
-any GitHub branch-protection rule or ruleset references the stable `validation`
-check. Removing the workflow first can leave a required check permanently
-pending. Local Replit validation remains available while the workflow is
-disabled.
+Before removing or disabling either tracked workflow, check whether any GitHub
+branch-protection rule or ruleset references its checks. Removing a workflow
+first can leave a required check permanently pending. Local Replit validation
+remains available while the workflows are disabled.
 
-The workflow should be kept unchanged until a real GitHub run supplies the
+The workflows should be kept unchanged until real GitHub runs supply the
 missing activation and check-name evidence. Any later settings change belongs
 to separately authorized GitHub administration work.

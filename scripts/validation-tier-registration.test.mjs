@@ -15,6 +15,7 @@ const tierNames = [
   "test-standard",
   "test-standard-plus",
   "test-heavy",
+  "production-build",
 ];
 
 function readJson(file) {

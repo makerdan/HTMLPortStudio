@@ -69,6 +69,17 @@ args = "pnpm run test-heavy"
 isValidation = true
 
 [[workflows.workflow]]
+name = "production-build"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm run production-build"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
 name = "api-validation"
 author = "agent"
 

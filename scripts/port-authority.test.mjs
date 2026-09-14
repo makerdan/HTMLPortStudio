@@ -165,11 +165,11 @@ test("restarts the API after reclaiming its stale listener", async () => {
 
 test("reports the tracked port contract and startup cleanup wiring", () => {
   const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url)));
-  for (const name of ["test-fast", "test-standard", "test-standard-plus", "test-heavy"]) {
+  for (const name of ["test-fast", "test-standard", "test-standard-plus", "test-heavy", "production-build"]) {
     assert.equal(typeof packageJson.scripts[name], "string");
   }
   const replit = readFileSync(new URL("../.replit", import.meta.url), "utf8");
-  for (const name of ["test-fast", "test-standard", "test-standard-plus", "test-heavy"]) {
+  for (const name of ["test-fast", "test-standard", "test-standard-plus", "test-heavy", "production-build"]) {
     assert.match(replit, new RegExp(`name = "${name}"[\\s\\S]*?args = "pnpm run ${name}"`));
   }
   const api = JSON.parse(readFileSync(new URL("../artifacts/api-server/package.json", import.meta.url)));
