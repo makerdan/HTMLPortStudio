@@ -1,33 +1,4 @@
 {
   "version": 1,
-  "records": [
-    {
-      "id": "BASE-DUPLICATE",
-      "status": "active",
-      "suite": "test-standard",
-      "test": "example test",
-      "signature": "example failure",
-      "owner": "Failure Gate maintainers",
-      "firstObserved": "2026-01-01T00:00:00.000Z",
-      "lastVerified": "2026-08-01T00:00:00.000Z",
-      "reviewDeadline": "2099-01-01T00:00:00.000Z"
-    },
-    {
-      "id": "BASE-DUPLICATE",
-      "status": "active",
-      "suite": "test-standard",
-      "test": "example test",
-      "signature": "example failure",
-      "owner": "Failure Gate maintainers",
-      "firstObserved": "2026-01-01T00:00:00.000Z",
-      "lastVerified": "2026-08-01T00:00:00.000Z",
-      "reviewDeadline": "2020-01-01T00:00:00.000Z"
-    },
-    {
-      "id": "BASE-MALFORMED",
-      "status": "not-a-status"
-    },
-    null,
-    "not a record"
-  ]
+  "records": []
 }
