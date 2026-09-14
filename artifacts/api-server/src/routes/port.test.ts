@@ -20,7 +20,7 @@ const requireFromDb = createRequire(
 const { Pool } = requireFromDb("pg");
 
 type Json = Record<string, unknown>;
-const connectionPort = 1;
+  const connectionPort = await listen(connection);
 
   const diagnostic = canonicalSkillResolutionDiagnostic();
 function testClientIp(): string {
