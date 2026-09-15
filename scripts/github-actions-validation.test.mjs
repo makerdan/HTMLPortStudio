@@ -13,6 +13,22 @@ const postMergeWorkflow = fs.readFileSync(
   `${root}/.github/workflows/production-build.yml`,
   "utf8",
 );
+const githubActionsDocumentation = fs.readFileSync(
+  `${root}/docs/validation/github-actions.md`,
+  "utf8",
+);
+
+function jobBlock(workflow, jobName) {
+  const marker = `\n  ${jobName}:\n`;
+  const start = workflow.indexOf(marker);
+  assert.notEqual(start, -1, `missing ${jobName} job`);
+  const remainder = workflow.slice(start + marker.length);
+  const next = remainder.search(/\n  [A-Za-z0-9_-]+:\n/);
+  return workflow.slice(
+    start,
+    next === -1 ? undefined : start + marker.length + next,
+  );
+}
 
 function decision(overrides = {}) {
   return decidePostMergeBuild({
@@ -41,7 +57,7 @@ test("pull-request aggregate requires the production build and fails closed", ()
 
 test("pull requests run the canonical production build with the pinned toolchain", () => {
   assert.match(pullRequestWorkflow, /name: production-build/);
-  assert.match(pullRequestWorkflow, /run: pnpm run production-build/);
+  assert.match(pullRequestWorkflow, /pnpm run production-build/);
   assert.match(pullRequestWorkflow, /pnpm install --frozen-lockfile/);
   assert.match(pullRequestWorkflow, /node-version: 24/);
   assert.match(pullRequestWorkflow, /npm install --global pnpm@10\.26\.1/);
@@ -65,7 +81,7 @@ test("post-merge jobs use read-only permissions and no privileged credentials", 
   assert.match(postMergeWorkflow, /select\(\.name == "post-merge-build"\)/);
   assert.match(postMergeWorkflow, /\[ "\$conclusion" = "success" \]/);
   assert.match(postMergeWorkflow, /pnpm install --frozen-lockfile/);
-  assert.match(postMergeWorkflow, /run: pnpm run production-build/);
+  assert.match(postMergeWorkflow, /pnpm run production-build/);
 });
 
 test("post-merge history inspection uses one bounded successful-run page", () => {
@@ -107,5 +123,95 @@ test("failed or cancelled prior runs do not remove retry eligibility", () => {
   assert.equal(
     decision({ currentVerified: false, nowUnix: 1_000 + 1_800 }).run,
     true,
+  );
+});
+
+test("validation jobs publish independent compact evidence without changing authority", () => {
+  for (const workflow of [pullRequestWorkflow, postMergeWorkflow]) {
+    assert.match(workflow, /scripts\/ci-evidence\.mjs run --phase setup/);
+    assert.match(
+      workflow,
+      /scripts\/ci-evidence\.mjs run --phase dependency-install/,
+    );
+    assert.match(workflow, /scripts\/ci-evidence\.mjs run --phase command/);
+    assert.match(workflow, /scripts\/ci-evidence\.mjs publish/);
+    assert.match(workflow, /CI_UPLOAD_STATUS: workflow-diagnostic-only/);
+    assert.match(
+      workflow,
+      /EVIDENCE_UPLOAD_OUTCOME: \$\{\{ steps\.upload\.outcome \}\}/,
+    );
+    assert.match(workflow, /continue-on-error: true/);
+    assert.match(workflow, /retention-days: 3/);
+    assert.match(workflow, /steps\.prepare\.outcome == 'success'/);
+    assert.match(workflow, /CI_EVIDENCE_ARTIFACT_FILE:/);
+    assert.match(
+      workflow,
+      /path: \$\{\{ runner\.temp \}\}\/[^\n]+\.artifact\.json/,
+    );
+    assert.equal(
+      workflow.match(/uses: actions\/upload-artifact@/g)?.length,
+      1,
+      "only the clean diagnostics job may upload evidence",
+    );
+    assert.match(workflow, /const maxBytes = 16 \* 1024/);
+    assert.match(workflow, /flag: "wx"/);
+    assert.doesNotMatch(workflow, /test-results\/\*\*\/\*\.png/);
+    assert.match(workflow, /ci-diagnostic-/);
+  }
+
+  for (const [workflow, jobName] of [
+    [pullRequestWorkflow, "ci-diagnostics"],
+    [postMergeWorkflow, "post-merge-diagnostics"],
+  ]) {
+    const diagnostics = jobBlock(workflow, jobName);
+    assert.doesNotMatch(diagnostics, /actions\/checkout/);
+    assert.doesNotMatch(diagnostics, /scripts\/ci-evidence\.mjs/);
+    assert.match(diagnostics, /EVIDENCE_OUTPUT:/);
+  }
+});
+
+test("workflow diagnostics preserve lifecycle, safe metrics, and fail-closed aggregates", () => {
+  assert.match(pullRequestWorkflow, /EVIDENCE_UPSTREAM:/);
+  assert.match(
+    postMergeWorkflow,
+    /EVIDENCE_EXPECTED_SKIPS: \$\{\{ needs\.eligibility\.result == 'success' && needs\.eligibility\.outputs\.run-build != 'true'/,
+  );
+  assert.match(
+    postMergeWorkflow,
+    /needs\.post-merge-build\.result == 'skipped' && needs\.eligibility\.outputs\.run-build == 'true'/,
+  );
+  assert.match(pullRequestWorkflow, /EVIDENCE_TIER: workflow-aggregate/);
+  assert.match(postMergeWorkflow, /EVIDENCE_TIER: post-merge-workflow/);
+  assert.match(githubActionsDocumentation, /compact evidence envelope/i);
+  assert.match(githubActionsDocumentation, /timed_out/);
+  assert.match(githubActionsDocumentation, /artifactSizeBytes/);
+  assert.match(
+    githubActionsDocumentation,
+    /authoritative validation.*unchanged/i,
+  );
+});
+
+test("diagnostics documentation requires bounded evidence before escalation or optimization", () => {
+  for (const phrase of [
+    "branch isolation",
+    "smallest change",
+    "local baseline",
+    "compact-evidence-first",
+    "pre-merge",
+    "post-merge",
+    "rollback",
+    "human authorization",
+    "two-factor",
+    "evidence window",
+  ]) {
+    assert.match(githubActionsDocumentation, new RegExp(phrase, "i"));
+  }
+  assert.match(
+    githubActionsDocumentation,
+    /must not invoke AI|does not invoke AI|without invoking AI/i,
+  );
+  assert.match(
+    githubActionsDocumentation,
+    /must not.*weaken validation|not.*permission to weaken validation/i,
   );
 });

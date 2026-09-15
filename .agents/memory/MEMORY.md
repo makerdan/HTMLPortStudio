@@ -27,3 +27,4 @@
 - [Validation registry test isolation](validation-registry-test-isolation.md) — Use temporary registry and baseline fixtures instead of rewriting tracked catalogs when validation tests run in parallel.
 - [Acceptance blocker provenance](acceptance-blocker-provenance.md) — Separate repository-wide gate/catalog drift from task-owned runtime checks before claiming final acceptance.
 - [Validation timeout process cleanup](validation-timeout-process-cleanup.md) — Shell timeouts can orphan child commands; replace the wrapper shell so termination reaches the actual validator.
+- [CI diagnostic artifact isolation](ci-diagnostic-artifact-isolation.md) — Generate uploadable evidence on a source-free runner, separate from jobs that execute repository code.

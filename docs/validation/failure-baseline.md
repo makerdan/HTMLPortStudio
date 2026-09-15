@@ -31,3 +31,12 @@ report labels malformed or duplicate records as `Schema problem` and expired
 active records as `Expired active record`, including the record ID or index
 reported by the catalog validator. Maintenance warnings do not fail unrelated
 task validation.
+
+## CI evidence boundary
+
+CI diagnostic envelopes and artifacts are provenance aids only. They never
+authorize an `Ignored baseline`, change the suite/test/signature match, or
+replace a registered local tier. Classify a remote failure against this
+catalog only after reviewing its bounded lifecycle status and reproducing the
+same local command; an artifact upload or passing retry is not evidence that a
+failure is pre-existing.

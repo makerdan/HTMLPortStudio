@@ -140,11 +140,13 @@ preinstalled package-manager binary. Browser engines are installed by
 Playwright instead of adding an independent browser cache that could become
 stale or hide missing dependencies.
 
-On an application-job failure, the workflow makes a best-effort upload of
-only PNG files under Playwright's test-results directory, retains them for
-three days, and ignores an empty directory. It deliberately does not upload
-traces, DOM/error-context files, videos, source bundles, logs, or environment
-files because those can contain imported content or other sensitive details.
+Application jobs publish status-only summaries but never upload files. On an
+unexpected workflow non-success, a separate diagnostics job that does not
+check out or execute repository source makes a best-effort upload of only the
+bounded JSON evidence envelope, retains it for three days, and ignores an
+empty file. It deliberately does not upload screenshots, traces,
+DOM/error-context files, videos, source bundles, logs, or environment files
+because those can contain imported content or other sensitive details.
 Artifact upload cannot change the validation result.
 
 Pull-request validation has three visible upstream jobs and one stable
@@ -154,6 +156,126 @@ its eligibility job can skip without claiming that a build passed, while its
 completes. The Replit validation workflows are retained as the local owners;
 no duplicate package script, validation tier, or application test was
 introduced.
+
+## Compact evidence contract
+
+Every instrumented job writes a compact JSON envelope through the
+repository-owned `scripts/ci-evidence.mjs` helper. The envelope is a diagnostic
+handoff, not a second validation result. It is bounded at 16 KiB and contains
+only these fields:
+
+This compact evidence envelope is the first diagnostic handoff reviewed by
+humans; it is never a substitute for the authoritative validation result.
+The authoritative validation remains unchanged.
+
+- `version` and `metadata`: workflow, stable job name, event, run ID, attempt,
+  commit SHA, and a bounded ref.
+- `lifecycle`: one of `success`, `failure`, `cancelled`, `skipped`,
+  `timed_out`, or `retrying`, the raw job status, conclusion, expected skips,
+  and upstream job statuses.
+- `outcome`: `diagnostic: independent` and `authoritative: unchanged`.
+- `metrics`: allowlisted phase durations for setup, dependency installation,
+  browser installation, eligibility, command, and upload; bounded retry and
+  cancellation signals; and `artifactSizeBytes` with its 16 KiB limit.
+- `artifacts`: an opaque artifact name, `compact-evidence` kind,
+  `failure-or-unexpected-non-success` condition, three-day retention, and
+  maximum size.
+- `localComparison`: one of `match`, `mismatch`, `not-compared`, or
+  `not-applicable`, plus the named local tier when one is available.
+- `excerpts` and `redactions`: short status-only messages and the explicit
+  exclusion list.
+
+Lifecycle statuses are preserved rather than collapsed into a green/failed
+boolean. A skipped post-merge build is marked as an expected skip when the
+coalescing policy intentionally skipped it; an unexpected skip remains visible
+diagnostic evidence. A timeout or cancellation is never represented as
+success. The stable pull-request `validation` aggregate still checks every
+upstream result for exact `success`, independently of this envelope.
+
+Excerpts are fixed status messages, capped in count and length, and never copy
+command output. Evidence must not contain imported HTML, repository source,
+full logs, environment files or values, credentials, secrets, provider
+payloads, request IDs, prompts, Playwright traces, videos, DOM snapshots, or
+unapproved screenshots. The helper reads only GitHub metadata and its own
+allowlisted phase state; it does not inspect source, secrets, or external
+telemetry.
+
+Phase state and the per-job summary envelope use separate runner-temporary
+files. Wrapped commands do not receive either evidence path or the GitHub
+step-summary path. Publishing strictly rebuilds metadata and phase records
+from allowlisted fields and writes atomically. Uploadable evidence is generated
+later on a clean diagnostics runner that never checks out or executes
+repository source. This runner writes a new bounded status-only file and only
+uploads after that preparation succeeds, so a command or surviving descendant
+cannot replace the bytes selected for upload.
+
+The helper preserves an exit-124 result from the registered command as
+`timed_out`. A GitHub platform job timeout can terminate the runner before any
+final step executes; in that case the independent workflow diagnostic reports
+the upstream job's available non-success result and must not claim more precise
+timeout evidence than GitHub supplied.
+
+## Diagnostic artifacts and cost signals
+
+Diagnostic uploads are best-effort and use the pinned artifact action. They
+run only after a failure, cancellation, or unexpected skip, tolerate an empty
+file, retain only the bounded JSON envelope for three days, and use
+`continue-on-error: true`. They execute on a clean runner, independently of
+the mandatory jobs, and can never change the authoritative result. A final
+status-only summary line records the upload step outcome without rewriting the
+already selected artifact. Successful jobs and intentional post-merge skips
+publish summaries without uploading an artifact.
+
+The envelope reports bounded setup, dependency-install, browser-install,
+eligibility, command, upload, retry, cancellation, lifecycle, and artifact-size
+signals. These are measurements for diagnosis only. A single run, a passing
+retry, or a small artifact is insufficient evidence for removing a validation
+step, changing a timeout, adding a cache, or otherwise optimizing CI. Gather
+an evidence window covering multiple successful and unsuccessful runs, compare
+the same job and event classes, and obtain a separately reviewed smallest
+change before proposing an optimization. Cost observations never authorize a
+weaker validation contract; they must not weaken validation or become
+permission to weaken validation.
+
+## Diagnosis and escalation checkpoints
+
+Use this order when a remote job is unexpected. Branch isolation means keeping
+the observed commit and diagnostic edits separate from unrelated work:
+
+1. Isolate the branch and commit. Reproduce on the same branch or an isolated
+   diagnostic branch; do not mix unrelated edits into the evidence.
+2. Review the smallest change first and compare the compact envelope with the
+   local baseline and the exact registered local tier. A local/remote mismatch
+   is evidence to investigate, not permission to replace the canonical command.
+3. Start with the compact-evidence-first summary. Inspect only the bounded
+   status metadata and approved artifact reference before considering any
+   deeper investigation. Do not download or create excluded logs, source
+   bundles, provider payloads, environment files, traces, videos, DOM
+   snapshots, or screenshots.
+4. At the pre-merge checkpoint, verify the workflow files, job ownership, and branch policy
+   through the authorized GitHub read-only checks. Local workflow files do not
+   prove remote activation or required-check configuration.
+5. After merging, monitor the main push and scheduled post-merge result. The
+   advisory post-merge job cannot replace the stable pull-request aggregate.
+
+AI assistance is conditional, not automatic. It may be considered only after
+the branch is isolated, compact evidence is complete, the local comparison is
+recorded, two-factor provenance is available where a failure is being
+classified, and a human has authorized the specific diagnostic question and
+redacted evidence scope. Human authorization is required before any escalation.
+It must not receive source, imported content,
+provider payloads, environment values, secrets, or unbounded logs. This
+repository must not invoke AI automatically; it does not invoke a model, add
+credentials, send telemetry, or change
+GitHub policy as part of CI diagnostics.
+
+If a workflow change is unsafe, stop at the smallest reversible boundary:
+preserve the authoritative validation jobs and aggregate, revert the
+diagnostic-only change, and rerun the same registered local tier. Before
+removing or renaming a stable job, check whether branch protection or a
+ruleset references it; never remove a required check first. Rollback is a
+human-authorized repository operation, not an automated response to a
+diagnostic upload failure.
 
 ## Post-merge coalescing policy
 
