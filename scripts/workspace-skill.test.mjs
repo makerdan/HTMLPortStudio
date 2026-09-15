@@ -229,3 +229,35 @@ test("canonical import confirmation skill preserves independent source and runti
   assert.match(skill, /never claim that MCP directly imported the source/i);
   assert.doesNotMatch(skill, /repair imported files to make checks pass/i);
 });
+
+test("canonical source-import skill preserves its safe transfer contract", async () => {
+  const skillPath = path.resolve(import.meta.dirname, "..", ".agents", "skills", "import-source-bundle", "SKILL.md");
+  const skill = await fs.readFile(skillPath, "utf8");
+
+  for (const phrase of [
+    "existing destination Replit project",
+    "MCP project-creation handoff",
+    "full commit archive",
+    "40-character lowercase",
+    "archive/<FULL_COMMIT_SHA>.tar.gz",
+    "GitHub archives do not retain nested",
+    "Replit Secrets",
+    "The transfer secret's value is never an input value",
+    "approved manifest SHA-256",
+    "dedicated destination",
+    "Reject overwrite",
+    "path outside the manifest",
+    "Do not:",
+    "independent checker",
+    "safe repeat import",
+    "**Imported**",
+    "**Failed**",
+    "**Blocked**",
+    "MCP may create or authorize",
+  ]) {
+    assert.match(skill, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+
+  assert.doesNotMatch(skill, /\bgit\s+clone\b/i);
+  assert.doesNotMatch(skill, /Authorization:\s*Bearer\s+\$\{/i);
+});
