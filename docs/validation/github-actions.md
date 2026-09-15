@@ -162,28 +162,48 @@ introduced.
 Every instrumented job writes a compact JSON envelope through the
 repository-owned `scripts/ci-evidence.mjs` helper. The envelope is a diagnostic
 handoff, not a second validation result. It is bounded at 16 KiB and contains
-only these fields:
+only the approved fields below. The names in the first column are the
+repository's normalized handoff vocabulary; the second column shows where the
+current envelope represents each value. A field that cannot be collected
+without reading source or provider data is explicitly represented as
+`not-collected`, never inferred or replaced with a dump.
 
 This compact evidence envelope is the first diagnostic handoff reviewed by
 humans; it is never a substitute for the authoritative validation result.
 The authoritative validation remains unchanged.
 
-- `version` and `metadata`: workflow, stable job name, event, run ID, attempt,
-  commit SHA, and a bounded ref.
-- `lifecycle`: one of `success`, `failure`, `cancelled`, `skipped`,
-  `timed_out`, or `retrying`, the raw job status, conclusion, expected skips,
-  and upstream job statuses.
-- `outcome`: `diagnostic: independent` and `authoritative: unchanged`.
-- `metrics`: allowlisted phase durations for setup, dependency installation,
-  browser installation, eligibility, command, and upload; bounded retry and
-  cancellation signals; and `artifactSizeBytes` with its 16 KiB limit.
-- `artifacts`: an opaque artifact name, `compact-evidence` kind,
-  `failure-or-unexpected-non-success` condition, three-day retention, and
-  maximum size.
-- `localComparison`: one of `match`, `mismatch`, `not-compared`, or
-  `not-applicable`, plus the named local tier when one is available.
-- `excerpts` and `redactions`: short status-only messages and the explicit
-  exclusion list.
+| Normalized field | Current envelope representation and allowed value |
+| --- | --- |
+| `revision` | `metadata.commitSha` plus the run attempt; the SHA is immutable or `unknown-sha` |
+| `branchOrPullRequest` | Bounded `metadata.ref`, containing a branch or pull-request ref only |
+| `changedFiles` | `not-collected`; source enumeration is outside this contract |
+| `workflow` / `job` | `metadata.workflow` and the stable `metadata.job` name |
+| `command` | The canonical local command named by the owning job, never shell arguments or command output |
+| `result` | `lifecycle.status` and `outcome`; diagnostic results are independent and `authoritative` is always `unchanged` |
+| `exitCode` | The integer exit code on an allowlisted phase record, or `null` when GitHub ended the job before a phase reported one |
+| `failureExcerpt` | `excerpts`: bounded, status-only text describing the failing phase or upstream result; never raw output |
+| `cancellation` / `retry` | `metrics.cancelled` and bounded `metrics.retryCount` |
+| `skip` | `lifecycle.expectedSkips` and the allowlisted `lifecycle.upstream` statuses |
+| `timeout` | `timed_out` lifecycle or phase status, including command exit `124`; platform timeouts remain only as precise as GitHub's result |
+| `retainedArtifactIds` | Opaque `artifacts[].name` values with kind, condition, retention, and byte limit |
+| `localComparisonStatus` | `localComparison.status`: `match`, `mismatch`, `not-compared`, or `not-applicable`, plus the local tier |
+
+The envelope may also contain only the contract metadata needed to interpret
+these fields: `version`, event, run ID, bounded phase measurements, artifact
+size (`artifactSizeBytes` and its 16 KiB limit), and the explicit `redactions`
+list. Phase names are limited to `setup`,
+`dependency-install`, `browser-install`, `eligibility`, `command`, and
+`upload`. Failure excerpts are limited to four status messages of at most 512
+characters each; the producer uses fixed messages and upstream status names.
+
+The following content is expressly prohibited in every summary and retained
+artifact: repository dumps, source bundles, imported HTML, changed-file
+contents, environment files or values, credentials, secrets, provider
+payloads, prompts, request identifiers, full logs, full dependency-install
+logs, and unbounded browser traces, videos, DOM snapshots, or screenshots.
+The contract does not permit a path, filename, or opaque artifact identifier to
+be used as a way to smuggle any excluded content. The helper reads only
+allowlisted GitHub metadata and phase state.
 
 Lifecycle statuses are preserved rather than collapsed into a green/failed
 boolean. A skipped post-merge build is marked as an expected skip when the
@@ -193,11 +213,7 @@ success. The stable pull-request `validation` aggregate still checks every
 upstream result for exact `success`, independently of this envelope.
 
 Excerpts are fixed status messages, capped in count and length, and never copy
-command output. Evidence must not contain imported HTML, repository source,
-full logs, environment files or values, credentials, secrets, provider
-payloads, request IDs, prompts, Playwright traces, videos, DOM snapshots, or
-unapproved screenshots. The helper reads only GitHub metadata and its own
-allowlisted phase state; it does not inspect source, secrets, or external
+command output. The helper does not inspect source, secrets, or external
 telemetry.
 
 Phase state and the per-job summary envelope use separate runner-temporary

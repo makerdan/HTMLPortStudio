@@ -17,6 +17,10 @@ const githubActionsDocumentation = fs.readFileSync(
   `${root}/docs/validation/github-actions.md`,
   "utf8",
 );
+const ciEvidenceSource = fs.readFileSync(
+  `${root}/scripts/ci-evidence.mjs`,
+  "utf8",
+);
 
 function jobBlock(workflow, jobName) {
   const marker = `\n  ${jobName}:\n`;
@@ -189,6 +193,111 @@ test("workflow diagnostics preserve lifecycle, safe metrics, and fail-closed agg
     githubActionsDocumentation,
     /authoritative validation.*unchanged/i,
   );
+});
+
+test("compact evidence contract keeps the approved fields and privacy boundary", () => {
+  for (const field of [
+    "revision",
+    "branchOrPullRequest",
+    "changedFiles",
+    "workflow",
+    "job",
+    "command",
+    "result",
+    "exitCode",
+    "failureExcerpt",
+    "cancellation",
+    "retry",
+    "skip",
+    "timeout",
+    "retainedArtifactIds",
+    "localComparisonStatus",
+  ]) {
+    assert.match(
+      githubActionsDocumentation,
+      new RegExp(`\\\`${field}\\\``),
+      `missing compact evidence field: ${field}`,
+    );
+  }
+  for (const exclusion of [
+    "repository dumps",
+    "imported HTML",
+    "environment files",
+    "secrets",
+    "provider payloads",
+    "full logs",
+    "full dependency-install logs",
+    "unbounded browser traces",
+  ]) {
+    assert.match(
+      githubActionsDocumentation,
+      new RegExp(exclusion.replace("dependency-install ", "dependency-install\\s+"), "i"),
+      `missing evidence exclusion: ${exclusion}`,
+    );
+  }
+  for (const workflow of [pullRequestWorkflow, postMergeWorkflow]) {
+    assert.match(workflow, /repository dumps, source bundles, and imported HTML/);
+    assert.match(
+      workflow,
+      /full logs, full dependency-install logs, and command output/,
+    );
+    assert.match(
+      workflow,
+      /environment files and values, credentials, and secrets/,
+    );
+    assert.match(
+      workflow,
+      /unbounded browser traces, videos, DOM snapshots, and screenshots/,
+    );
+  }
+  for (const producer of [ciEvidenceSource, pullRequestWorkflow, postMergeWorkflow]) {
+    assert.match(producer, /repository dumps, source bundles, and imported HTML/);
+    assert.match(
+      producer,
+      /full logs, full dependency-install logs, and command output/,
+    );
+    assert.match(
+      producer,
+      /environment files and values, credentials, and secrets/,
+    );
+    assert.match(
+      producer,
+      /unbounded browser traces, videos, DOM snapshots, and screenshots/,
+    );
+  }
+  assert.match(
+    githubActionsDocumentation,
+    /not-collected.*source enumeration is outside this contract/i,
+  );
+  assert.match(
+    githubActionsDocumentation,
+    /four status messages of at most 512\s+characters/i,
+  );
+  assert.match(
+    githubActionsDocumentation,
+    /exit `124`|exit 124/i,
+  );
+});
+
+test("the evidence contract names every remote validation owner", () => {
+  for (const [job, command] of [
+    ["test-standard", "pnpm run test-standard"],
+    ["validate-api", "pnpm run validate:api"],
+    ["production-build", "pnpm run production-build"],
+    ["post-merge-build", "production-build.yml"],
+    ["validation", "all three upstream jobs"],
+  ]) {
+    assert.match(
+      githubActionsDocumentation,
+      new RegExp(job.replaceAll("-", "[-]"), "i"),
+      `missing remote validation owner: ${job}`,
+    );
+    assert.match(
+      githubActionsDocumentation,
+      new RegExp(command.replaceAll(".", "\\."), "i"),
+      `missing owner behavior: ${command}`,
+    );
+  }
 });
 
 test("diagnostics documentation requires bounded evidence before escalation or optimization", () => {

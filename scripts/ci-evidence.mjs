@@ -382,11 +382,11 @@ export function publishEvidence({ env = process.env } = {}) {
         : []),
     ],
     redactions: [
-      "source and imported content",
-      "full logs and command output",
-      "provider payloads and request identifiers",
-      "environment values, credentials, and secrets",
-      "Playwright traces, videos, DOM snapshots, and unapproved screenshots",
+      "repository dumps, source bundles, and imported HTML",
+      "full logs, full dependency-install logs, and command output",
+      "provider payloads, prompts, and request identifiers",
+      "environment files and values, credentials, and secrets",
+      "unbounded browser traces, videos, DOM snapshots, and screenshots",
     ],
   };
   let written = envelope;
