@@ -20,6 +20,7 @@ import {
   renderPlannerGuardExamples,
   renderPlannerGuardPolicy,
 } from "./lib/regression-guard-guidance.mjs";
+import { updateRegressionGuardGuidance } from "./update-regression-guard-guidance.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const checker = path.join(root, "scripts/check-regression-guard.mjs");
@@ -437,6 +438,7 @@ test("guidance freshness reports the document and section without rewriting trac
     );
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /replit\.md § Regression Guard policy/);
+    assert.match(result.stderr, /stale generated content/);
     assert.match(result.stderr, /node scripts\/update-regression-guard-guidance\.mjs/);
     assert.equal(fs.readFileSync(projectGuidance, "utf8"), stale);
 
@@ -454,6 +456,58 @@ test("guidance freshness reports the document and section without rewriting trac
     assert.equal(fs.readFileSync(projectGuidance, "utf8"), stale);
   } finally {
     fs.writeFileSync(projectGuidance, original);
+  }
+});
+
+test("guidance freshness explains missing documents without mutating tracked guidance", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "regression-guard-missing-"));
+  const before = new Map(
+    [failureGateSkill, projectGuidance].map((file) => [file, fs.readFileSync(file, "utf8")]),
+  );
+  const errors = [];
+  try {
+    const status = updateRegressionGuardGuidance({
+      root: directory,
+      guidanceFiles: ["missing-guidance.md"],
+      checkOnly: true,
+      reportError: (message) => errors.push(message),
+    });
+    assert.equal(status, 1);
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /Missing guidance document: missing-guidance\.md/);
+    assert.match(errors[0], /Affected Regression Guard guidance sections: Regression Guard policy, Regression Guard examples/);
+    assert.match(errors[0], /missing document, not stale generated content/);
+    assert.match(errors[0], /node scripts\/update-regression-guard-guidance\.mjs/);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+    for (const [file, text] of before) assert.equal(fs.readFileSync(file, "utf8"), text);
+  }
+});
+
+test("guidance freshness explains unreadable documents without mutating tracked guidance", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "regression-guard-unreadable-"));
+  const unreadablePath = path.join(directory, "unreadable-guidance.md");
+  const before = new Map(
+    [failureGateSkill, projectGuidance].map((file) => [file, fs.readFileSync(file, "utf8")]),
+  );
+  const errors = [];
+  fs.mkdirSync(unreadablePath);
+  try {
+    const status = updateRegressionGuardGuidance({
+      root: directory,
+      guidanceFiles: ["unreadable-guidance.md"],
+      checkOnly: true,
+      reportError: (message) => errors.push(message),
+    });
+    assert.equal(status, 1);
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /Unreadable guidance document: unreadable-guidance\.md/);
+    assert.match(errors[0], /Affected Regression Guard guidance sections: Regression Guard policy, Regression Guard examples/);
+    assert.match(errors[0], /unreadable document, not stale generated content/);
+    assert.match(errors[0], /node scripts\/update-regression-guard-guidance\.mjs/);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+    for (const [file, text] of before) assert.equal(fs.readFileSync(file, "utf8"), text);
   }
 });
 
