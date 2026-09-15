@@ -199,3 +199,33 @@ test("fingerprints include sorted relative paths, byte lengths, and bytes", () =
   assert.notEqual(one, two);
   assert.equal(reordered, sorted);
 });
+
+test("canonical import confirmation skill preserves independent source and runtime evidence", async () => {
+  const skill = await fs.readFile(
+    path.resolve(".agents", "skills", "import-confirmation", "SKILL.md"),
+    "utf8",
+  );
+
+  assert.match(skill, /exact importer commit or immutable version/i);
+  assert.match(skill, /approved manifest.*SHA-256/i);
+  assert.match(skill, /prior import result/i);
+  assert.match(skill, /complete relative file set/i);
+  assert.match(skill, /each file[\s\S]*?byte length[\s\S]*?SHA-256/i);
+  assert.match(skill, /unchanged repeat-import result/i);
+  assert.match(skill, /not evidence/i);
+  assert.match(skill, /explicit runtime approval/i);
+  assert.match(skill, /reviewed static-server command/i);
+  assert.match(skill, /verified static server/i);
+  assert.match(skill, /owned PID.*process group/i);
+  assert.match(skill, /finally[` ]+path/i);
+  assert.match(skill, /stop and verify the owned static server/i);
+  assert.match(skill, /repeat the complete Phase A2 source walk/i);
+  assert.match(skill, /final source hashes after runtime/i);
+  assert.match(skill, /optional-unlisted/i);
+  assert.match(skill, /Source evidence:[\s\S]*Runtime evidence:/i);
+  assert.match(skill, /Verified.*Failed.*Blocked/s);
+  assert.match(skill, /no required check is skipped/i);
+  assert.match(skill, /Never publish.*create a project.*install dependencies/s);
+  assert.match(skill, /never claim that MCP directly imported the source/i);
+  assert.doesNotMatch(skill, /repair imported files to make checks pass/i);
+});
