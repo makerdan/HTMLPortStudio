@@ -253,45 +253,105 @@ change before proposing an optimization. Cost observations never authorize a
 weaker validation contract; they must not weaken validation or become
 permission to weaken validation.
 
-## Diagnosis and escalation checkpoints
+## Checkpoint operating procedure
 
-Use this order when a remote job is unexpected. Branch isolation means keeping
-the observed commit and diagnostic edits separate from unrelated work:
+Use these six boundaries in order when changing or diagnosing remote
+validation. They supplement, but do not replace, the authoritative Failure
+Gate and Regression Guard policies in `replit.md` and their canonical skills.
+This document does not copy those policies or create a second validation
+contract.
 
-1. Isolate the branch and commit. Reproduce on the same branch or an isolated
-   diagnostic branch; do not mix unrelated edits into the evidence.
-2. Review the smallest change first and compare the compact envelope with the
-   local baseline and the exact registered local tier. A local/remote mismatch
-   is evidence to investigate, not permission to replace the canonical command.
-3. Start with the compact-evidence-first summary. Inspect only the bounded
-   status metadata and approved artifact reference before considering any
-   deeper investigation. Do not download or create excluded logs, source
-   bundles, provider payloads, environment files, traces, videos, DOM
-   snapshots, or screenshots.
-4. At the pre-merge checkpoint, verify the workflow files, job ownership, and branch policy
-   through the authorized GitHub read-only checks. Local workflow files do not
-   prove remote activation or required-check configuration.
-5. After merging, monitor the main push and scheduled post-merge result. The
-   advisory post-merge job cannot replace the stable pull-request aggregate.
+### 1. Pre-edit baseline
 
-AI assistance is conditional, not automatic. It may be considered only after
-the branch is isolated, compact evidence is complete, the local comparison is
-recorded, two-factor provenance is available where a failure is being
-classified, and a human has authorized the specific diagnostic question and
-redacted evidence scope. Human authorization is required before any escalation.
-It must not receive source, imported content,
-provider payloads, environment values, secrets, or unbounded logs. This
-repository must not invoke AI automatically; it does not invoke a model, add
-credentials, send telemetry, or change
-GitHub policy as part of CI diagnostics.
+Before editing, record the current branch, commit, working-tree state, exact
+registered local tier, and the relevant remote job names. Treat the existing
+`test-standard`, `validate-api`, `production-build`, `validation`, and
+`post-merge-build` names as stable. If the baseline is not known, say so; do
+not infer a passing remote run or a required check from local YAML.
 
-If a workflow change is unsafe, stop at the smallest reversible boundary:
-preserve the authoritative validation jobs and aggregate, revert the
-diagnostic-only change, and rerun the same registered local tier. Before
-removing or renaming a stable job, check whether branch protection or a
-ruleset references it; never remove a required check first. Rollback is a
-human-authorized repository operation, not an automated response to a
-diagnostic upload failure.
+### 2. Smallest-change check
+
+Keep each short-lived branch to one objective. A branch may contain one
+validation-contract change, but not a second contract change or an
+opportunistic refactor. Keep workflow and generated-file diffs reviewable:
+inspect the generated diff and its source, and do not hide unrelated edits
+  behind regeneration. Branch isolation keeps the observed commit and
+  diagnostic edits separate from unrelated work. A second attempted fix starts
+  from a new branch rather than accumulating speculative changes. Review the
+  smallest change first.
+
+### 3. Pre-PR local validation
+
+Before opening or updating a pull request, run the exact selected registered
+local tier. When reproducing a GitHub owner locally, use the existing
+commands: `pnpm run test-standard`, `pnpm run validate:api`, and
+`pnpm run production-build`. Compare the result with the baseline before
+changing the workflow. A fresh local checkpoint before rebasing or merging
+keeps the reviewed diff and validation result attributable.
+
+### 4. Post-CI diagnosis boundary
+
+After CI, first compare the job conclusion, commit, event, command, and local
+result with the compact evidence envelope and the local baseline. Review the
+bounded envelope before full logs or any deeper inspection: this is the
+compact-evidence-first summary. Keep excluded content out of every diagnostic
+handoff. A local/remote mismatch is evidence to investigate, not permission
+to replace the canonical command.
+
+AI diagnosis is conditional, not automatic. Escalate only when **all** of
+these conditions hold: the job has failed, the failure is still unclassified,
+the compact evidence is insufficient to answer the specific diagnostic
+question, the branch and baseline are isolated, and a human has authorized
+the question and redacted evidence scope. Human authorization is required
+before escalation. The bounded envelope must be reviewed before full logs; no
+automatic AI invocation, provider request, prompt, credential, telemetry, or
+full-log handoff exists in this repository. This procedure must not invoke AI.
+AI must not receive source, imported content, provider payloads, environment
+values, secrets, or unbounded logs. Use two-factor provenance when classifying
+the failure; a passing retry alone is not sufficient evidence.
+
+### 5. Pre-merge aggregate and policy verification
+
+Before merging, require the stable `validation` aggregate to report success
+for `test-standard`, `validate-api`, and `production-build`. Verify the
+workflow files, job ownership, remote activation, and branch-policy
+references through authorized GitHub checks. Local workflow files do not prove
+that GitHub activated a workflow or made a check required. GitHub settings
+changes remain separately authorized administration work.
+
+### 6. Post-merge monitoring boundary
+
+After merging, monitor the `main` push and scheduled `post-merge-build`
+result, including eligibility skips and retries. The advisory post-merge job
+cannot replace the stable pull-request aggregate. Record unavailable remote
+evidence as unavailable rather than treating a missing run, skipped run, or
+local result as proof of successful post-merge verification.
+
+## Rollback procedure
+
+When a workflow or diagnostic change is unsafe, stop at the smallest
+reversible boundary:
+
+1. Preserve the stable job names and the authoritative `validation`
+   aggregate; do not rename or remove `test-standard`, `validate-api`,
+   `production-build`, `validation`, or `post-merge-build` as part of
+   diagnosis.
+2. Before disabling a workflow or changing a job name, check whether branch
+   protection or a ruleset references its checks. Never remove a required
+   check first, and do not claim a policy reference was checked when that
+   remote evidence is unavailable. A stable check is referenced only when
+   branch protection or a ruleset references it and authorized remote policy
+   inspection confirms it.
+3. Revert the smallest workflow change that caused the problem. Do not bundle
+   unrelated refactors or a second attempted fix into the rollback.
+4. Run the same registered local Replit validation tier after the rollback.
+   Local validation remains the owner and must continue even if a GitHub
+   workflow is temporarily disabled.
+
+Rollback is a human-authorized repository operation, not an automatic
+response to a diagnostic upload failure. The rollback itself does not change
+the validation commands, workflow permissions, artifact retention, or GitHub
+settings.
 
 ## Post-merge coalescing policy
 

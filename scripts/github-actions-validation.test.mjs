@@ -372,3 +372,78 @@ test("diagnostics documentation requires bounded evidence before escalation or o
     /must not.*weaken validation|not.*permission to weaken validation/i,
   );
 });
+
+test("checkpoint documentation keeps escalation and policy boundaries explicit", () => {
+  for (const heading of [
+    "Pre-edit baseline",
+    "Smallest-change check",
+    "Pre-PR local validation",
+    "Post-CI diagnosis boundary",
+    "Pre-merge aggregate and policy verification",
+    "Post-merge monitoring boundary",
+    "Rollback procedure",
+  ]) {
+    assert.match(
+      githubActionsDocumentation,
+      new RegExp(`^###?\\s+\\d*\\.?\\s*${heading}$`, "im"),
+      `missing checkpoint heading: ${heading}`,
+    );
+  }
+
+  for (const phrase of [
+    "one objective",
+    "one\\s+validation-contract change",
+    "opportunistic refactor",
+    "fresh local checkpoint before rebasing or merging",
+    "bounded envelope\\s+before\\s+full logs",
+    "job has failed",
+    "failure is still unclassified",
+    "compact evidence is insufficient",
+    "human has authorized",
+    "stable job names",
+    "branch protection or a ruleset references",
+    "smallest workflow change",
+    "Local validation remains the owner",
+  ]) {
+    assert.match(
+      githubActionsDocumentation,
+      new RegExp(phrase, "i"),
+      `missing checkpoint contract phrase: ${phrase}`,
+    );
+  }
+
+  assert.match(
+    githubActionsDocumentation,
+    /does not copy those policies|does not copy.*policies/i,
+  );
+  assert.equal(
+    (githubActionsDocumentation.match(/BEGIN GENERATED REGRESSION GUARD POLICY/g) || [])
+      .length,
+    0,
+    "GitHub Actions guidance must not copy the generated Regression Guard policy block",
+  );
+  for (const duplicatedPolicyPhrase of [
+    "Every task plan has",
+    "The baseline catalog is",
+    "Regression Guard is an additive plan contract",
+    "The permitted exceptions are",
+  ]) {
+    assert.doesNotMatch(
+      githubActionsDocumentation,
+      new RegExp(duplicatedPolicyPhrase, "i"),
+      `GitHub Actions guidance copied authoritative policy text: ${duplicatedPolicyPhrase}`,
+    );
+  }
+  for (const unsafeEscalation of [
+    "automatically invoke AI",
+    "send.*full logs.*AI",
+    "AI.*replace.*validation",
+    "AI.*change.*GitHub policy",
+  ]) {
+    assert.doesNotMatch(
+      githubActionsDocumentation,
+      new RegExp(unsafeEscalation, "i"),
+      `unsafe AI escalation wording: ${unsafeEscalation}`,
+    );
+  }
+});
