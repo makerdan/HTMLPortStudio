@@ -13,8 +13,12 @@ import {
 import {
   REGRESSION_GUARD_GUIDANCE_END,
   REGRESSION_GUARD_GUIDANCE_START,
+  REGRESSION_GUARD_POLICY_END,
+  REGRESSION_GUARD_POLICY_START,
   renderDocumentationGuardExamples,
+  renderDocumentationGuardPolicy,
   renderPlannerGuardExamples,
+  renderPlannerGuardPolicy,
 } from "./lib/regression-guard-guidance.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -76,6 +80,29 @@ function extractGuardExamples(text, sourceLabel) {
     `[REGRESSION-GUARD-DOCS] ${sourceLabel} is missing the complete Concrete, N/A, and self-satisfying examples.`,
   );
   return block;
+}
+
+function extractGeneratedBlock(text, start, end, sourceLabel, section) {
+  const blocks = [...text.matchAll(new RegExp(
+    `${start}\\n([\\s\\S]*?)\\n${end}`,
+    "g",
+  ))];
+  assert.equal(
+    blocks.length,
+    1,
+    `[REGRESSION-GUARD-DOCS] ${sourceLabel} § ${section} must contain exactly one generated guidance block.`,
+  );
+  return `${start}\n${blocks[0]?.[1]}\n${end}`;
+}
+
+function withFileText(file, mutate, callback) {
+  const original = fs.readFileSync(file, "utf8");
+  try {
+    fs.writeFileSync(file, mutate(original));
+    return callback();
+  } finally {
+    fs.writeFileSync(file, original);
+  }
 }
 
 test("accepts a concrete guard with the required fields and placement", () => {
@@ -372,7 +399,105 @@ test("keeps guard examples synchronized across the planner and canonical guidanc
       `[REGRESSION-GUARD-DOCS] ${sourceLabel} generated examples are stale. ` +
         "Run node scripts/update-regression-guard-guidance.mjs.",
     );
+    assert.equal(
+      extractGeneratedBlock(
+        documentation,
+        REGRESSION_GUARD_POLICY_START,
+        REGRESSION_GUARD_POLICY_END,
+        sourceLabel,
+        "Regression Guard policy",
+      ),
+      renderDocumentationGuardPolicy(),
+      `[REGRESSION-GUARD-DOCS] ${sourceLabel} generated policy drifted.`,
+    );
   }
+
+  const plannerPolicy = help.stdout.match(
+    /Regression Guard decision \(provide exactly one\):\n\n([\s\S]*?)\n\n  Concrete guard:/,
+  )?.[1];
+  assert.equal(
+    plannerPolicy,
+    renderPlannerGuardPolicy(),
+    "[REGRESSION-GUARD-DOCS] planner help policy drifted from the shared definition.",
+  );
+});
+
+test("guidance freshness reports the document and section without rewriting tracked guidance", () => {
+  const original = fs.readFileSync(projectGuidance, "utf8");
+  const stale = original.replace(
+    "The permitted exceptions are:",
+    "The permitted exceptions have drifted:",
+  );
+  fs.writeFileSync(projectGuidance, stale);
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [path.join(root, "scripts/update-regression-guard-guidance.mjs"), "--check"],
+      { cwd: root, encoding: "utf8" },
+    );
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /replit\.md § Regression Guard policy/);
+    assert.match(result.stderr, /node scripts\/update-regression-guard-guidance\.mjs/);
+    assert.equal(fs.readFileSync(projectGuidance, "utf8"), stale);
+
+    const validation = spawnSync(
+      process.execPath,
+      [path.join(root, "scripts/validation-steps.mjs")],
+      {
+        cwd: root,
+        encoding: "utf8",
+        env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== "TASK_PLAN_FILE")),
+      },
+    );
+    assert.notEqual(validation.status, 0);
+    assert.match(validation.stderr, /replit\.md § Regression Guard policy/);
+    assert.equal(fs.readFileSync(projectGuidance, "utf8"), stale);
+  } finally {
+    fs.writeFileSync(projectGuidance, original);
+  }
+});
+
+test("guidance freshness rejects malformed generated blocks with an updater command", () => {
+  const original = fs.readFileSync(projectGuidance, "utf8");
+  const malformed = original.replace(
+    "\n<!-- END GENERATED REGRESSION GUARD POLICY -->",
+    "",
+  );
+  fs.writeFileSync(projectGuidance, malformed);
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [path.join(root, "scripts/update-regression-guard-guidance.mjs"), "--check"],
+      { cwd: root, encoding: "utf8" },
+    );
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /replit\.md § Regression Guard policy/);
+    assert.match(result.stderr, /exactly one generated guidance block/);
+    assert.match(result.stderr, /node scripts\/update-regression-guard-guidance\.mjs/);
+    assert.equal(fs.readFileSync(projectGuidance, "utf8"), malformed);
+  } finally {
+    fs.writeFileSync(projectGuidance, original);
+  }
+});
+
+test("validation runs guidance freshness before ad-hoc plan checks and leaves documents unchanged", () => {
+  const before = new Map(
+    [failureGateSkill, projectGuidance].map((file) => [file, fs.readFileSync(file, "utf8")]),
+  );
+  const result = spawnSync(process.execPath, [path.join(root, "scripts/validation-steps.mjs")], {
+    cwd: root,
+    encoding: "utf8",
+    env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== "TASK_PLAN_FILE")),
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Generated guidance is current \(read-only\)/);
+  assert.match(result.stdout, /No TASK_PLAN_FILE set; validation is running in ad-hoc mode/);
+  assert.ok(
+    result.stdout.indexOf("Generated guidance is current") <
+      result.stdout.indexOf("No TASK_PLAN_FILE set"),
+    "guidance freshness must run before plan checks",
+  );
+  for (const [file, text] of before) assert.equal(fs.readFileSync(file, "utf8"), text);
 });
 
 test("plan creation points missing guard decisions to the supported examples", () => {
@@ -432,6 +557,8 @@ test("plan creation writes a compliant section for every supported decision", ()
   fs.cpSync(path.join(root, "scripts"), fixtureScripts, { recursive: true });
   fs.cpSync(path.join(root, "docs"), fixtureDocs, { recursive: true });
   fs.mkdirSync(path.join(directory, ".local/tasks"), { recursive: true });
+  const baselineFile = path.join(directory, "failure-baseline.json");
+  fs.writeFileSync(baselineFile, JSON.stringify({ version: 1, records: [] }));
   fs.writeFileSync(path.join(fixtureDocs, "validation/validation-tiers.json"), JSON.stringify({
     version: 1,
     tiers: [{ name: "test-standard", command: "true", timeoutMs: 1000 }],
@@ -463,7 +590,11 @@ test("plan creation writes a compliant section for every supported decision", ()
         "--why", "The generated plan must preserve its validation contract.",
         ...decision.slice(0, decision.length - 1),
         "--output", output,
-      ], { cwd: directory, encoding: "utf8" });
+      ], {
+        cwd: directory,
+        encoding: "utf8",
+        env: { ...process.env, FAILURE_BASELINE_FILE: baselineFile },
+      });
       assert.equal(result.status, 0, result.stderr);
       const text = fs.readFileSync(output, "utf8");
       assert.deepEqual(validateRegressionGuardText(text, output), []);

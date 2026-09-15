@@ -28,3 +28,4 @@
 - [Acceptance blocker provenance](acceptance-blocker-provenance.md) — Separate repository-wide gate/catalog drift from task-owned runtime checks before claiming final acceptance.
 - [Validation timeout process cleanup](validation-timeout-process-cleanup.md) — Shell timeouts can orphan child commands; replace the wrapper shell so termination reaches the actual validator.
 - [CI diagnostic artifact isolation](ci-diagnostic-artifact-isolation.md) — Generate uploadable evidence on a source-free runner, separate from jobs that execute repository code.
+- [Regression Guard guidance freshness](regression-guard-guidance-freshness.md) — Keep policy and examples generated from one source; validation checks them read-only and points stale sections to the updater.

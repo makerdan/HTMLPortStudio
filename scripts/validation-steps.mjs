@@ -4,6 +4,18 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+const guidanceStatus = spawnSync(
+  process.execPath,
+  [path.join(root, "scripts/update-regression-guard-guidance.mjs"), "--check"],
+  {
+    cwd: root,
+    env: process.env,
+    stdio: "inherit",
+  },
+).status ?? 1;
+if (guidanceStatus !== 0) process.exit(guidanceStatus);
+
 const plan = process.env.TASK_PLAN_FILE;
 if (!plan) {
   console.log("[FAILURE-GATE] No TASK_PLAN_FILE set; validation is running in ad-hoc mode.");

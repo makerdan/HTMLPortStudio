@@ -188,33 +188,21 @@ current-task validation, which remains scoped to `TASK_PLAN_FILE`.
 
 ## Regression Guard
 
-```markdown
-**Covers:** <concrete scenario, boundary, invariant, lifecycle, reliability property, or contract>
-**Test location:** <specific test file in the layer where the wrong behavior lives>
-**What it checks:** <specific assertion or observable behavior that fails if it returns>
-```
-
-The permitted exceptions are: a race condition requiring real timing, an
-unmockable external API behavior, a visual regression with no screenshot
-infrastructure, or a fix that removes the feature entirely. Each N/A must say
-`**N/A**` and give a specific `**Why N/A:**` reason. A guard-writing task may
-instead declare `**Self-satisfying**` and identify its guard or test
-deliverable. Placeholder, vague, wrong-layer, and misplaced declarations fail
-strict validation. Regression Guard never replaces Failure Gate or raises the
-plan's validation ceiling.
+<!-- BEGIN GENERATED REGRESSION GUARD POLICY -->
+Regression Guard is an additive plan contract enforced by `scripts/check-regression-guard.mjs`.
+When a task fixes or materially changes existing behavior, the plan must classify the change and name the concrete recurrence test, or use one of the documented N/A reasons.
+The guard section follows the plan's baseline and validation sections and does not change the selected validation tier. The validation entry point scopes both guards to `TASK_PLAN_FILE`, remediates missing stubs, then runs both strict checks.
+The permitted exceptions are: a race condition requiring real timing, an unmockable external API behavior, a visual regression with no screenshot infrastructure, or a fix that removes the feature entirely.
+A guard-writing task may instead declare `**Self-satisfying**` and identify its guard or test deliverable.
+Placeholder, vague, wrong-layer, and misplaced declarations fail strict validation. Regression Guard never replaces Failure Gate or raises the plan's validation ceiling.
+<!-- END GENERATED REGRESSION GUARD POLICY -->
 ## Regression Guard
 
-```markdown
-**Covers:** <concrete scenario, boundary, invariant, lifecycle, reliability property, or contract>
-**Test location:** <specific test file in the layer where the wrong behavior lives>
-**What it checks:** <specific assertion or observable behavior that fails if it returns>
-```
-
-The permitted exceptions are: a race condition requiring real timing, an
-unmockable external API behavior, a visual regression with no screenshot
-infrastructure, or a fix that removes the feature entirely. Each N/A must say
-`**N/A**` and give a specific `**Why N/A:**` reason. A guard-writing task may
-instead declare `**Self-satisfying**` and identify its guard or test
-deliverable. Placeholder, vague, wrong-layer, and misplaced declarations fail
-strict validation. Regression Guard never replaces Failure Gate or raises the
-plan's validation ceiling.
+<!-- BEGIN GENERATED REGRESSION GUARD POLICY -->
+Regression Guard is an additive plan contract enforced by `scripts/check-regression-guard.mjs`.
+When a task fixes or materially changes existing behavior, the plan must classify the change and name the concrete recurrence test, or use one of the documented N/A reasons.
+The guard section follows the plan's baseline and validation sections and does not change the selected validation tier. The validation entry point scopes both guards to `TASK_PLAN_FILE`, remediates missing stubs, then runs both strict checks.
+The permitted exceptions are: a race condition requiring real timing, an unmockable external API behavior, a visual regression with no screenshot infrastructure, or a fix that removes the feature entirely.
+A guard-writing task may instead declare `**Self-satisfying**` and identify its guard or test deliverable.
+Placeholder, vague, wrong-layer, and misplaced declarations fail strict validation. Regression Guard never replaces Failure Gate or raises the plan's validation ceiling.
+<!-- END GENERATED REGRESSION GUARD POLICY -->

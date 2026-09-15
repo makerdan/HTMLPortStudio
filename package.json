@@ -25,6 +25,7 @@
     "validate:api": "node ./scripts/validate-api-codegen.mjs",
     "validate:clerk-skill": "node ./scripts/check-clerk-for-dan.mjs",
     "validate:failure-gate": "node ./scripts/validation-steps.mjs",
+    "validate:regression-guard-guidance": "node ./scripts/update-regression-guard-guidance.mjs --check",
     "validate:studio-analytics": "node ./scripts/validate-studio-analytics.mjs",
     "new-plan": "node ./scripts/new-plan.mjs",
     "run-tier": "node ./scripts/run-tier.mjs",

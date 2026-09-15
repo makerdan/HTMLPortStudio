@@ -4,7 +4,10 @@ import path from "node:path";
 import { ROOT, loadTierRegistry } from "./lib/tier-lock-check.mjs";
 import { validatePlanText } from "./lib/failure-gate.mjs";
 import { validateRegressionGuardText } from "./lib/regression-guard.mjs";
-import { renderPlannerGuardExamples } from "./lib/regression-guard-guidance.mjs";
+import {
+  renderPlannerGuardExamples,
+  renderPlannerGuardPolicy,
+} from "./lib/regression-guard-guidance.mjs";
 
 const args = process.argv.slice(2);
 
@@ -46,6 +49,8 @@ Examples:
     --guard-na-reason "The failure is a visual regression with no screenshot infrastructure."
 
 Regression Guard decision (provide exactly one):
+
+${renderPlannerGuardPolicy()}
 
 ${renderPlannerGuardExamples()}
 
