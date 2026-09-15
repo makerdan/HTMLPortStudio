@@ -15,6 +15,13 @@ function git(directory, ...args) {
   return result.stdout.trim();
 }
 
+function gitResult(directory, ...args) {
+  return spawnSync("git", args, {
+    cwd: directory,
+    encoding: "utf8",
+  });
+}
+
 function createFixture() {
   const directory = fs.mkdtempSync(
     path.join(os.tmpdir(), "git-sync-recovery-"),
@@ -38,6 +45,41 @@ function createFixture() {
   fs.writeFileSync(path.join(directory, "remote.txt"), "remote\n");
   git(directory, "add", "remote.txt");
   git(directory, "commit", "-m", "remote-only");
+  const remote = git(directory, "rev-parse", "HEAD");
+  git(directory, "switch", "main");
+
+  return {
+    directory,
+    base,
+    local,
+    remote,
+    cleanup: () => fs.rmSync(directory, { recursive: true, force: true }),
+  };
+}
+
+function createConflictingFixture() {
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "git-sync-recovery-conflict-"),
+  );
+  git(directory, "init", "--initial-branch=main");
+  git(directory, "config", "user.name", "Git Sync Recovery Test");
+  git(directory, "config", "user.email", "git-sync-recovery@example.invalid");
+
+  fs.writeFileSync(path.join(directory, "shared.txt"), "base\n");
+  git(directory, "add", "shared.txt");
+  git(directory, "commit", "-m", "base");
+  const base = git(directory, "rev-parse", "HEAD");
+
+  fs.writeFileSync(path.join(directory, "shared.txt"), "local\n");
+  git(directory, "add", "shared.txt");
+  git(directory, "commit", "-m", "local-edit");
+  const local = git(directory, "rev-parse", "HEAD");
+
+  git(directory, "branch", "remote-main", base);
+  git(directory, "switch", "remote-main");
+  fs.writeFileSync(path.join(directory, "shared.txt"), "remote\n");
+  git(directory, "add", "shared.txt");
+  git(directory, "commit", "-m", "remote-edit");
   const remote = git(directory, "rev-parse", "HEAD");
   git(directory, "switch", "main");
 
@@ -95,6 +137,69 @@ test("divergent recovery preserves both histories and never selects force push",
     assert.equal(
       git(fixture.directory, "show", `${fixture.remote}:remote.txt`),
       "remote",
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test("conflicting divergent recovery stops before pushing and keeps both tips reachable", () => {
+  const fixture = createConflictingFixture();
+  try {
+    const plan = decideGitSyncRecovery({
+      remoteAuthenticated: true,
+      localIsAncestorOfRemote: false,
+      remoteIsAncestorOfLocal: false,
+    });
+    assert.equal(plan.action, "reconcile-divergent-history");
+    assert.equal(plan.pushMode, "none");
+    assert.equal(plan.preservesRemoteHistory, true);
+
+    const merge = gitResult(
+      fixture.directory,
+      "merge",
+      "--no-edit",
+      "remote-main",
+    );
+    assert.notEqual(merge.status, 0, merge.stderr);
+    assert.match(
+      git(fixture.directory, "status", "--porcelain"),
+      /^UU shared\.txt$/m,
+    );
+    assert.notEqual(git(fixture.directory, "ls-files", "-u"), "");
+    assert.match(
+      fs.readFileSync(path.join(fixture.directory, "shared.txt"), "utf8"),
+      /local/,
+    );
+    assert.match(
+      fs.readFileSync(path.join(fixture.directory, "shared.txt"), "utf8"),
+      /remote/,
+    );
+
+    assert.equal(git(fixture.directory, "rev-parse", "main"), fixture.local);
+    assert.equal(
+      git(fixture.directory, "rev-parse", "remote-main"),
+      fixture.remote,
+    );
+    assert.equal(
+      git(
+        fixture.directory,
+        "merge-base",
+        "--is-ancestor",
+        fixture.local,
+        "main",
+      ),
+      "",
+    );
+    assert.equal(
+      git(
+        fixture.directory,
+        "merge-base",
+        "--is-ancestor",
+        fixture.remote,
+        "remote-main",
+      ),
+      "",
     );
   } finally {
     fixture.cleanup();
