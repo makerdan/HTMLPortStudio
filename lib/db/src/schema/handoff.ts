@@ -64,12 +64,45 @@ export const handoffStepsTable = pgTable(
   ],
 );
 
+export const handoffTransferPackagesTable = pgTable(
+  "handoff_transfer_packages",
+  {
+    id: uuid("id").primaryKey(),
+    ownerId: varchar("owner_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    handoffJobId: uuid("handoff_job_id").references(() => handoffJobsTable.id, {
+      onDelete: "set null",
+    }),
+    sourceBundle: jsonb("source_bundle").notNull(),
+    manifest: jsonb("manifest").notNull(),
+    manifestHash: varchar("manifest_hash", { length: 64 }).notNull(),
+    tokenHash: varchar("token_hash", { length: 64 }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    retrievalLimit: integer("retrieval_limit").notNull().default(1),
+    retrievalCount: integer("retrieval_count").notNull().default(0),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex("handoff_transfer_packages_token_hash_unique").on(table.tokenHash),
+    index("handoff_transfer_packages_owner_idx").on(table.ownerId, table.createdAt),
+    index("handoff_transfer_packages_expiry_idx").on(table.expiresAt),
+  ],
+);
+
 export const handoffJobsRelations = relations(handoffJobsTable, ({ many, one }) => ({
   owner: one(usersTable, {
     fields: [handoffJobsTable.ownerId],
     references: [usersTable.id],
   }),
   steps: many(handoffStepsTable),
+  transferPackages: many(handoffTransferPackagesTable),
 }));
 
 export const handoffStepsRelations = relations(handoffStepsTable, ({ one }) => ({
@@ -79,5 +112,20 @@ export const handoffStepsRelations = relations(handoffStepsTable, ({ one }) => (
   }),
 }));
 
+export const handoffTransferPackagesRelations = relations(
+  handoffTransferPackagesTable,
+  ({ one }) => ({
+    owner: one(usersTable, {
+      fields: [handoffTransferPackagesTable.ownerId],
+      references: [usersTable.id],
+    }),
+    handoffJob: one(handoffJobsTable, {
+      fields: [handoffTransferPackagesTable.handoffJobId],
+      references: [handoffJobsTable.id],
+    }),
+  }),
+);
+
 export type HandoffJobRow = typeof handoffJobsTable.$inferSelect;
 export type HandoffStepRow = typeof handoffStepsTable.$inferSelect;
+export type HandoffTransferPackageRow = typeof handoffTransferPackagesTable.$inferSelect;

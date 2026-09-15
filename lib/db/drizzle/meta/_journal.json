@@ -29,6 +29,13 @@
       "when": 1788838072433,
       "tag": "0003_poe_chat_rate_limit_cleanup",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788839000000,
+      "tag": "0004_handoff_transfer_packages",
+      "breakpoints": true
     }
   ]
 }

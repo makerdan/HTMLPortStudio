@@ -10,6 +10,9 @@ import {
   useGetReplitProjectConnectionSetup,
   useGetReplitProjectStatus,
   useRetryReplitProjectSetup,
+  useCreateBundleTransfer,
+  useGetBundleTransfer,
+  useRevokeBundleTransfer,
   useGetGithubRepository,
   importGithubRepository,
   importHostedUrl,
@@ -33,6 +36,7 @@ import type {
   HostedUrlInput,
   PlaygroundImport,
   PlaygroundImportInput,
+  BundleTransferCreated,
 } from '@workspace/api-client-react';
 import {
   SOURCE_TEXT_LIMIT_LABEL,
@@ -1372,6 +1376,145 @@ function ReplitProjectHandoffPanel({
           )}
         </CardContent>
       )}
+    </Card>
+  );
+}
+
+function BundleTransferPanel({ bundle }: { bundle: SourceBundle }) {
+  const { isAuthenticated, isLoading: authLoading, login } = useStudioAuth();
+  const [transferId, setTransferId] = useState<string | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const createMutation = useCreateBundleTransfer();
+  const revokeMutation = useRevokeBundleTransfer();
+  const transferQuery = useGetBundleTransfer(transferId ?? '', {
+    query: {
+      enabled: Boolean(transferId) && isAuthenticated,
+      queryKey: ['bundle-transfer', transferId],
+    },
+  });
+  const transfer = transferQuery.data ?? createMutation.data;
+  const oneTimeToken = createMutation.data?.transferToken;
+
+  const handleCreate = () => {
+    setLocalError(null);
+    setCopied(false);
+    createMutation.mutate(
+      { data: { approved: true, bundle } },
+      {
+        onSuccess: (data: BundleTransferCreated) => {
+          setTransferId(data.transferId);
+        },
+        onError: (error: unknown) => {
+          setLocalError(
+            getStudioErrorMessage(
+              error,
+              'The secure transfer could not be created. No source was sent.',
+            ),
+          );
+        },
+      },
+    );
+  };
+
+  const handleCopyToken = async () => {
+    if (!oneTimeToken) return;
+    try {
+      await navigator.clipboard.writeText(oneTimeToken);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  const handleRevoke = () => {
+    if (!transferId) return;
+    revokeMutation.mutate(
+      { transferId },
+      {
+        onError: (error: unknown) => {
+          setLocalError(
+            getStudioErrorMessage(error, 'The secure transfer could not be revoked.'),
+          );
+        },
+      },
+    );
+  };
+
+  return (
+    <Card className="border-primary/30 bg-primary/[0.03] shadow-sm">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Secure bundle transfer</CardTitle>
+        <CardDescription>
+          Create a short-lived package for the destination project to retrieve. The
+          source stays out of prompts, URLs, browser storage, and Git.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3 pt-0">
+        {!isAuthenticated ? (
+          <Button type="button" onClick={login} disabled={authLoading}>
+            {authLoading ? 'Checking sign-in…' : 'Sign in to create a transfer'}
+          </Button>
+        ) : !transfer ? (
+          <Button type="button" onClick={handleCreate} disabled={createMutation.isPending}>
+            {createMutation.isPending ? 'Creating secure package…' : 'Create secure package'}
+          </Button>
+        ) : (
+          <>
+            <div className="grid gap-2 rounded-md border bg-card p-3 text-sm sm:grid-cols-2">
+              <div>
+                <span className="text-muted-foreground">Manifest hash</span>
+                <p className="break-all font-mono text-xs">{transfer.manifestHash}</p>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Expires</span>
+                <p>{new Date(transfer.expiresAt).toLocaleString()}</p>
+              </div>
+            </div>
+            {oneTimeToken && (
+              <div className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
+                <p className="text-sm font-medium">Store this token in Replit Secrets</p>
+                <p className="text-xs text-muted-foreground">
+                  Copy it once into the destination project&apos;s Secrets. Never paste
+                  it into a prompt or command line; it is not saved in this browser.
+                </p>
+                <div className="flex items-center gap-2">
+                  <code className="min-w-0 flex-1 break-all rounded bg-muted px-2 py-1 text-xs">
+                    {oneTimeToken}
+                  </code>
+                  <Button type="button" size="sm" variant="outline" onClick={handleCopyToken}>
+                    {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                    <span className="sr-only">{copied ? 'Copied' : 'Copy token'}</span>
+                  </Button>
+                </div>
+              </div>
+            )}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs text-muted-foreground">
+                {transfer.state === 'active'
+                  ? `${transfer.retrievalCount}/${transfer.retrievalLimit} retrievals used`
+                  : `Transfer ${transfer.state}`}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={handleRevoke}
+                disabled={revokeMutation.isPending || transfer.state === 'revoked'}
+              >
+                {revokeMutation.isPending ? 'Revoking…' : 'Revoke transfer'}
+              </Button>
+            </div>
+          </>
+        )}
+        {localError && (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Secure transfer unavailable</AlertTitle>
+            <AlertDescription>{localError}</AlertDescription>
+          </Alert>
+        )}
+      </CardContent>
     </Card>
   );
 }
@@ -3884,11 +4027,16 @@ export default function Home() {
                 )}
 
                  {sourceBundle && (
+                    <>
+                    {!analysisStale && !currentSourceContainsCredential && (
+                      <BundleTransferPanel bundle={sourceBundle} />
+                    )}
                    <ReplitProjectHandoffPanel
                      bundle={sourceBundle}
                      onRecoverySaved={saveRecovery}
                      onRecoveryCleared={clearRecovery}
                    />
+                    </>
                  )}
 
                 {/* Steps */}

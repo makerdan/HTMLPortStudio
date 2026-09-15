@@ -167,6 +167,96 @@ export interface SourceBundle {
   metadata: SourceBundleMetadata;
 }
 
+export interface BundleTransferInput {
+  /** The signed-in owner confirms this is the currently reviewed normalized bundle. */
+  approved: true;
+  bundle: SourceBundle;
+}
+
+export interface BundleTransferManifestFile {
+  path: string;
+  /** @minimum 0 */
+  bytes: number;
+  /** @pattern ^[a-f0-9]{64}$ */
+  sha256: string;
+}
+
+export type BundleTransferManifestVersion = typeof BundleTransferManifestVersion[keyof typeof BundleTransferManifestVersion];
+
+
+export const BundleTransferManifestVersion = {
+  NUMBER_1: 1,
+} as const;
+
+export interface BundleTransferManifest {
+  version: BundleTransferManifestVersion;
+  sourceType: SourceType;
+  entrypoint: string;
+  /** @minimum 1 */
+  fileCount: number;
+  /** @minimum 1 */
+  totalBytes: number;
+  /**
+     * @minItems 1
+     * @maxItems 200
+     */
+  files: BundleTransferManifestFile[];
+  /** @pattern ^[a-f0-9]{64}$ */
+  bundleSha256: string;
+}
+
+export type BundleTransferState = typeof BundleTransferState[keyof typeof BundleTransferState];
+
+
+export const BundleTransferState = {
+  active: 'active',
+  expired: 'expired',
+  revoked: 'revoked',
+  completed: 'completed',
+  exhausted: 'exhausted',
+} as const;
+
+export interface BundleTransfer {
+  transferId: string;
+  /** @pattern ^[a-f0-9]{64}$ */
+  manifestHash: string;
+  manifest: BundleTransferManifest;
+  expiresAt: string;
+  /** @minimum 1 */
+  retrievalLimit: number;
+  /** @minimum 0 */
+  retrievalCount: number;
+  state: BundleTransferState;
+  /** @nullable */
+  revokedAt: string | null;
+  /** @nullable */
+  completedAt: string | null;
+  createdAt: string;
+}
+
+export type BundleTransferCreated = BundleTransfer & {
+  /** @minLength 32 */
+  transferToken: string;
+  instructions: string;
+};
+
+export interface BundleTransferManifestResponse {
+  transferId: string;
+  /** @pattern ^[a-f0-9]{64}$ */
+  manifestHash: string;
+  manifest: BundleTransferManifest;
+  expiresAt: string;
+}
+
+export interface BundleTransferBundleResponse {
+  transferId: string;
+  /** @pattern ^[a-f0-9]{64}$ */
+  manifestHash: string;
+  manifest: BundleTransferManifest;
+  bundle: SourceBundle;
+  expiresAt: string;
+}
+
 export type HtmlInput = (unknown & {
   /**
      * @minLength 1

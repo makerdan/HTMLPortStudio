@@ -451,6 +451,360 @@ export const GetReplitProjectConnectionSetupResponse = zod.object({
 
 
 /**
+ * Creates one owner-bound, credential-cleared transfer package. The opaque token is returned once and must be stored only in the destination project's Replit Secrets.
+ * @summary Create a short-lived secure bundle transfer
+ */
+export const createBundleTransferBodyBundleFilesItemPathMax = 512;
+
+export const createBundleTransferBodyBundleFilesItemContentMax = 2097152;
+
+export const createBundleTransferBodyBundleFilesMax = 200;
+
+export const createBundleTransferBodyBundleEntrypointMax = 512;
+
+export const createBundleTransferBodyBundleMetadataDisplayNameMax = 120;
+
+export const createBundleTransferBodyBundleMetadataWarningsItemMax = 500;
+
+export const createBundleTransferBodyBundleMetadataWarningsMax = 20;
+
+export const createBundleTransferBodyBundleMetadataResolvedRefMax = 256;
+
+export const createBundleTransferBodyBundleMetadataResolvedCommitShaMax = 64;
+
+export const createBundleTransferBodyBundleMetadataEntrypointCandidatesMax = 20;
+
+
+
+export const CreateBundleTransferBody = zod.object({
+  "approved": zod.literal(true).describe('The signed-in owner confirms this is the currently reviewed normalized bundle.'),
+  "bundle": zod.object({
+  "version": zod.literal(1),
+  "sourceType": zod.enum(['pasted_html', 'single_file', 'zip_project', 'github_repository', 'hosted_page', 'playground']),
+  "files": zod.array(zod.object({
+  "path": zod.string().min(1).max(createBundleTransferBodyBundleFilesItemPathMax),
+  "content": zod.string().max(createBundleTransferBodyBundleFilesItemContentMax)
+})).min(1).max(createBundleTransferBodyBundleFilesMax),
+  "entrypoint": zod.string().min(1).max(createBundleTransferBodyBundleEntrypointMax),
+  "metadata": zod.object({
+  "displayName": zod.string().min(1).max(createBundleTransferBodyBundleMetadataDisplayNameMax),
+  "sourceUrl": zod.string().optional(),
+  "originalUrl": zod.string().optional(),
+  "finalUrl": zod.string().optional(),
+  "warnings": zod.array(zod.string().max(createBundleTransferBodyBundleMetadataWarningsItemMax)).max(createBundleTransferBodyBundleMetadataWarningsMax).optional(),
+  "resolvedRef": zod.string().max(createBundleTransferBodyBundleMetadataResolvedRefMax).optional(),
+  "resolvedCommitSha": zod.string().max(createBundleTransferBodyBundleMetadataResolvedCommitShaMax).optional(),
+  "entrypointCandidates": zod.array(zod.string()).max(createBundleTransferBodyBundleMetadataEntrypointCandidatesMax).optional()
+})
+})
+})
+
+export const createBundleTransferResponseOneManifestHashRegExp = new RegExp('^[a-f0-9]{64}$');
+
+
+export const createBundleTransferResponseOneManifestFilesItemBytesMin = 0;
+
+export const createBundleTransferResponseOneManifestFilesItemSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+export const createBundleTransferResponseOneManifestFilesMax = 200;
+
+export const createBundleTransferResponseOneManifestBundleSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+
+export const createBundleTransferResponseOneRetrievalCountMin = 0;
+
+export const createBundleTransferResponseTwoTransferTokenMin = 32;
+
+
+
+export const CreateBundleTransferResponse = zod.object({
+  "transferId": zod.string(),
+  "manifestHash": zod.string().regex(createBundleTransferResponseOneManifestHashRegExp),
+  "manifest": zod.object({
+  "version": zod.literal(1),
+  "sourceType": zod.enum(['pasted_html', 'single_file', 'zip_project', 'github_repository', 'hosted_page', 'playground']),
+  "entrypoint": zod.string(),
+  "fileCount": zod.number().min(1),
+  "totalBytes": zod.number().min(1),
+  "files": zod.array(zod.object({
+  "path": zod.string(),
+  "bytes": zod.number().min(createBundleTransferResponseOneManifestFilesItemBytesMin),
+  "sha256": zod.string().regex(createBundleTransferResponseOneManifestFilesItemSha256RegExp)
+})).min(1).max(createBundleTransferResponseOneManifestFilesMax),
+  "bundleSha256": zod.string().regex(createBundleTransferResponseOneManifestBundleSha256RegExp)
+}),
+  "expiresAt": zod.coerce.date(),
+  "retrievalLimit": zod.number().min(1),
+  "retrievalCount": zod.number().min(createBundleTransferResponseOneRetrievalCountMin),
+  "state": zod.enum(['active', 'expired', 'revoked', 'completed', 'exhausted']),
+  "revokedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date()
+}).and(zod.object({
+  "transferToken": zod.string().min(createBundleTransferResponseTwoTransferTokenMin),
+  "instructions": zod.string()
+}))
+
+
+/**
+ * Returns transfer metadata and a source-free manifest. Ownership is enforced by the signed-in session.
+ * @summary Inspect an owner's secure bundle transfer
+ */
+export const GetBundleTransferParams = zod.object({
+  "transferId": zod.coerce.string()
+})
+
+export const getBundleTransferResponseManifestHashRegExp = new RegExp('^[a-f0-9]{64}$');
+
+
+export const getBundleTransferResponseManifestFilesItemBytesMin = 0;
+
+export const getBundleTransferResponseManifestFilesItemSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+export const getBundleTransferResponseManifestFilesMax = 200;
+
+export const getBundleTransferResponseManifestBundleSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+
+export const getBundleTransferResponseRetrievalCountMin = 0;
+
+
+
+export const GetBundleTransferResponse = zod.object({
+  "transferId": zod.string(),
+  "manifestHash": zod.string().regex(getBundleTransferResponseManifestHashRegExp),
+  "manifest": zod.object({
+  "version": zod.literal(1),
+  "sourceType": zod.enum(['pasted_html', 'single_file', 'zip_project', 'github_repository', 'hosted_page', 'playground']),
+  "entrypoint": zod.string(),
+  "fileCount": zod.number().min(1),
+  "totalBytes": zod.number().min(1),
+  "files": zod.array(zod.object({
+  "path": zod.string(),
+  "bytes": zod.number().min(getBundleTransferResponseManifestFilesItemBytesMin),
+  "sha256": zod.string().regex(getBundleTransferResponseManifestFilesItemSha256RegExp)
+})).min(1).max(getBundleTransferResponseManifestFilesMax),
+  "bundleSha256": zod.string().regex(getBundleTransferResponseManifestBundleSha256RegExp)
+}),
+  "expiresAt": zod.coerce.date(),
+  "retrievalLimit": zod.number().min(1),
+  "retrievalCount": zod.number().min(getBundleTransferResponseRetrievalCountMin),
+  "state": zod.enum(['active', 'expired', 'revoked', 'completed', 'exhausted']),
+  "revokedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Revoke a secure bundle transfer
+ */
+export const RevokeBundleTransferParams = zod.object({
+  "transferId": zod.coerce.string()
+})
+
+export const revokeBundleTransferResponseManifestHashRegExp = new RegExp('^[a-f0-9]{64}$');
+
+
+export const revokeBundleTransferResponseManifestFilesItemBytesMin = 0;
+
+export const revokeBundleTransferResponseManifestFilesItemSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+export const revokeBundleTransferResponseManifestFilesMax = 200;
+
+export const revokeBundleTransferResponseManifestBundleSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+
+export const revokeBundleTransferResponseRetrievalCountMin = 0;
+
+
+
+export const RevokeBundleTransferResponse = zod.object({
+  "transferId": zod.string(),
+  "manifestHash": zod.string().regex(revokeBundleTransferResponseManifestHashRegExp),
+  "manifest": zod.object({
+  "version": zod.literal(1),
+  "sourceType": zod.enum(['pasted_html', 'single_file', 'zip_project', 'github_repository', 'hosted_page', 'playground']),
+  "entrypoint": zod.string(),
+  "fileCount": zod.number().min(1),
+  "totalBytes": zod.number().min(1),
+  "files": zod.array(zod.object({
+  "path": zod.string(),
+  "bytes": zod.number().min(revokeBundleTransferResponseManifestFilesItemBytesMin),
+  "sha256": zod.string().regex(revokeBundleTransferResponseManifestFilesItemSha256RegExp)
+})).min(1).max(revokeBundleTransferResponseManifestFilesMax),
+  "bundleSha256": zod.string().regex(revokeBundleTransferResponseManifestBundleSha256RegExp)
+}),
+  "expiresAt": zod.coerce.date(),
+  "retrievalLimit": zod.number().min(1),
+  "retrievalCount": zod.number().min(revokeBundleTransferResponseRetrievalCountMin),
+  "state": zod.enum(['active', 'expired', 'revoked', 'completed', 'exhausted']),
+  "revokedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * Invalidates future destination retrieval while retaining the owner's recoverable transfer record.
+ * @summary Complete a secure bundle transfer
+ */
+export const CompleteBundleTransferParams = zod.object({
+  "transferId": zod.coerce.string()
+})
+
+export const completeBundleTransferResponseManifestHashRegExp = new RegExp('^[a-f0-9]{64}$');
+
+
+export const completeBundleTransferResponseManifestFilesItemBytesMin = 0;
+
+export const completeBundleTransferResponseManifestFilesItemSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+export const completeBundleTransferResponseManifestFilesMax = 200;
+
+export const completeBundleTransferResponseManifestBundleSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+
+export const completeBundleTransferResponseRetrievalCountMin = 0;
+
+
+
+export const CompleteBundleTransferResponse = zod.object({
+  "transferId": zod.string(),
+  "manifestHash": zod.string().regex(completeBundleTransferResponseManifestHashRegExp),
+  "manifest": zod.object({
+  "version": zod.literal(1),
+  "sourceType": zod.enum(['pasted_html', 'single_file', 'zip_project', 'github_repository', 'hosted_page', 'playground']),
+  "entrypoint": zod.string(),
+  "fileCount": zod.number().min(1),
+  "totalBytes": zod.number().min(1),
+  "files": zod.array(zod.object({
+  "path": zod.string(),
+  "bytes": zod.number().min(completeBundleTransferResponseManifestFilesItemBytesMin),
+  "sha256": zod.string().regex(completeBundleTransferResponseManifestFilesItemSha256RegExp)
+})).min(1).max(completeBundleTransferResponseManifestFilesMax),
+  "bundleSha256": zod.string().regex(completeBundleTransferResponseManifestBundleSha256RegExp)
+}),
+  "expiresAt": zod.coerce.date(),
+  "retrievalLimit": zod.number().min(1),
+  "retrievalCount": zod.number().min(completeBundleTransferResponseRetrievalCountMin),
+  "state": zod.enum(['active', 'expired', 'revoked', 'completed', 'exhausted']),
+  "revokedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * Retrieves only the source-free manifest with the opaque transfer token in the Authorization header.
+ * @summary Retrieve a bundle transfer manifest
+ */
+export const GetBundleTransferManifestParams = zod.object({
+  "transferId": zod.coerce.string()
+})
+
+export const getBundleTransferManifestResponseManifestHashRegExp = new RegExp('^[a-f0-9]{64}$');
+
+
+export const getBundleTransferManifestResponseManifestFilesItemBytesMin = 0;
+
+export const getBundleTransferManifestResponseManifestFilesItemSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+export const getBundleTransferManifestResponseManifestFilesMax = 200;
+
+export const getBundleTransferManifestResponseManifestBundleSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+
+
+export const GetBundleTransferManifestResponse = zod.object({
+  "transferId": zod.string(),
+  "manifestHash": zod.string().regex(getBundleTransferManifestResponseManifestHashRegExp),
+  "manifest": zod.object({
+  "version": zod.literal(1),
+  "sourceType": zod.enum(['pasted_html', 'single_file', 'zip_project', 'github_repository', 'hosted_page', 'playground']),
+  "entrypoint": zod.string(),
+  "fileCount": zod.number().min(1),
+  "totalBytes": zod.number().min(1),
+  "files": zod.array(zod.object({
+  "path": zod.string(),
+  "bytes": zod.number().min(getBundleTransferManifestResponseManifestFilesItemBytesMin),
+  "sha256": zod.string().regex(getBundleTransferManifestResponseManifestFilesItemSha256RegExp)
+})).min(1).max(getBundleTransferManifestResponseManifestFilesMax),
+  "bundleSha256": zod.string().regex(getBundleTransferManifestResponseManifestBundleSha256RegExp)
+}),
+  "expiresAt": zod.coerce.date()
+})
+
+
+/**
+ * Retrieves the exact normalized bundle once the opaque transfer token is supplied in the Authorization header.
+ * @summary Retrieve a bundle transfer
+ */
+export const GetBundleTransferBundleParams = zod.object({
+  "transferId": zod.coerce.string()
+})
+
+export const getBundleTransferBundleResponseManifestHashRegExp = new RegExp('^[a-f0-9]{64}$');
+
+
+export const getBundleTransferBundleResponseManifestFilesItemBytesMin = 0;
+
+export const getBundleTransferBundleResponseManifestFilesItemSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+export const getBundleTransferBundleResponseManifestFilesMax = 200;
+
+export const getBundleTransferBundleResponseManifestBundleSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+export const getBundleTransferBundleResponseBundleFilesItemPathMax = 512;
+
+export const getBundleTransferBundleResponseBundleFilesItemContentMax = 2097152;
+
+export const getBundleTransferBundleResponseBundleFilesMax = 200;
+
+export const getBundleTransferBundleResponseBundleEntrypointMax = 512;
+
+export const getBundleTransferBundleResponseBundleMetadataDisplayNameMax = 120;
+
+export const getBundleTransferBundleResponseBundleMetadataWarningsItemMax = 500;
+
+export const getBundleTransferBundleResponseBundleMetadataWarningsMax = 20;
+
+export const getBundleTransferBundleResponseBundleMetadataResolvedRefMax = 256;
+
+export const getBundleTransferBundleResponseBundleMetadataResolvedCommitShaMax = 64;
+
+export const getBundleTransferBundleResponseBundleMetadataEntrypointCandidatesMax = 20;
+
+
+
+export const GetBundleTransferBundleResponse = zod.object({
+  "transferId": zod.string(),
+  "manifestHash": zod.string().regex(getBundleTransferBundleResponseManifestHashRegExp),
+  "manifest": zod.object({
+  "version": zod.literal(1),
+  "sourceType": zod.enum(['pasted_html', 'single_file', 'zip_project', 'github_repository', 'hosted_page', 'playground']),
+  "entrypoint": zod.string(),
+  "fileCount": zod.number().min(1),
+  "totalBytes": zod.number().min(1),
+  "files": zod.array(zod.object({
+  "path": zod.string(),
+  "bytes": zod.number().min(getBundleTransferBundleResponseManifestFilesItemBytesMin),
+  "sha256": zod.string().regex(getBundleTransferBundleResponseManifestFilesItemSha256RegExp)
+})).min(1).max(getBundleTransferBundleResponseManifestFilesMax),
+  "bundleSha256": zod.string().regex(getBundleTransferBundleResponseManifestBundleSha256RegExp)
+}),
+  "bundle": zod.object({
+  "version": zod.literal(1),
+  "sourceType": zod.enum(['pasted_html', 'single_file', 'zip_project', 'github_repository', 'hosted_page', 'playground']),
+  "files": zod.array(zod.object({
+  "path": zod.string().min(1).max(getBundleTransferBundleResponseBundleFilesItemPathMax),
+  "content": zod.string().max(getBundleTransferBundleResponseBundleFilesItemContentMax)
+})).min(1).max(getBundleTransferBundleResponseBundleFilesMax),
+  "entrypoint": zod.string().min(1).max(getBundleTransferBundleResponseBundleEntrypointMax),
+  "metadata": zod.object({
+  "displayName": zod.string().min(1).max(getBundleTransferBundleResponseBundleMetadataDisplayNameMax),
+  "sourceUrl": zod.string().optional(),
+  "originalUrl": zod.string().optional(),
+  "finalUrl": zod.string().optional(),
+  "warnings": zod.array(zod.string().max(getBundleTransferBundleResponseBundleMetadataWarningsItemMax)).max(getBundleTransferBundleResponseBundleMetadataWarningsMax).optional(),
+  "resolvedRef": zod.string().max(getBundleTransferBundleResponseBundleMetadataResolvedRefMax).optional(),
+  "resolvedCommitSha": zod.string().max(getBundleTransferBundleResponseBundleMetadataResolvedCommitShaMax).optional(),
+  "entrypointCandidates": zod.array(zod.string()).max(getBundleTransferBundleResponseBundleMetadataEntrypointCandidatesMax).optional()
+})
+}),
+  "expiresAt": zod.coerce.date()
+})
+
+
+/**
  * Sends the imported HTML unchanged through the server-only authorized Replit project connection and starts the ordered setup workflow.
  * @summary Create a Replit project from the analyzed HTML
  */

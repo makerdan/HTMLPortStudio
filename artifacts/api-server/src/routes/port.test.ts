@@ -1080,3 +1080,176 @@ test("scans bundle paths as well as contents for credential-like values", async 
   assert.match(detectorSource, /flatMap\(\(file\) => \[file\.path, file\.content\]\)/);
   assert.match(detectorSource, /configuredSecrets\.some\(\(secret\) => html\.includes\(secret\)\)/);
 });
+
+test("delivers approved bundles through opaque, owner-bound transfer grants", async () => {
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const ownerId = `transfer-test-owner-${randomUUID()}`;
+  const otherOwnerId = `transfer-test-other-${randomUUID()}`;
+  await pool.query(
+    `INSERT INTO users (id, email) VALUES ($1, $2), ($3, $4)`,
+    [
+      ownerId,
+      `${ownerId}@example.test`,
+      otherOwnerId,
+      `${otherOwnerId}@example.test`,
+    ],
+  );
+
+  const apiPort = await unusedPort();
+  const api = spawn(process.execPath, ["--enable-source-maps", "dist/index.mjs"], {
+    cwd: new URL("../../", import.meta.url).pathname,
+    env: {
+      ...process.env,
+      PORT: String(apiPort),
+      BUNDLE_TRANSFER_TTL_SECONDS: "60",
+      REPLIT_CLI: "/bin/false",
+      REPL_IDENTITY: "test-repl-identity",
+      NODE_ENV: "test",
+    },
+    stdio: "ignore",
+  });
+
+  const bundle = {
+    version: 1 as const,
+    sourceType: "zip_project" as const,
+    files: [
+      { path: "index.html", content: "<!doctype html><main>exact bytes</main>" },
+      { path: "assets/app.js", content: "console.log('exact');\n" },
+    ],
+    entrypoint: "index.html",
+    metadata: { displayName: "Transfer fixture" },
+  };
+  const origin = `http://127.0.0.1:${apiPort}`;
+  const baseUrl = `${origin}/api`;
+  const ownerHeaders = { "x-test-clerk-user-id": ownerId };
+  const otherOwnerHeaders = { "x-test-clerk-user-id": otherOwnerId };
+
+  try {
+    await waitFor(async () => {
+      try {
+        return (await fetch(`${baseUrl}/healthz`)).ok;
+      } catch {
+        return false;
+      }
+    }, "Transfer API server did not start");
+
+    const notApproved = await jsonRequest(`${baseUrl}/port/bundle-transfers`, {
+      method: "POST",
+      headers: { ...ownerHeaders, Origin: origin, "Content-Type": "application/json" },
+      body: JSON.stringify({ approved: false, bundle }),
+    });
+    assert.equal(notApproved.status, 400);
+    assert.equal(notApproved.body.code, "BUNDLE_TRANSFER_NOT_APPROVED");
+
+    const created = await jsonRequest(`${baseUrl}/port/bundle-transfers`, {
+      method: "POST",
+      headers: { ...ownerHeaders, Origin: origin, "Content-Type": "application/json" },
+      body: JSON.stringify({ approved: true, bundle }),
+    });
+    assert.equal(created.status, 201);
+    const transferId = String(created.body.transferId);
+    const transferToken = String(created.body.transferToken);
+    assert.match(transferToken, /^[A-Za-z0-9_-]{32,}$/);
+    assert.equal(created.body.bundle, undefined);
+    assert.equal(created.body.sourceHtml, undefined);
+    assert.match(String(created.body.manifestHash), /^[a-f0-9]{64}$/);
+    assert.match(String(created.body.expiresAt), /T/);
+    assert.match(String(created.body.instructions), /Replit Secrets/);
+    assert.doesNotMatch(`${baseUrl}/port/bundle-transfers/${transferId}`, new RegExp(transferToken));
+
+    const ownerStatus = await jsonRequest(
+      `${baseUrl}/port/bundle-transfers/${transferId}`,
+      { headers: ownerHeaders },
+    );
+    assert.equal(ownerStatus.status, 200);
+    assert.equal(ownerStatus.body.transferToken, undefined);
+    const ownerManifest = ownerStatus.body.manifest as Json;
+    assert.equal((ownerManifest.files as Json[])[0].path, "index.html");
+
+    const otherOwnerStatus = await jsonRequest(
+      `${baseUrl}/port/bundle-transfers/${transferId}`,
+      { headers: otherOwnerHeaders },
+    );
+    assert.equal(otherOwnerStatus.status, 404);
+
+    const missingTokenManifest = await fetch(
+      `${baseUrl}/port/bundle-transfers/${transferId}/manifest`,
+    );
+    assert.equal(missingTokenManifest.status, 404);
+    const wrongTokenManifest = await fetch(
+      `${baseUrl}/port/bundle-transfers/${transferId}/manifest`,
+      { headers: { Authorization: "Bearer wrong-transfer-token-0000000000000000" } },
+    );
+    assert.equal(wrongTokenManifest.status, 404);
+
+    const manifestResponse = await fetch(
+      `${baseUrl}/port/bundle-transfers/${transferId}/manifest`,
+      { headers: { Authorization: `Bearer ${transferToken}` } },
+    );
+    assert.equal(manifestResponse.status, 200);
+    const manifestBody = (await manifestResponse.json()) as Json;
+    const manifest = manifestBody.manifest as Json;
+    const manifestFiles = manifest.files as Json[];
+    assert.equal(manifestFiles[0].bytes, bundle.files[0].content.length);
+    assert.equal(manifestBody.bundle, undefined);
+    assert.equal(manifestFiles[0].content, undefined);
+
+    const bundleResponse = await fetch(
+      `${baseUrl}/port/bundle-transfers/${transferId}/bundle`,
+      { headers: { Authorization: `Bearer ${transferToken}` } },
+    );
+    assert.equal(bundleResponse.status, 200);
+    const bundleBody = (await bundleResponse.json()) as Json;
+    assert.deepEqual(bundleBody.bundle, bundle);
+
+    const replayResponse = await fetch(
+      `${baseUrl}/port/bundle-transfers/${transferId}/bundle`,
+      { headers: { Authorization: `Bearer ${transferToken}` } },
+    );
+    assert.equal(replayResponse.status, 404);
+
+    const completed = await jsonRequest(
+      `${baseUrl}/port/bundle-transfers/${transferId}/complete`,
+      { method: "POST", headers: { ...ownerHeaders, Origin: origin } },
+    );
+    assert.equal(completed.status, 200);
+    assert.equal(completed.body.state, "completed");
+    const repeatedCompletion = await jsonRequest(
+      `${baseUrl}/port/bundle-transfers/${transferId}/complete`,
+      { method: "POST", headers: { ...ownerHeaders, Origin: origin } },
+    );
+    assert.equal(repeatedCompletion.status, 200);
+
+    const revokedCreated = await jsonRequest(`${baseUrl}/port/bundle-transfers`, {
+      method: "POST",
+      headers: { ...ownerHeaders, Origin: origin, "Content-Type": "application/json" },
+      body: JSON.stringify({ approved: true, bundle }),
+    });
+    const revokedId = String(revokedCreated.body.transferId);
+    const revokedToken = String(revokedCreated.body.transferToken);
+    const revoked = await jsonRequest(
+      `${baseUrl}/port/bundle-transfers/${revokedId}/revoke`,
+      { method: "POST", headers: { ...ownerHeaders, Origin: origin } },
+    );
+    assert.equal(revoked.status, 200);
+    assert.equal(revoked.body.state, "revoked");
+    const revokedFetch = await fetch(
+      `${baseUrl}/port/bundle-transfers/${revokedId}/bundle`,
+      { headers: { Authorization: `Bearer ${revokedToken}` } },
+    );
+    assert.equal(revokedFetch.status, 404);
+  } finally {
+    if (!api.killed) {
+      api.kill("SIGTERM");
+      await once(api, "exit").catch(() => undefined);
+    }
+    await pool.query(
+      `DELETE FROM handoff_transfer_packages WHERE owner_id = ANY($1::varchar[])`,
+      [[ownerId, otherOwnerId]],
+    );
+    await pool.query(`DELETE FROM users WHERE id = ANY($1::varchar[])`, [
+      [ownerId, otherOwnerId],
+    ]);
+    await pool.end();
+  }
+});

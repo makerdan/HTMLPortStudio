@@ -6,6 +6,15 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './bundleTransfer';
+export * from './bundleTransferBundleResponse';
+export * from './bundleTransferCreated';
+export * from './bundleTransferInput';
+export * from './bundleTransferManifest';
+export * from './bundleTransferManifestFile';
+export * from './bundleTransferManifestResponse';
+export * from './bundleTransferManifestVersion';
+export * from './bundleTransferState';
 export * from './errorResponse';
 export * from './getGithubRepositoryParams';
 export * from './githubEntrypointChoice';

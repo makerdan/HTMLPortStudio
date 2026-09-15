@@ -349,6 +349,189 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /port/bundle-transfers:
+    post:
+      operationId: createBundleTransfer
+      tags: [porting]
+      summary: Create a short-lived secure bundle transfer
+      description: Creates one owner-bound, credential-cleared transfer package. The opaque token is returned once and must be stored only in the destination project's Replit Secrets.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BundleTransferInput"
+      responses:
+        "201":
+          description: Transfer package created; the token is shown only for initial secret setup
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BundleTransferCreated"
+        "400":
+          description: Bundle is not approved, normalized, safe, or credential-cleared
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Login required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Bundle exceeds transfer limits
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /port/bundle-transfers/{transferId}:
+    get:
+      operationId: getBundleTransfer
+      tags: [porting]
+      summary: Inspect an owner's secure bundle transfer
+      description: Returns transfer metadata and a source-free manifest. Ownership is enforced by the signed-in session.
+      parameters:
+        - name: transferId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Transfer metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BundleTransfer"
+        "401":
+          description: Login required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Transfer is not owned by the caller or is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /port/bundle-transfers/{transferId}/revoke:
+    post:
+      operationId: revokeBundleTransfer
+      tags: [porting]
+      summary: Revoke a secure bundle transfer
+      parameters:
+        - name: transferId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Transfer is revoked; repeating the operation is safe
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BundleTransfer"
+        "401":
+          description: Login required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Transfer is not owned by the caller or is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /port/bundle-transfers/{transferId}/complete:
+    post:
+      operationId: completeBundleTransfer
+      tags: [porting]
+      summary: Complete a secure bundle transfer
+      description: Invalidates future destination retrieval while retaining the owner's recoverable transfer record.
+      parameters:
+        - name: transferId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Transfer is completed; repeating the operation is safe
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BundleTransfer"
+        "401":
+          description: Login required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Transfer is not owned by the caller or is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /port/bundle-transfers/{transferId}/manifest:
+    get:
+      operationId: getBundleTransferManifest
+      tags: [porting]
+      summary: Retrieve a bundle transfer manifest
+      description: Retrieves only the source-free manifest with the opaque transfer token in the Authorization header.
+      security:
+        - bundleTransferToken: []
+      parameters:
+        - name: transferId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Bundle manifest
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BundleTransferManifestResponse"
+        "404":
+          description: Transfer token is missing, invalid, expired, revoked, tampered, or unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /port/bundle-transfers/{transferId}/bundle:
+    get:
+      operationId: getBundleTransferBundle
+      tags: [porting]
+      summary: Retrieve a bundle transfer
+      description: Retrieves the exact normalized bundle once the opaque transfer token is supplied in the Authorization header.
+      security:
+        - bundleTransferToken: []
+      parameters:
+        - name: transferId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Exact normalized source bundle and its manifest
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BundleTransferBundleResponse"
+        "404":
+          description: Transfer token is missing, invalid, expired, revoked, tampered, overused, or unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /port/replit-projects:
     post:
       operationId: createReplitProject
@@ -467,6 +650,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 components:
+  securitySchemes:
+    bundleTransferToken:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
   schemas:
     HealthStatus:
       type: object
@@ -631,6 +819,127 @@ components:
           maxLength: 512
         metadata:
           $ref: "#/components/schemas/SourceBundleMetadata"
+    BundleTransferInput:
+      type: object
+      required: [approved, bundle]
+      properties:
+        approved:
+          type: boolean
+          const: true
+          description: The signed-in owner confirms this is the currently reviewed normalized bundle.
+        bundle:
+          $ref: "#/components/schemas/SourceBundle"
+    BundleTransferManifestFile:
+      type: object
+      required: [path, bytes, sha256]
+      properties:
+        path:
+          type: string
+        bytes:
+          type: number
+          minimum: 0
+        sha256:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+    BundleTransferManifest:
+      type: object
+      required: [version, sourceType, entrypoint, fileCount, totalBytes, files, bundleSha256]
+      properties:
+        version:
+          type: number
+          enum: [1]
+        sourceType:
+          $ref: "#/components/schemas/SourceType"
+        entrypoint:
+          type: string
+        fileCount:
+          type: number
+          minimum: 1
+        totalBytes:
+          type: number
+          minimum: 1
+        files:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            $ref: "#/components/schemas/BundleTransferManifestFile"
+        bundleSha256:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+    BundleTransfer:
+      type: object
+      required: [transferId, manifestHash, manifest, expiresAt, retrievalLimit, retrievalCount, state, revokedAt, completedAt, createdAt]
+      properties:
+        transferId:
+          type: string
+        manifestHash:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+        manifest:
+          $ref: "#/components/schemas/BundleTransferManifest"
+        expiresAt:
+          type: string
+          format: date-time
+        retrievalLimit:
+          type: number
+          minimum: 1
+        retrievalCount:
+          type: number
+          minimum: 0
+        state:
+          type: string
+          enum: [active, expired, revoked, completed, exhausted]
+        revokedAt:
+          type: ["string", "null"]
+          format: date-time
+        completedAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+    BundleTransferCreated:
+      allOf:
+        - $ref: "#/components/schemas/BundleTransfer"
+        - type: object
+          required: [transferToken, instructions]
+          properties:
+            transferToken:
+              type: string
+              minLength: 32
+            instructions:
+              type: string
+    BundleTransferManifestResponse:
+      type: object
+      required: [transferId, manifestHash, manifest, expiresAt]
+      properties:
+        transferId:
+          type: string
+        manifestHash:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+        manifest:
+          $ref: "#/components/schemas/BundleTransferManifest"
+        expiresAt:
+          type: string
+          format: date-time
+    BundleTransferBundleResponse:
+      type: object
+      required: [transferId, manifestHash, manifest, bundle, expiresAt]
+      properties:
+        transferId:
+          type: string
+        manifestHash:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+        manifest:
+          $ref: "#/components/schemas/BundleTransferManifest"
+        bundle:
+          $ref: "#/components/schemas/SourceBundle"
+        expiresAt:
+          type: string
+          format: date-time
     HtmlInput:
       type: object
       properties:

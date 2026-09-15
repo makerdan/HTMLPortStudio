@@ -20,6 +20,11 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  BundleTransfer,
+  BundleTransferBundleResponse,
+  BundleTransferCreated,
+  BundleTransferInput,
+  BundleTransferManifestResponse,
   ErrorResponse,
   GetGithubRepositoryParams,
   GithubEntrypointChoice,
@@ -816,6 +821,455 @@ export function useGetReplitProjectConnectionSetup<TData = Awaited<ReturnType<ty
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetReplitProjectConnectionSetupQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateBundleTransferUrl = () => {
+
+
+
+
+  return `/api/port/bundle-transfers`
+}
+
+/**
+ * Creates one owner-bound, credential-cleared transfer package. The opaque token is returned once and must be stored only in the destination project's Replit Secrets.
+ * @summary Create a short-lived secure bundle transfer
+ */
+export const createBundleTransfer = async (bundleTransferInput: BundleTransferInput, options?: Parameters<typeof customFetch>[1]): Promise<BundleTransferCreated> => {
+
+  return customFetch<BundleTransferCreated>(getCreateBundleTransferUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(bundleTransferInput)
+  }
+);}
+
+
+
+
+
+export const getCreateBundleTransferMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBundleTransfer>>, TError,{data: BodyType<BundleTransferInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createBundleTransfer>>, TError,{data: BodyType<BundleTransferInput>}, TContext> => {
+
+const mutationKey = ['createBundleTransfer'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createBundleTransfer>>, {data: BodyType<BundleTransferInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createBundleTransfer(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateBundleTransferMutationResult = NonNullable<Awaited<ReturnType<typeof createBundleTransfer>>>
+    export type CreateBundleTransferMutationBody = BodyType<BundleTransferInput>
+    export type CreateBundleTransferMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create a short-lived secure bundle transfer
+ */
+export const useCreateBundleTransfer = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBundleTransfer>>, TError,{data: BodyType<BundleTransferInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createBundleTransfer>>,
+        TError,
+        {data: BodyType<BundleTransferInput>},
+        TContext
+      > => {
+      return useMutation(getCreateBundleTransferMutationOptions(options));
+    }
+
+export const getGetBundleTransferUrl = (transferId: string,) => {
+
+
+
+
+  return `/api/port/bundle-transfers/${transferId}`
+}
+
+/**
+ * Returns transfer metadata and a source-free manifest. Ownership is enforced by the signed-in session.
+ * @summary Inspect an owner's secure bundle transfer
+ */
+export const getBundleTransfer = async (transferId: string, options?: Parameters<typeof customFetch>[1]): Promise<BundleTransfer> => {
+
+  return customFetch<BundleTransfer>(getGetBundleTransferUrl(transferId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetBundleTransferQueryKey = (transferId: string,) => {
+    return [
+    `/api/port/bundle-transfers/${transferId}`
+    ] as const;
+    }
+
+
+export const getGetBundleTransferQueryOptions = <TData = Awaited<ReturnType<typeof getBundleTransfer>>, TError = ErrorType<ErrorResponse>>(transferId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBundleTransfer>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetBundleTransferQueryKey(transferId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getBundleTransfer>>> = ({ signal }) => getBundleTransfer(transferId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: transferId !== null && transferId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getBundleTransfer>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetBundleTransferQueryResult = NonNullable<Awaited<ReturnType<typeof getBundleTransfer>>>
+export type GetBundleTransferQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Inspect an owner's secure bundle transfer
+ */
+
+export function useGetBundleTransfer<TData = Awaited<ReturnType<typeof getBundleTransfer>>, TError = ErrorType<ErrorResponse>>(
+ transferId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBundleTransfer>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetBundleTransferQueryOptions(transferId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getRevokeBundleTransferUrl = (transferId: string,) => {
+
+
+
+
+  return `/api/port/bundle-transfers/${transferId}/revoke`
+}
+
+/**
+ * @summary Revoke a secure bundle transfer
+ */
+export const revokeBundleTransfer = async (transferId: string, options?: Parameters<typeof customFetch>[1]): Promise<BundleTransfer> => {
+
+  return customFetch<BundleTransfer>(getRevokeBundleTransferUrl(transferId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRevokeBundleTransferMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof revokeBundleTransfer>>, TError,{transferId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof revokeBundleTransfer>>, TError,{transferId: string}, TContext> => {
+
+const mutationKey = ['revokeBundleTransfer'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof revokeBundleTransfer>>, {transferId: string}> = (props) => {
+          const {transferId} = props ?? {};
+
+          return  revokeBundleTransfer(transferId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RevokeBundleTransferMutationResult = NonNullable<Awaited<ReturnType<typeof revokeBundleTransfer>>>
+
+    export type RevokeBundleTransferMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Revoke a secure bundle transfer
+ */
+export const useRevokeBundleTransfer = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof revokeBundleTransfer>>, TError,{transferId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof revokeBundleTransfer>>,
+        TError,
+        {transferId: string},
+        TContext
+      > => {
+      return useMutation(getRevokeBundleTransferMutationOptions(options));
+    }
+
+export const getCompleteBundleTransferUrl = (transferId: string,) => {
+
+
+
+
+  return `/api/port/bundle-transfers/${transferId}/complete`
+}
+
+/**
+ * Invalidates future destination retrieval while retaining the owner's recoverable transfer record.
+ * @summary Complete a secure bundle transfer
+ */
+export const completeBundleTransfer = async (transferId: string, options?: Parameters<typeof customFetch>[1]): Promise<BundleTransfer> => {
+
+  return customFetch<BundleTransfer>(getCompleteBundleTransferUrl(transferId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCompleteBundleTransferMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeBundleTransfer>>, TError,{transferId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof completeBundleTransfer>>, TError,{transferId: string}, TContext> => {
+
+const mutationKey = ['completeBundleTransfer'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof completeBundleTransfer>>, {transferId: string}> = (props) => {
+          const {transferId} = props ?? {};
+
+          return  completeBundleTransfer(transferId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CompleteBundleTransferMutationResult = NonNullable<Awaited<ReturnType<typeof completeBundleTransfer>>>
+
+    export type CompleteBundleTransferMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Complete a secure bundle transfer
+ */
+export const useCompleteBundleTransfer = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeBundleTransfer>>, TError,{transferId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof completeBundleTransfer>>,
+        TError,
+        {transferId: string},
+        TContext
+      > => {
+      return useMutation(getCompleteBundleTransferMutationOptions(options));
+    }
+
+export const getGetBundleTransferManifestUrl = (transferId: string,) => {
+
+
+
+
+  return `/api/port/bundle-transfers/${transferId}/manifest`
+}
+
+/**
+ * Retrieves only the source-free manifest with the opaque transfer token in the Authorization header.
+ * @summary Retrieve a bundle transfer manifest
+ */
+export const getBundleTransferManifest = async (transferId: string, options?: Parameters<typeof customFetch>[1]): Promise<BundleTransferManifestResponse> => {
+
+  return customFetch<BundleTransferManifestResponse>(getGetBundleTransferManifestUrl(transferId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetBundleTransferManifestQueryKey = (transferId: string,) => {
+    return [
+    `/api/port/bundle-transfers/${transferId}/manifest`
+    ] as const;
+    }
+
+
+export const getGetBundleTransferManifestQueryOptions = <TData = Awaited<ReturnType<typeof getBundleTransferManifest>>, TError = ErrorType<ErrorResponse>>(transferId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBundleTransferManifest>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetBundleTransferManifestQueryKey(transferId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getBundleTransferManifest>>> = ({ signal }) => getBundleTransferManifest(transferId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: transferId !== null && transferId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getBundleTransferManifest>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetBundleTransferManifestQueryResult = NonNullable<Awaited<ReturnType<typeof getBundleTransferManifest>>>
+export type GetBundleTransferManifestQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Retrieve a bundle transfer manifest
+ */
+
+export function useGetBundleTransferManifest<TData = Awaited<ReturnType<typeof getBundleTransferManifest>>, TError = ErrorType<ErrorResponse>>(
+ transferId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBundleTransferManifest>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetBundleTransferManifestQueryOptions(transferId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetBundleTransferBundleUrl = (transferId: string,) => {
+
+
+
+
+  return `/api/port/bundle-transfers/${transferId}/bundle`
+}
+
+/**
+ * Retrieves the exact normalized bundle once the opaque transfer token is supplied in the Authorization header.
+ * @summary Retrieve a bundle transfer
+ */
+export const getBundleTransferBundle = async (transferId: string, options?: Parameters<typeof customFetch>[1]): Promise<BundleTransferBundleResponse> => {
+
+  return customFetch<BundleTransferBundleResponse>(getGetBundleTransferBundleUrl(transferId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetBundleTransferBundleQueryKey = (transferId: string,) => {
+    return [
+    `/api/port/bundle-transfers/${transferId}/bundle`
+    ] as const;
+    }
+
+
+export const getGetBundleTransferBundleQueryOptions = <TData = Awaited<ReturnType<typeof getBundleTransferBundle>>, TError = ErrorType<ErrorResponse>>(transferId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBundleTransferBundle>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetBundleTransferBundleQueryKey(transferId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getBundleTransferBundle>>> = ({ signal }) => getBundleTransferBundle(transferId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: transferId !== null && transferId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getBundleTransferBundle>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetBundleTransferBundleQueryResult = NonNullable<Awaited<ReturnType<typeof getBundleTransferBundle>>>
+export type GetBundleTransferBundleQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Retrieve a bundle transfer
+ */
+
+export function useGetBundleTransferBundle<TData = Awaited<ReturnType<typeof getBundleTransferBundle>>, TError = ErrorType<ErrorResponse>>(
+ transferId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBundleTransferBundle>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetBundleTransferBundleQueryOptions(transferId,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

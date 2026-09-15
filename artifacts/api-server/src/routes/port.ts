@@ -1,15 +1,22 @@
-import { randomUUID } from "node:crypto";
+import {
+  createHash,
+  randomBytes,
+  randomUUID,
+  timingSafeEqual,
+} from "node:crypto";
 import { Router, type IRouter, type Request, type Response as ExpressResponse } from "express";
 import { ReplitConnectors, type Connection } from "@replit/connectors-sdk";
 import {
   db,
   handoffJobsTable,
   handoffStepsTable,
+  handoffTransferPackagesTable,
   takePoeChatRateLimit as takeSharedPoeChatRateLimit,
   type HandoffJobRow,
   type HandoffStepRow,
+  type HandoffTransferPackageRow,
 } from "@workspace/db";
-import { and, asc, eq, lt, or } from "drizzle-orm";
+import { and, asc, eq, gt, lt, or } from "drizzle-orm";
 import { requireTrustedCookieOrigin } from "../middlewares/csrfMiddleware";
 import { requireAuth } from "../middlewares/clerkAuthMiddleware";
 import { fetchHostedUrl, HostedUrlError } from "./hosted-url";
@@ -39,6 +46,11 @@ import {
   RetryReplitProjectSetupResponse,
   type PoeMessage,
   ImportPlaygroundResponse,
+  CreateBundleTransferBody,
+  CreateBundleTransferResponse,
+  GetBundleTransferResponse,
+  GetBundleTransferManifestResponse,
+  GetBundleTransferBundleResponse,
 } from "@workspace/api-zod";
 import {
   canonicalSkillInstallRequest,
@@ -679,6 +691,219 @@ function publicJob(job: HandoffJob) {
     steps: job.steps,
     error: job.error,
   };
+}
+
+type BundleTransferManifest = {
+  version: 1;
+  sourceType: SourceBundle["sourceType"];
+  entrypoint: string;
+  fileCount: number;
+  totalBytes: number;
+  files: Array<{ path: string; bytes: number; sha256: string }>;
+  bundleSha256: string;
+};
+
+type BundleTransferState = "active" | "expired" | "revoked" | "completed" | "exhausted";
+
+const BUNDLE_TRANSFER_TOKEN_BYTES = 32;
+const BUNDLE_TRANSFER_DEFAULT_TTL_MS = 15 * 60 * 1000;
+const BUNDLE_TRANSFER_MAX_TTL_MS = 60 * 60 * 1000;
+const BUNDLE_TRANSFER_DEFAULT_RETRIEVAL_LIMIT = 1;
+
+function transferTtlMs(): number {
+  const configured = Number(process.env.BUNDLE_TRANSFER_TTL_SECONDS);
+  if (!Number.isFinite(configured) || configured <= 0) return BUNDLE_TRANSFER_DEFAULT_TTL_MS;
+  return Math.min(BUNDLE_TRANSFER_MAX_TTL_MS, Math.floor(configured * 1000));
+}
+
+function transferRetrievalLimit(): number {
+  const configured = Number(process.env.BUNDLE_TRANSFER_RETRIEVAL_LIMIT);
+  if (!Number.isInteger(configured) || configured < 1) {
+    return BUNDLE_TRANSFER_DEFAULT_RETRIEVAL_LIMIT;
+  }
+  return Math.min(5, configured);
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${stableJson(entry)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function transferTokenHash(token: string): string {
+  return sha256(token);
+}
+
+function buildTransferManifest(bundle: SourceBundle): BundleTransferManifest {
+  const files = bundle.files.map((file) => {
+    const bytes = new TextEncoder().encode(file.content).length;
+    return {
+      path: file.path,
+      bytes,
+      sha256: sha256(file.content),
+    };
+  });
+  const manifestWithoutBundleHash = {
+    version: 1 as const,
+    sourceType: bundle.sourceType,
+    entrypoint: bundle.entrypoint,
+    fileCount: files.length,
+    totalBytes: files.reduce((sum, file) => sum + file.bytes, 0),
+    files,
+  };
+  return {
+    ...manifestWithoutBundleHash,
+    bundleSha256: sha256(stableJson(bundle)),
+  };
+}
+
+function manifestHash(manifest: BundleTransferManifest): string {
+  return sha256(stableJson(manifest));
+}
+
+function transferState(row: Pick<
+  HandoffTransferPackageRow,
+  "expiresAt" | "revokedAt" | "completedAt" | "retrievalCount" | "retrievalLimit"
+>): BundleTransferState {
+  if (row.revokedAt) return "revoked";
+  if (row.completedAt) return "completed";
+  if (row.expiresAt.getTime() <= Date.now()) return "expired";
+  if (row.retrievalCount >= row.retrievalLimit) return "exhausted";
+  return "active";
+}
+
+function publicTransfer(
+  row: HandoffTransferPackageRow,
+  transferToken?: string,
+) {
+  return {
+    transferId: row.id,
+    manifestHash: row.manifestHash,
+    manifest: row.manifest as BundleTransferManifest,
+    expiresAt: row.expiresAt.toISOString(),
+    retrievalLimit: row.retrievalLimit,
+    retrievalCount: row.retrievalCount,
+    state: transferState(row),
+    revokedAt: row.revokedAt?.toISOString() ?? null,
+    completedAt: row.completedAt?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
+    ...(transferToken
+      ? {
+          transferToken,
+          instructions:
+            "Store this token once in the destination Replit project's Replit Secrets. Do not put it in a prompt, URL, command line, browser storage, or Git repository.",
+        }
+      : {}),
+  };
+}
+
+function transferAuthorization(req: Request): string | null {
+  const value = req.headers.authorization;
+  if (typeof value !== "string") return null;
+  const match = /^Bearer ([A-Za-z0-9_-]{32,256})$/.exec(value);
+  return match?.[1] ?? null;
+}
+
+function transferRouteId(req: Request): string | null {
+  const value = req.params.transferId;
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function hashesMatch(left: string, right: string): boolean {
+  const leftBuffer = Buffer.from(left, "hex");
+  const rightBuffer = Buffer.from(right, "hex");
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function invalidTransferResponse(res: ExpressResponse): void {
+  res.status(404).json({
+    error: "That transfer package is unavailable.",
+    code: "BUNDLE_TRANSFER_UNAVAILABLE",
+  });
+}
+
+async function loadTransferForOwner(
+  transferId: string,
+  ownerId: string,
+): Promise<HandoffTransferPackageRow | null> {
+  const [row] = await db
+    .select()
+    .from(handoffTransferPackagesTable)
+    .where(
+      and(
+        eq(handoffTransferPackagesTable.id, transferId),
+        eq(handoffTransferPackagesTable.ownerId, ownerId),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+async function loadAuthorizedTransfer(
+  transferId: string,
+  token: string,
+  consume: boolean,
+): Promise<HandoffTransferPackageRow | null> {
+  const [row] = await db
+    .select()
+    .from(handoffTransferPackagesTable)
+    .where(eq(handoffTransferPackagesTable.id, transferId))
+    .limit(1);
+  if (!row || !hashesMatch(row.tokenHash, transferTokenHash(token))) return null;
+  if (transferState(row) !== "active") return null;
+
+  if (!consume) return row;
+  const [consumed] = await db
+    .update(handoffTransferPackagesTable)
+    .set({
+      retrievalCount: row.retrievalCount + 1,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(handoffTransferPackagesTable.id, row.id),
+        eq(handoffTransferPackagesTable.tokenHash, row.tokenHash),
+        gt(handoffTransferPackagesTable.expiresAt, new Date()),
+        lt(
+          handoffTransferPackagesTable.retrievalCount,
+          handoffTransferPackagesTable.retrievalLimit,
+        ),
+        // The count predicate is intentionally expressed with the current row
+        // value so a second concurrent retrieval cannot spend the same grant.
+        eq(handoffTransferPackagesTable.retrievalCount, row.retrievalCount),
+      ),
+    )
+    .returning();
+  return consumed ?? null;
+}
+
+function bundleFromTransferRow(row: HandoffTransferPackageRow): {
+  bundle: SourceBundle;
+  manifest: BundleTransferManifest;
+} | null {
+  try {
+    const bundle = normalizeBundle({ bundle: row.sourceBundle as SourceBundle });
+    const manifest = buildTransferManifest(bundle);
+    if (
+      manifestHash(manifest) !== row.manifestHash ||
+      stableJson(manifest) !== stableJson(row.manifest)
+    ) {
+      return null;
+    }
+    if (containsPrivilegedCredential(bundle)) return null;
+    return { bundle, manifest };
+  } catch {
+    return null;
+  }
 }
 
 function jobError(message: unknown): string {
@@ -1403,6 +1628,195 @@ router.get("/port/replit-project-connection/setup", requireAuth, async (req, res
     }),
   );
 });
+
+router.post(
+  "/port/bundle-transfers",
+  requireTrustedCookieOrigin,
+  requireAuth,
+  async (req, res): Promise<void> => {
+    const parsed = CreateBundleTransferBody.safeParse(req.body);
+    if (!parsed.success || parsed.data.approved !== true) {
+      res.status(400).json({
+        error: "Approve the reviewed normalized bundle before creating a transfer package.",
+        code: "BUNDLE_TRANSFER_NOT_APPROVED",
+      });
+      return;
+    }
+
+    let bundle: SourceBundle;
+    try {
+      bundle = normalizeBundle({ bundle: parsed.data.bundle as SourceBundle });
+    } catch {
+      res.status(400).json({
+        error: "Provide one valid normalized source bundle within the transfer limits.",
+        code: "INVALID_BUNDLE_TRANSFER",
+      });
+      return;
+    }
+
+    if (containsPrivilegedCredential(bundle)) {
+      res.status(400).json({
+        error:
+          "This source bundle appears to contain a service credential. Remove it before creating a transfer package.",
+        code: "SOURCE_CONTAINS_CREDENTIAL",
+      });
+      return;
+    }
+
+    const manifest = buildTransferManifest(bundle);
+    const rawToken = randomBytes(BUNDLE_TRANSFER_TOKEN_BYTES).toString("base64url");
+    const [created] = await db
+      .insert(handoffTransferPackagesTable)
+      .values({
+        id: randomUUID(),
+        ownerId: req.dbUser!.id,
+        sourceBundle: bundle,
+        manifest,
+        manifestHash: manifestHash(manifest),
+        tokenHash: transferTokenHash(rawToken),
+        expiresAt: new Date(Date.now() + transferTtlMs()),
+        retrievalLimit: transferRetrievalLimit(),
+      })
+      .returning();
+
+    res.status(201).json(
+      CreateBundleTransferResponse.parse(publicTransfer(created, rawToken)),
+    );
+  },
+);
+
+router.get(
+  "/port/bundle-transfers/:transferId",
+  requireAuth,
+  async (req, res): Promise<void> => {
+    const transferId = transferRouteId(req);
+    const transfer = transferId
+      ? await loadTransferForOwner(transferId, req.dbUser!.id)
+      : null;
+    if (!transfer) {
+      invalidTransferResponse(res);
+      return;
+    }
+    res.json(GetBundleTransferResponse.parse(publicTransfer(transfer)));
+  },
+);
+
+router.post(
+  "/port/bundle-transfers/:transferId/revoke",
+  requireTrustedCookieOrigin,
+  requireAuth,
+  async (req, res): Promise<void> => {
+    const transferId = transferRouteId(req);
+    const transfer = transferId
+      ? await loadTransferForOwner(transferId, req.dbUser!.id)
+      : null;
+    if (!transfer) {
+      invalidTransferResponse(res);
+      return;
+    }
+    const [revoked] = await db
+      .update(handoffTransferPackagesTable)
+      .set({
+        revokedAt: transfer.revokedAt ?? new Date(),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(handoffTransferPackagesTable.id, transfer.id),
+          eq(handoffTransferPackagesTable.ownerId, req.dbUser!.id),
+        ),
+      )
+      .returning();
+    res.json(GetBundleTransferResponse.parse(publicTransfer(revoked ?? transfer)));
+  },
+);
+
+router.post(
+  "/port/bundle-transfers/:transferId/complete",
+  requireTrustedCookieOrigin,
+  requireAuth,
+  async (req, res): Promise<void> => {
+    const transferId = transferRouteId(req);
+    const transfer = transferId
+      ? await loadTransferForOwner(transferId, req.dbUser!.id)
+      : null;
+    if (!transfer) {
+      invalidTransferResponse(res);
+      return;
+    }
+    const [completed] = await db
+      .update(handoffTransferPackagesTable)
+      .set({
+        completedAt: transfer.completedAt ?? new Date(),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(handoffTransferPackagesTable.id, transfer.id),
+          eq(handoffTransferPackagesTable.ownerId, req.dbUser!.id),
+        ),
+      )
+      .returning();
+    res.json(GetBundleTransferResponse.parse(publicTransfer(completed ?? transfer)));
+  },
+);
+
+router.get(
+  "/port/bundle-transfers/:transferId/manifest",
+  async (req, res): Promise<void> => {
+    const token = transferAuthorization(req);
+    const transferId = transferRouteId(req);
+    const transfer = token && transferId
+      ? await loadAuthorizedTransfer(transferId, token, false)
+      : null;
+    if (!transfer) {
+      invalidTransferResponse(res);
+      return;
+    }
+    const verified = bundleFromTransferRow(transfer);
+    if (!verified) {
+      invalidTransferResponse(res);
+      return;
+    }
+    res.json(
+      GetBundleTransferManifestResponse.parse({
+        transferId: transfer.id,
+        manifestHash: transfer.manifestHash,
+        manifest: verified.manifest,
+        expiresAt: transfer.expiresAt.toISOString(),
+      }),
+    );
+  },
+);
+
+router.get(
+  "/port/bundle-transfers/:transferId/bundle",
+  async (req, res): Promise<void> => {
+    const token = transferAuthorization(req);
+    const transferId = transferRouteId(req);
+    const transfer = token && transferId
+      ? await loadAuthorizedTransfer(transferId, token, true)
+      : null;
+    if (!transfer) {
+      invalidTransferResponse(res);
+      return;
+    }
+    const verified = bundleFromTransferRow(transfer);
+    if (!verified) {
+      invalidTransferResponse(res);
+      return;
+    }
+    res.json(
+      GetBundleTransferBundleResponse.parse({
+        transferId: transfer.id,
+        manifestHash: transfer.manifestHash,
+        manifest: verified.manifest,
+        bundle: verified.bundle,
+        expiresAt: transfer.expiresAt.toISOString(),
+      }),
+    );
+  },
+);
 
 router.post(
   "/port/replit-projects",
