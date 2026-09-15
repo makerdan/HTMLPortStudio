@@ -231,12 +231,18 @@ test("compact evidence contract keeps the approved fields and privacy boundary",
   ]) {
     assert.match(
       githubActionsDocumentation,
-      new RegExp(exclusion.replace("dependency-install ", "dependency-install\\s+"), "i"),
+      new RegExp(
+        exclusion.replace("dependency-install ", "dependency-install\\s+"),
+        "i",
+      ),
       `missing evidence exclusion: ${exclusion}`,
     );
   }
   for (const workflow of [pullRequestWorkflow, postMergeWorkflow]) {
-    assert.match(workflow, /repository dumps, source bundles, and imported HTML/);
+    assert.match(
+      workflow,
+      /repository dumps, source bundles, and imported HTML/,
+    );
     assert.match(
       workflow,
       /full logs, full dependency-install logs, and command output/,
@@ -250,8 +256,15 @@ test("compact evidence contract keeps the approved fields and privacy boundary",
       /unbounded browser traces, videos, DOM snapshots, and screenshots/,
     );
   }
-  for (const producer of [ciEvidenceSource, pullRequestWorkflow, postMergeWorkflow]) {
-    assert.match(producer, /repository dumps, source bundles, and imported HTML/);
+  for (const producer of [
+    ciEvidenceSource,
+    pullRequestWorkflow,
+    postMergeWorkflow,
+  ]) {
+    assert.match(
+      producer,
+      /repository dumps, source bundles, and imported HTML/,
+    );
     assert.match(
       producer,
       /full logs, full dependency-install logs, and command output/,
@@ -273,10 +286,7 @@ test("compact evidence contract keeps the approved fields and privacy boundary",
     githubActionsDocumentation,
     /four status messages of at most 512\s+characters/i,
   );
-  assert.match(
-    githubActionsDocumentation,
-    /exit `124`|exit 124/i,
-  );
+  assert.match(githubActionsDocumentation, /exit `124`|exit 124/i);
 });
 
 test("the evidence contract names every remote validation owner", () => {
@@ -298,6 +308,44 @@ test("the evidence contract names every remote validation owner", () => {
       `missing owner behavior: ${command}`,
     );
   }
+});
+
+test("instrumented jobs provide their canonical command to the evidence envelope", () => {
+  for (const [workflow, entries] of [
+    [
+      pullRequestWorkflow,
+      [
+        ["test-standard", "pnpm run test-standard"],
+        ["validate-api", "pnpm run validate:api"],
+        ["production-build", "pnpm run production-build"],
+      ],
+    ],
+    [
+      postMergeWorkflow,
+      [
+        ["eligibility", "post-merge eligibility policy"],
+        ["post-merge-build", "pnpm run production-build"],
+      ],
+    ],
+  ]) {
+    for (const [job, command] of entries) {
+      const block = jobBlock(workflow, job);
+      assert.match(
+        block,
+        new RegExp(`CI_COMMAND: ${command.replaceAll(" ", "\\s+")}`),
+      );
+    }
+  }
+});
+
+test("the stable validation aggregate publishes its upstream status handoff", () => {
+  const aggregate = jobBlock(pullRequestWorkflow, "validation");
+  assert.match(aggregate, /Publish compact validation aggregate summary/);
+  assert.match(aggregate, /GITHUB_STEP_SUMMARY/);
+  assert.match(aggregate, /Changed files:.*not-collected/);
+  assert.match(aggregate, /Retained artifact IDs:.*ci-diagnostic-workflow-/);
+  assert.match(aggregate, /Local comparison status:.*not-compared/);
+  assert.match(aggregate, /continue-on-error: true/);
 });
 
 test("diagnostics documentation requires bounded evidence before escalation or optimization", () => {

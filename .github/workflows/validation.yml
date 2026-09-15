@@ -61,6 +61,7 @@ jobs:
           CI_JOB_STATUS: ${{ job.status }}
           CI_UPLOAD_STATUS: workflow-diagnostic-only
           CI_TIER_NAME: test-standard
+          CI_COMMAND: pnpm run test-standard
           CI_ARTIFACT_NAME: ci-diagnostic-test-standard-${{ github.run_id }}
         run: node scripts/ci-evidence.mjs publish
 
@@ -104,6 +105,7 @@ jobs:
           CI_JOB_STATUS: ${{ job.status }}
           CI_UPLOAD_STATUS: workflow-diagnostic-only
           CI_TIER_NAME: validate-api
+          CI_COMMAND: pnpm run validate:api
           CI_ARTIFACT_NAME: ci-diagnostic-validate-api-${{ github.run_id }}
         run: node scripts/ci-evidence.mjs publish
 
@@ -130,6 +132,45 @@ jobs:
               exit 1
             fi
           done
+
+      - name: Publish compact validation aggregate summary
+        if: ${{ always() }}
+        continue-on-error: true
+        env:
+          TEST_STANDARD_RESULT: ${{ needs.test-standard.result }}
+          VALIDATE_API_RESULT: ${{ needs.validate-api.result }}
+          PRODUCTION_BUILD_RESULT: ${{ needs.production-build.result }}
+        run: |
+          set -eu
+          lifecycle="success"
+          for result in "$TEST_STANDARD_RESULT" "$VALIDATE_API_RESULT" "$PRODUCTION_BUILD_RESULT"; do
+            case "$result" in
+              cancelled) lifecycle="cancelled" ;;
+              failure) [ "$lifecycle" = "success" ] && lifecycle="failure" ;;
+              skipped) [ "$lifecycle" = "success" ] && lifecycle="skipped" ;;
+            esac
+          done
+          safe_ref="$(printf '%s' "${GITHUB_REF:-unknown-ref}" | tr -cd 'A-Za-z0-9._/@:+-')"
+          safe_sha="$(printf '%s' "${GITHUB_SHA:-unknown-sha}" | tr -cd 'A-Fa-f0-9' | cut -c1-64)"
+          safe_sha="${safe_sha:-unknown-sha}"
+          {
+            echo "## CI validation aggregate summary"
+            echo
+            echo "- Revision: \`$safe_sha\` (attempt \`${GITHUB_RUN_ATTEMPT:-1}\`)"
+            echo "- Event: \`${GITHUB_EVENT_NAME:-unknown-event}\`"
+            echo "- Branch or pull request: \`$safe_ref\`"
+            echo "- Workflow/job: \`GitHub Validation / validation\`"
+            echo "- Command: \`all three upstream jobs\`"
+            echo "- Result: \`$lifecycle\`"
+            echo "- Exit code: \`null\` (aggregate reports upstream job results)"
+            echo "- Changed files: \`not-collected\`"
+            echo "- Failure excerpt: \`test-standard=$TEST_STANDARD_RESULT, validate-api=$VALIDATE_API_RESULT, production-build=$PRODUCTION_BUILD_RESULT\`"
+            echo "- Lifecycle status: \`$lifecycle\`"
+            echo "- Retained artifact IDs: \`ci-diagnostic-workflow-${GITHUB_RUN_ID:-unknown-run}\` when diagnostics upload is eligible"
+            echo "- Local comparison status: \`not-compared\`"
+            echo
+            echo "This summary contains status metadata only; source, logs, provider payloads, environment values, and secrets are excluded."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   production-build:
     name: production-build
@@ -172,6 +213,7 @@ jobs:
           CI_JOB_STATUS: ${{ job.status }}
           CI_UPLOAD_STATUS: workflow-diagnostic-only
           CI_TIER_NAME: production-build
+          CI_COMMAND: pnpm run production-build
           CI_ARTIFACT_NAME: ci-diagnostic-production-build-${{ github.run_id }}
         run: node scripts/ci-evidence.mjs publish
 

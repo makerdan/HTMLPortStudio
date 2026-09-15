@@ -18,6 +18,7 @@ function envFor(file, overrides = {}) {
     CI_JOB_STATUS: "failure",
     CI_ARTIFACT_NAME: "ci-diagnostic-123",
     CI_TIER_NAME: "test-standard",
+    CI_COMMAND: "pnpm run test-standard",
     GITHUB_WORKFLOW: "GitHub Validation",
     GITHUB_EVENT_NAME: "pull_request",
     GITHUB_RUN_ID: "123",
@@ -50,6 +51,33 @@ test("CI evidence is bounded and records safe phase measurements", () => {
   assert.ok(
     !readFileSync(`${file}.artifact`, "utf8").includes("CI_JOB_STATUS"),
   );
+});
+
+test("compact evidence carries explicit handoff fields and sanitizes upload metadata", () => {
+  const file = join(
+    mkdtempSync(join(tmpdir(), "ci-evidence-")),
+    "evidence.json",
+  );
+  const evidence = publishEvidence({
+    env: envFor(file, {
+      CI_JOB_STATUS: "cancelled",
+      CI_RETRY_COUNT: "99",
+      CI_UPLOAD_STATUS: "SECRET_VALUE=should-not-appear",
+      CI_COMMAND: "pnpm run test-standard",
+    }),
+  });
+  assert.equal(evidence.metadata.workflow, "GitHub Validation");
+  assert.equal(evidence.metadata.branchOrPullRequest, "refs/pull/1/merge");
+  assert.equal(evidence.metadata.changedFiles, "not-collected");
+  assert.equal(evidence.metadata.command, "pnpm run test-standard");
+  assert.equal(evidence.outcome.result, "cancelled");
+  assert.equal(evidence.outcome.exitCode, null);
+  assert.equal(evidence.metrics.cancelled, true);
+  assert.equal(evidence.metrics.retryCount, 10);
+  assert.equal(evidence.metrics.uploadStatus, "not-run");
+  assert.deepEqual(evidence.retainedArtifactIds, ["ci-diagnostic-123"]);
+  assert.deepEqual(evidence.failureExcerpt, evidence.excerpts);
+  assert.ok(!readFileSync(`${file}.artifact`, "utf8").includes("SECRET_VALUE"));
 });
 
 test("expected skips do not become false failure evidence", () => {
@@ -138,12 +166,30 @@ test("wrapped commands cannot access evidence paths and keep their exit code", a
     command: process.execPath,
     args: [
       "-e",
-      "process.exit(process.env.CI_EVIDENCE_FILE || process.env.GITHUB_STEP_SUMMARY ? 99 : 7)",
+      "process.exit(process.env.CI_EVIDENCE_FILE || process.env.GITHUB_STEP_SUMMARY || process.env.CI_COMMAND ? 99 : 7)",
     ],
   });
   assert.equal(exitCode, 7);
   const evidence = publishEvidence({ env: envFor(file) });
   assert.equal(evidence.metrics.phases[0].exitCode, 7);
+});
+
+test("spawn failures still record a failed phase with an exit code", async () => {
+  const file = join(
+    mkdtempSync(join(tmpdir(), "ci-evidence-")),
+    "evidence.json",
+  );
+  const exitCode = await runPhase({
+    env: envFor(file),
+    phase: "command",
+    command: "/definitely/missing/ci-evidence-command",
+    args: [],
+  });
+  assert.equal(exitCode, 1);
+  const evidence = publishEvidence({ env: envFor(file) });
+  assert.equal(evidence.metrics.phases[0].status, "failure");
+  assert.equal(evidence.metrics.phases[0].exitCode, 1);
+  assert.equal(evidence.outcome.exitCode, 1);
 });
 
 test("poisoned phase state is rebuilt into a bounded allowlisted artifact", () => {

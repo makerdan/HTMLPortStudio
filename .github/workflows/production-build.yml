@@ -124,6 +124,7 @@ jobs:
           CI_JOB_STATUS: ${{ job.status }}
           CI_UPLOAD_STATUS: workflow-diagnostic-only
           CI_TIER_NAME: post-merge-eligibility
+          CI_COMMAND: post-merge eligibility policy
           CI_ARTIFACT_NAME: ci-diagnostic-eligibility-${{ github.run_id }}
         run: node scripts/ci-evidence.mjs publish
 
@@ -169,6 +170,7 @@ jobs:
           CI_JOB_STATUS: ${{ job.status }}
           CI_UPLOAD_STATUS: workflow-diagnostic-only
           CI_TIER_NAME: post-merge-build
+          CI_COMMAND: pnpm run production-build
           CI_ARTIFACT_NAME: ci-diagnostic-post-merge-build-${{ github.run_id }}
         run: node scripts/ci-evidence.mjs publish
 

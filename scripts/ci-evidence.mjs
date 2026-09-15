@@ -37,6 +37,15 @@ const COMPARISON_STATUSES = new Set([
   "not-compared",
   "not-applicable",
 ]);
+const UPLOAD_STATUSES = new Set([
+  "workflow-diagnostic-only",
+  "success",
+  "failure",
+  "cancelled",
+  "skipped",
+  "not-run",
+  "not-uploaded",
+]);
 const CHILD_REDACTED_ENV = [
   "CI_EVIDENCE_FILE",
   "CI_EVIDENCE_ARTIFACT_FILE",
@@ -51,6 +60,7 @@ const CHILD_REDACTED_ENV = [
   "CI_RETRY_COUNT",
   "CI_UPLOAD_STATUS",
   "CI_SKIP_SUMMARY",
+  "CI_COMMAND",
   "GITHUB_STEP_SUMMARY",
 ];
 
@@ -84,6 +94,29 @@ function safeName(value, fallback) {
   return /^[A-Za-z0-9._-]{1,100}$/.test(name) ? name : fallback;
 }
 
+function safeLabel(value, fallback, maxLength = 160) {
+  const label = String(value || "").trim();
+  return /^[A-Za-z0-9][A-Za-z0-9 ._:/-]*$/.test(label) &&
+    label.length <= maxLength
+    ? label
+    : fallback;
+}
+
+function safeRef(value) {
+  const ref = String(value || "unknown-ref").trim();
+  return /^[A-Za-z0-9][A-Za-z0-9._/@:+-]*$/.test(ref)
+    ? ref.slice(0, 160)
+    : "unknown-ref";
+}
+
+function safeCommand(value) {
+  return safeLabel(value, "not-specified", 240);
+}
+
+function safeUploadStatus(value) {
+  return UPLOAD_STATUSES.has(value) ? value : "not-run";
+}
+
 function numberOr(value, fallback = 0) {
   const number = Number(value);
   return Number.isSafeInteger(number) && number >= 0 ? number : fallback;
@@ -93,15 +126,18 @@ function baseState(env) {
   return {
     version: EVIDENCE_VERSION,
     metadata: {
-      workflow: safeName(env.GITHUB_WORKFLOW, "unknown-workflow"),
-      job: safeName(env.CI_JOB_NAME || env.GITHUB_JOB, "unknown-job"),
-      event: safeName(env.GITHUB_EVENT_NAME, "unknown-event"),
+      workflow: safeLabel(env.GITHUB_WORKFLOW, "unknown-workflow"),
+      job: safeLabel(env.CI_JOB_NAME || env.GITHUB_JOB, "unknown-job"),
+      event: safeLabel(env.GITHUB_EVENT_NAME, "unknown-event"),
       runId: safeName(env.GITHUB_RUN_ID, "unknown-run"),
       runAttempt: numberOr(env.GITHUB_RUN_ATTEMPT, 1),
       commitSha: /^[0-9a-f]{7,64}$/i.test(env.GITHUB_SHA || "")
         ? env.GITHUB_SHA
         : "unknown-sha",
-      ref: String(env.GITHUB_REF || "unknown-ref").slice(0, 160),
+      ref: safeRef(env.GITHUB_REF),
+      branchOrPullRequest: safeRef(env.GITHUB_REF),
+      changedFiles: "not-collected",
+      command: safeCommand(env.CI_COMMAND),
     },
     phases: [],
     retryCount: numberOr(env.CI_RETRY_COUNT),
@@ -221,11 +257,17 @@ export async function runPhase({ env = process.env, phase, command, args }) {
     env: childEnv,
     stdio: "inherit",
   });
-  const exitCode = await new Promise((resolve, reject) => {
-    child.once("error", reject);
+  const exitCode = await new Promise((resolve) => {
+    let settled = false;
+    const finish = (code) => {
+      if (settled) return;
+      settled = true;
+      resolve(code);
+    };
     child.once("close", (code, signal) => {
-      resolve(code ?? (signal ? 1 : 0));
+      finish(code ?? (signal ? 1 : 0));
     });
+    child.once("error", () => finish(1));
   });
   try {
     recordPhase({
@@ -333,6 +375,23 @@ export function publishEvidence({ env = process.env } = {}) {
         ? "timed_out"
         : diagnosticStatus(env.CI_JOB_STATUS, upstream, expected);
   const phases = state.phases.slice(0, MAX_PHASES);
+  const artifactName = safeName(
+    env.CI_ARTIFACT_NAME,
+    `ci-diagnostic-${state.metadata.runId}`,
+  );
+  const exitCode =
+    [...phases].reverse().find((phase) => phase.exitCode !== null)?.exitCode ??
+    null;
+  const excerpts = [
+    `Job ${state.metadata.job} ended with ${status}.`,
+    ...(Object.keys(upstream).length > 0
+      ? [
+          `Upstream statuses: ${Object.entries(upstream)
+            .map(([name, result]) => `${name}=${result}`)
+            .join(", ")}`,
+        ]
+      : []),
+  ].slice(0, 4);
   const envelope = {
     version: EVIDENCE_VERSION,
     metadata: state.metadata,
@@ -346,41 +405,36 @@ export function publishEvidence({ env = process.env } = {}) {
     outcome: {
       diagnostic: "independent",
       authoritative: "unchanged",
+      result: status,
+      exitCode,
     },
     metrics: {
       phases,
       retryCount: Math.min(numberOr(env.CI_RETRY_COUNT, state.retryCount), 10),
       cancelled: status === "cancelled",
-      uploadStatus: String(env.CI_UPLOAD_STATUS || "not-run").slice(0, 32),
+      timeout:
+        status === "timed_out" ||
+        phases.some((phase) => phase.status === "timed_out"),
+      uploadStatus: safeUploadStatus(env.CI_UPLOAD_STATUS),
       artifactSizeBytes: 0,
       artifactSizeLimitBytes: MAX_EVIDENCE_BYTES,
     },
     artifacts: [
       {
-        name: safeName(
-          env.CI_ARTIFACT_NAME,
-          `ci-diagnostic-${state.metadata.runId}`,
-        ),
+        name: artifactName,
         kind: "compact-evidence",
         condition: "failure-or-cancellation",
         retentionDays: 3,
         maxBytes: MAX_EVIDENCE_BYTES,
       },
     ],
+    retainedArtifactIds: [artifactName],
     localComparison: {
       status: safeComparison(env.CI_LOCAL_COMPARISON_STATUS),
       tier: safeName(env.CI_TIER_NAME, "not-specified"),
     },
-    excerpts: [
-      `Job ${state.metadata.job} ended with ${status}.`,
-      ...(Object.keys(upstream).length > 0
-        ? [
-            `Upstream statuses: ${Object.entries(upstream)
-              .map(([name, result]) => `${name}=${result}`)
-              .join(", ")}`,
-          ]
-        : []),
-    ],
+    failureExcerpt: excerpts,
+    excerpts,
     redactions: [
       "repository dumps, source bundles, and imported HTML",
       "full logs, full dependency-install logs, and command output",

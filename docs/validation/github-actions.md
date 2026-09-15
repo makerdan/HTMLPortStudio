@@ -175,17 +175,17 @@ The authoritative validation remains unchanged.
 | Normalized field | Current envelope representation and allowed value |
 | --- | --- |
 | `revision` | `metadata.commitSha` plus the run attempt; the SHA is immutable or `unknown-sha` |
-| `branchOrPullRequest` | Bounded `metadata.ref`, containing a branch or pull-request ref only |
-| `changedFiles` | `not-collected`; source enumeration is outside this contract |
+| `branchOrPullRequest` | Bounded `metadata.branchOrPullRequest`, containing a branch or pull-request ref only |
+| `changedFiles` | `metadata.changedFiles` is `not-collected`; source enumeration is outside this contract |
 | `workflow` / `job` | `metadata.workflow` and the stable `metadata.job` name |
-| `command` | The canonical local command named by the owning job, never shell arguments or command output |
-| `result` | `lifecycle.status` and `outcome`; diagnostic results are independent and `authoritative` is always `unchanged` |
-| `exitCode` | The integer exit code on an allowlisted phase record, or `null` when GitHub ended the job before a phase reported one |
-| `failureExcerpt` | `excerpts`: bounded, status-only text describing the failing phase or upstream result; never raw output |
+| `command` | `metadata.command`, the canonical local command named by the owning job, never shell arguments or command output |
+| `result` | `lifecycle.status` and `outcome.result`; diagnostic results are independent and `authoritative` is always `unchanged` |
+| `exitCode` | `outcome.exitCode`, copied from the last allowlisted phase record, or `null` when GitHub ended the job before a phase reported one |
+| `failureExcerpt` | `failureExcerpt` and `excerpts`: bounded, status-only text describing the failing phase or upstream result; never raw output |
 | `cancellation` / `retry` | `metrics.cancelled` and bounded `metrics.retryCount` |
 | `skip` | `lifecycle.expectedSkips` and the allowlisted `lifecycle.upstream` statuses |
 | `timeout` | `timed_out` lifecycle or phase status, including command exit `124`; platform timeouts remain only as precise as GitHub's result |
-| `retainedArtifactIds` | Opaque `artifacts[].name` values with kind, condition, retention, and byte limit |
+| `retainedArtifactIds` | Opaque `retainedArtifactIds` and `artifacts[].name` values with kind, condition, retention, and byte limit |
 | `localComparisonStatus` | `localComparison.status`: `match`, `mismatch`, `not-compared`, or `not-applicable`, plus the local tier |
 
 The envelope may also contain only the contract metadata needed to interpret
