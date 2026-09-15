@@ -32,7 +32,10 @@ values:
    completion, its independently supplied SHA-256 hash, and the approved
    manifest format. The manifest must enumerate every expected relative file,
    its byte length, and its SHA-256 hash; it must name the exact entrypoint and
-   importer identity.
+   importer identity. A safe relative path is canonical for the approved
+   format: it uses `/` separators, has no leading `/`, drive prefix, empty
+   segment, `.` or `..` segment, duplicate separator, trailing separator, or
+   NUL byte. Reject equivalent spellings rather than silently normalizing them.
 3. **Destination** — the existing project and the resolved destination
    directory. Do not infer it from a copied file or from a prior agent claim.
    Verification reports, temporary files, logs, and browser traces must be
@@ -47,10 +50,10 @@ values:
    Treat it as context to identify what must be checked, never as proof that a
    check passed.
 6. **Repeat-import evidence** — an independently captured result for repeating
-   the same import with the same approved importer commit and source. It must
-   include the resulting manifest hash, complete file list, every file hash,
-   byte lengths, and entrypoint. A sentence in the original importer’s
-   summary is not evidence.
+   the same import with the same approved source, destination, importer commit,
+   manifest format and hash, and entrypoint. It must include the resulting
+   manifest hash, complete file list, every file hash, byte lengths, and
+   entrypoint. A sentence in the original importer’s summary is not evidence.
 
 If any required input is absent, ambiguous, self-reported only, or cannot be
 read without guessing, stop before runtime and report **Blocked**. Do not
@@ -87,7 +90,10 @@ each file’s SHA-256 from the destination bytes. Then:
 - reject every per-file hash mismatch;
 - reject an entrypoint that is missing, extra, or different from the approved
   entrypoint; and
-- record the independently recomputed manifest and its SHA-256.
+- serialize the independently recomputed manifest in the approved format,
+  compare its SHA-256 directly with the approved manifest hash, and record the
+  complete manifest and hash. Component-level equality does not replace this
+  direct comparison.
 
 Do not accept a directory fingerprint as a substitute for the complete file
 set and every file hash. Do not accept a copied manifest unless its bytes were
@@ -98,7 +104,9 @@ also independently hashed and compared to the approved manifest hash.
 Compare the independent destination result with the independently captured
 repeat-import result. Require equality of:
 
+- approved source and destination;
 - approved importer commit;
+- manifest format;
 - manifest hash;
 - sorted complete file set;
 - every file hash and byte length; and
@@ -173,13 +181,14 @@ interaction successful.
 After the browser check, stop and verify the owned static server before
 forming the final outcome. Then repeat the complete Phase A2 source walk:
 complete file set, every file’s byte length and SHA-256, entrypoint, and
-destination manifest hash. Compare this final result to the pre-runtime
-source result.
+destination manifest hash. Compare this final result directly to the approved
+manifest and repeat-import result as well as to the pre-runtime source result.
 
-Any source change, missing final hash, surviving owned process, serving owned
-port, or unavailable final check is **Failed**. A final hash check is
-required even when runtime passed. Runtime success never repairs or excuses
-source drift.
+Any source change, missing final hash, surviving owned process, or serving
+owned port is **Failed**. If the final source walk or cleanup observation
+cannot be performed, the result is **Blocked**. A final hash check is required
+even when runtime passed. Runtime success never repairs or excuses source
+drift.
 
 ## Strict outcome report
 
@@ -191,6 +200,7 @@ required item.
 Import confirmation: Verified | Failed | Blocked
 Source evidence:
   importer commit: <exact value and comparison>
+  approved manifest format: <expected / observed / status>
   approved manifest SHA-256: <expected / recomputed / status>
   complete file set: <status and missing/extra paths>
   per-file hashes and byte lengths: <status and mismatches>
@@ -203,7 +213,8 @@ Runtime evidence:
   required interaction: <status and observed result>
   required requests: <status>
   optional-unlisted requests: <separate observations or none>
-  final source hashes after runtime: <status>
+  final source hashes after runtime: <status and comparison to approved,
+    repeat-import, and pre-runtime results>
 Skipped required checks: <none, or each check and why>
 ```
 
@@ -212,10 +223,13 @@ complete, independently evidenced, passed, and no required check is skipped.
 In particular, copied files, a passing page load, an importer summary, or an
 MCP handoff claim alone can never produce **Verified**.
 
-Report **Failed** when a required check ran and found a mismatch, failure,
-source drift, or cleanup failure. Report **Blocked** when a required check
-could not run because evidence, approval, browser access, or a safe reviewed
-server was unavailable. A blocked check is never a pass.
+Report **Failed** when any required check ran and found a mismatch, failure,
+source drift, or cleanup failure. Otherwise, report **Blocked** when any
+required check could not run because evidence, approval, browser access, a
+safe reviewed server, cleanup observation, or a final source walk was
+unavailable. A blocked check is never a pass. Thus, when failed and blocked
+conditions coexist, **Failed** takes precedence; **Verified** is possible
+only when neither condition exists.
 
 Never publish, create a project, install dependencies, modify imported files,
 repair behavior, or claim that MCP directly imported the source as part of
