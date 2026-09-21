@@ -2,9 +2,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { ROOT, extractSectionBody, loadTierRegistry, validatePlanPath } from "./tier-lock-check.mjs";
 
-const BASELINE_FILE = process.env.FAILURE_BASELINE_FILE
-  ? path.resolve(process.env.FAILURE_BASELINE_FILE)
-  : path.join(ROOT, "docs/validation/failure-baseline.json");
 const SUPPORTED_BASELINE_VERSION = 1;
 const REQUIRED_SECTIONS = ["Pre-existing failures to ignore", "Validation"];
 const PLACEHOLDER = /(?:<[^>]+>|\b(?:TODO|TBD|FIXME|REQUIRED)\b|\[(?:fill|choose|reason|command)[^\]]*\]|\.\.\.)/i;
@@ -24,23 +21,30 @@ export const VALIDATION_STUB = `## Validation
 **Do not escalate:** Run exactly this command. Pre-existing failures are not a reason to run a heavier tier.
 `;
 
+function baselineFile() {
+  return process.env.FAILURE_BASELINE_FILE
+    ? path.resolve(process.env.FAILURE_BASELINE_FILE)
+    : path.join(ROOT, "docs/validation/failure-baseline.json");
+}
+
 function sectionExists(text, heading) {
   return extractSectionBody(text, heading) !== null;
 }
 
 export function loadBaselineCatalog() {
+  const catalogFile = baselineFile();
   try {
-    const catalog = JSON.parse(fs.readFileSync(BASELINE_FILE, "utf8"));
+    const catalog = JSON.parse(fs.readFileSync(catalogFile, "utf8"));
     if (!catalog || typeof catalog !== "object" || Array.isArray(catalog)) {
       return {
         records: [],
-        errors: [`baseline catalog ${path.relative(ROOT, BASELINE_FILE)} must be an object with version ${SUPPORTED_BASELINE_VERSION} and a records array.`],
+        errors: [`baseline catalog ${path.relative(ROOT, catalogFile)} must be an object with version ${SUPPORTED_BASELINE_VERSION} and a records array.`],
       };
     }
 
     const errors = [];
     if (catalog.version !== SUPPORTED_BASELINE_VERSION) {
-      const catalogPath = path.relative(ROOT, BASELINE_FILE);
+      const catalogPath = path.relative(ROOT, catalogFile);
       if (Object.hasOwn(catalog, "version")) {
         errors.push(`baseline catalog ${catalogPath} has unsupported version ${JSON.stringify(catalog.version)}; expected supported version ${SUPPORTED_BASELINE_VERSION}.`);
       } else {
@@ -48,7 +52,7 @@ export function loadBaselineCatalog() {
       }
     }
     if (!Array.isArray(catalog.records)) {
-      errors.push(`baseline catalog ${path.relative(ROOT, BASELINE_FILE)} must contain a records array.`);
+      errors.push(`baseline catalog ${path.relative(ROOT, catalogFile)} must contain a records array.`);
       return { records: [], errors };
     }
 
@@ -84,7 +88,7 @@ export function loadBaselineCatalog() {
     }
     return { records: catalog.records, errors };
   } catch (error) {
-    throw new Error(`Cannot read baseline catalog ${path.relative(ROOT, BASELINE_FILE)}: ${error.message}`);
+    throw new Error(`Cannot read baseline catalog ${path.relative(ROOT, catalogFile)}: ${error.message}`);
   }
 }
 

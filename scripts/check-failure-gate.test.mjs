@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import test from "node:test";
 import { validatePlanText } from "./lib/failure-gate.mjs";
 import { loadTierRegistry, readPlanTier } from "./lib/tier-lock-check.mjs";
@@ -43,22 +43,21 @@ function planWithReference(ownership, id = "BASE-EXAMPLE") {
 }
 
 function withCatalog(records, callback) {
-  const original = fs.readFileSync(baselineFile, "utf8");
-  try {
-    fs.writeFileSync(baselineFile, JSON.stringify({ version: 1, records }, null, 2));
-    return callback();
-  } finally {
-    fs.writeFileSync(baselineFile, original);
-  }
+  return withCatalogDocument({ version: 1, records }, callback);
 }
 
 function withCatalogDocument(document, callback) {
-  const original = fs.readFileSync(baselineFile, "utf8");
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "failure-gate-baseline-"));
+  const file = path.join(directory, "failure-baseline.json");
+  const previous = process.env.FAILURE_BASELINE_FILE;
   try {
-    fs.writeFileSync(baselineFile, JSON.stringify(document, null, 2));
+    fs.writeFileSync(file, typeof document === "string" ? document : JSON.stringify(document, null, 2));
+    process.env.FAILURE_BASELINE_FILE = file;
     return callback();
   } finally {
-    fs.writeFileSync(baselineFile, original);
+    if (previous === undefined) delete process.env.FAILURE_BASELINE_FILE;
+    else process.env.FAILURE_BASELINE_FILE = previous;
+    fs.rmSync(directory, { recursive: true, force: true });
   }
 }
 
@@ -171,6 +170,33 @@ test("rejects an unsupported baseline catalog version with a schema diagnostic",
   assert.ok(errors.some((error) => error.includes("baseline catalog") && error.includes("unsupported version 2") && error.includes("expected supported version 1")));
 });
 
+test("reports invalid JSON without touching the tracked catalog", () => {
+  const original = fs.readFileSync(baselineFile, "utf8");
+  assert.throws(
+    () => withCatalogDocument("{ invalid json", () => validatePlanText(valid, "invalid JSON plan")),
+    /Cannot read baseline catalog .*JSON/,
+  );
+  assert.equal(fs.readFileSync(baselineFile, "utf8"), original);
+});
+
+test("reports a missing baseline catalog without touching the tracked catalog", () => {
+  const original = fs.readFileSync(baselineFile, "utf8");
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "failure-gate-missing-"));
+  const previous = process.env.FAILURE_BASELINE_FILE;
+  try {
+    process.env.FAILURE_BASELINE_FILE = path.join(directory, "missing.json");
+    assert.throws(
+      () => validatePlanText(valid, "missing baseline plan"),
+      /Cannot read baseline catalog .*ENOENT/,
+    );
+  } finally {
+    if (previous === undefined) delete process.env.FAILURE_BASELINE_FILE;
+    else process.env.FAILURE_BASELINE_FILE = previous;
+    assert.equal(fs.readFileSync(baselineFile, "utf8"), original);
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("rejects an expired ignored baseline and names the repair action", () => {
   const errors = withCatalog([baselineRecord("BASE-EXPIRED", {
     reviewDeadline: "2020-01-01T00:00:00.000Z",
@@ -240,6 +266,42 @@ test("maintenance reports schema problems and expired active records without fai
   assert.match(result.stderr, /Schema problem: baseline record at index 3 is malformed/);
   assert.match(result.stderr, /Schema problem: baseline record at index 4 is malformed/);
   assert.match(result.stderr, /Expired active record: BASE-DUPLICATE/);
+});
+
+test("concurrent child checks keep their temporary catalogs isolated", async () => {
+  const original = fs.readFileSync(baselineFile, "utf8");
+  const directories = [0, 1].map(() => fs.mkdtempSync(path.join(os.tmpdir(), "failure-gate-concurrent-")));
+  try {
+    const catalogs = [
+      { version: 1, records: [baselineRecord("BASE-CONCURRENT-A")] },
+      { version: 1, records: [{ id: "BASE-CONCURRENT-B", status: "invalid" }] },
+    ];
+    const children = directories.map((directory, index) => {
+      const catalog = path.join(directory, "failure-baseline.json");
+      const plan = path.join(directory, "plan.md");
+      fs.writeFileSync(catalog, JSON.stringify(catalogs[index]));
+      fs.writeFileSync(plan, valid);
+      return new Promise((resolve, reject) => {
+        const child = spawn(process.execPath, [checker, "--plan", plan], {
+          cwd: root,
+          env: { ...process.env, FAILURE_BASELINE_FILE: catalog },
+        });
+        let stdout = "";
+        let stderr = "";
+        child.stdout.on("data", (chunk) => { stdout += chunk; });
+        child.stderr.on("data", (chunk) => { stderr += chunk; });
+        child.on("error", reject);
+        child.on("close", (status, signal) => resolve({ status, signal, stdout, stderr }));
+      });
+    });
+    const results = await Promise.all(children.map((child) => child));
+    assert.equal(results[0].status, 0, results[0].stderr);
+    assert.notEqual(results[1].status, 0);
+    assert.match(results[1].stderr, /BASE-CONCURRENT-B.*invalid status/);
+  } finally {
+    assert.equal(fs.readFileSync(baselineFile, "utf8"), original);
+    for (const directory of directories) fs.rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("TASK_PLAN_FILE selects exactly one plan", () => {
