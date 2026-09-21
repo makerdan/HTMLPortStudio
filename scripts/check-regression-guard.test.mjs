@@ -511,6 +511,63 @@ test("guidance freshness explains unreadable documents without mutating tracked 
   }
 });
 
+test("guidance freshness reports every missing and unreadable document in one run", () => {
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "regression-guard-multiple-broken-"),
+  );
+  const missingFile = "missing-guidance.md";
+  const unreadableFile = "unreadable-guidance.md";
+  const before = new Map(
+    [failureGateSkill, projectGuidance].map((file) => [
+      file,
+      fs.readFileSync(file, "utf8"),
+    ]),
+  );
+  const errors = [];
+  fs.mkdirSync(path.join(directory, unreadableFile));
+  try {
+    const status = updateRegressionGuardGuidance({
+      root: directory,
+      guidanceFiles: [missingFile, unreadableFile],
+      checkOnly: true,
+      reportError: (message) => errors.push(message),
+    });
+
+    assert.equal(status, 1);
+    assert.equal(errors.length, 2);
+    assert.match(
+      errors[0],
+      new RegExp(`Missing guidance document: ${missingFile}`),
+    );
+    assert.match(
+      errors[0],
+      /Affected Regression Guard guidance sections: Regression Guard policy, Regression Guard examples/,
+    );
+    assert.match(errors[0], /missing document, not stale generated content/);
+    assert.match(
+      errors[0],
+      /node scripts\/update-regression-guard-guidance\.mjs/,
+    );
+    assert.match(
+      errors[1],
+      new RegExp(`Unreadable guidance document: ${unreadableFile}`),
+    );
+    assert.match(
+      errors[1],
+      /Affected Regression Guard guidance sections: Regression Guard policy, Regression Guard examples/,
+    );
+    assert.match(errors[1], /unreadable document, not stale generated content/);
+    assert.match(
+      errors[1],
+      /node scripts\/update-regression-guard-guidance\.mjs/,
+    );
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+    for (const [file, text] of before)
+      assert.equal(fs.readFileSync(file, "utf8"), text);
+  }
+});
+
 test("guidance freshness rejects malformed generated blocks with an updater command", () => {
   const original = fs.readFileSync(projectGuidance, "utf8");
   const malformed = original.replace(
