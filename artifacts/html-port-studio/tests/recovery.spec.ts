@@ -1032,7 +1032,7 @@ test("shows canonical skill recovery guidance and preserves completed steps", as
 });
 
 test("[cross-browser] recovers an in-progress authenticated handoff after reload", async ({ page }) => {
-  const jobId = "job-1";
+  const jobId = "123e4567-e89b-12d3-a456-426614174019";
   const status = {
     jobId,
     status: "running",
@@ -1040,7 +1040,7 @@ test("[cross-browser] recovers an in-progress authenticated handoff after reload
     projectUrl: null,
     projectName: "Imported page",
     currentStep: "Port Authority",
-    steps: [{ name: "Port Authority", status: "running", error: null }],
+    steps: [],
     error: null,
   };
   let statusChecks = 0;
@@ -1079,21 +1079,6 @@ test("[cross-browser] recovers an in-progress authenticated handoff after reload
     metadata: sessionStorage.getItem("html-port-studio:handoff-recovery"),
     browserSessionId: sessionStorage.getItem("html-port-studio:browser-session"),
   }));
-  if (!recoveryBeforeReload.metadata) {
-    const repairedRecovery = await page.evaluate(({ jobId }) => {
-      const browserSessionId =
-        sessionStorage.getItem("html-port-studio:browser-session") ?? crypto.randomUUID();
-      const metadata = JSON.stringify({
-        jobId,
-        ownerId: "e2e-user",
-        browserSessionId,
-      });
-      sessionStorage.setItem("html-port-studio:browser-session", browserSessionId);
-      sessionStorage.setItem("html-port-studio:handoff-recovery", metadata);
-      return { metadata, browserSessionId };
-    }, { jobId });
-    Object.assign(recoveryBeforeReload, repairedRecovery);
-  }
   expect(JSON.parse(recoveryBeforeReload.metadata ?? "{}")).toMatchObject({
     jobId,
     ownerId: "e2e-user",
