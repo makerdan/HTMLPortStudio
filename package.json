@@ -9,7 +9,7 @@
     "git-sync-recovery": "node scripts/git-sync-recovery.mjs",
     "lint": "pnpm exec prettier --check package.json artifacts/api-server/package.json artifacts/html-port-studio/package.json artifacts/mockup-sandbox/package.json",
     "test:static": "pnpm run typecheck && pnpm run lint && pnpm run validate:clerk-skill",
-    "test:unit": "pnpm run validate:studio-analytics && node --test scripts/port-authority.test.mjs scripts/free-ports.test.mjs scripts/validate-api-codegen.test.mjs scripts/check-failure-gate.test.mjs scripts/check-regression-guard.test.mjs scripts/workspace-skill.test.mjs scripts/validation-tier-registration.test.mjs scripts/ci-evidence.test.mjs scripts/github-actions-validation.test.mjs scripts/git-sync-recovery.test.mjs && pnpm --filter @workspace/html-port-studio run test:unit",
+    "test:unit": "pnpm run validate:studio-analytics && node --test scripts/port-authority.test.mjs scripts/free-ports.test.mjs scripts/validate-api-codegen.test.mjs scripts/check-failure-gate.test.mjs scripts/check-regression-guard.test.mjs scripts/list-skills-contract.test.mjs scripts/workspace-skill.test.mjs scripts/validation-tier-registration.test.mjs scripts/ci-evidence.test.mjs scripts/github-actions-validation.test.mjs scripts/git-sync-recovery.test.mjs && pnpm --filter @workspace/html-port-studio run test:unit",
     "test:api": "pnpm --filter @workspace/api-server run test:unit",
     "test:codegen": "pnpm run validate:api",
     "test:browser": "pnpm --filter @workspace/html-port-studio run test:browser",
