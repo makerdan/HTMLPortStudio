@@ -61,7 +61,9 @@ export function updateRegressionGuardGuidance({
   let changed = false;
   let failed = false;
   for (const relativeFile of guidanceFiles) {
-    const file = path.join(root, relativeFile);
+    const file = path.isAbsolute(relativeFile)
+      ? relativeFile
+      : path.join(root, relativeFile);
     let text;
     try {
       text = readFile(file, "utf8");
@@ -120,9 +122,13 @@ export function updateRegressionGuardGuidance({
 }
 
 if (fileURLToPath(import.meta.url) === path.resolve(process.argv[1] ?? "")) {
+  const guidanceFiles = process.argv
+    .slice(2)
+    .filter((argument) => argument !== "--check");
   process.exit(
     updateRegressionGuardGuidance({
       checkOnly: process.argv.includes("--check"),
+      guidanceFiles: guidanceFiles.length > 0 ? guidanceFiles : files,
     }),
   );
 }

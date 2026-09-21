@@ -568,6 +568,70 @@ test("guidance freshness reports every missing and unreadable document in one ru
   }
 });
 
+test("guidance CLI reports every broken fixture document without mutating tracked guidance", () => {
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "regression-guard-cli-broken-"),
+  );
+  const missingFile = path.join(directory, "missing-guidance.md");
+  const unreadableFile = path.join(directory, "unreadable-guidance.md");
+  const before = new Map(
+    [failureGateSkill, projectGuidance].map((file) => [
+      file,
+      fs.readFileSync(file, "utf8"),
+    ]),
+  );
+  fs.mkdirSync(unreadableFile);
+
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [
+        path.join(root, "scripts/update-regression-guard-guidance.mjs"),
+        "--check",
+        missingFile,
+        unreadableFile,
+      ],
+      { cwd: root, encoding: "utf8" },
+    );
+
+    assert.notEqual(result.status, 0);
+    assert.match(
+      result.stderr,
+      new RegExp(`Missing guidance document: ${missingFile}`),
+    );
+    assert.match(
+      result.stderr,
+      /Affected Regression Guard guidance sections: Regression Guard policy, Regression Guard examples/,
+    );
+    assert.match(
+      result.stderr,
+      /missing document, not stale generated content/,
+    );
+    assert.match(
+      result.stderr,
+      /Restore the document, then run node scripts\/update-regression-guard-guidance\.mjs/,
+    );
+    assert.match(
+      result.stderr,
+      new RegExp(`Unreadable guidance document: ${unreadableFile}`),
+    );
+    assert.match(
+      result.stderr,
+      /unreadable document, not stale generated content/,
+    );
+    assert.match(
+      result.stderr,
+      /Restore access to the document, then run node scripts\/update-regression-guard-guidance\.mjs/,
+    );
+    assert.equal(result.stdout, "");
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+    for (const [file, text] of before) {
+      assert.equal(fs.readFileSync(file, "utf8"), text);
+    }
+  }
+});
+
 test("guidance freshness rejects malformed generated blocks with an updater command", () => {
   const original = fs.readFileSync(projectGuidance, "utf8");
   const malformed = original.replace(
