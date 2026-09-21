@@ -31,3 +31,4 @@
 - [CI diagnostic artifact isolation](ci-diagnostic-artifact-isolation.md) — Generate uploadable evidence on a source-free runner, separate from jobs that execute repository code.
 - [Regression Guard guidance freshness](regression-guard-guidance-freshness.md) — Keep policy and examples generated from one source; validation checks them read-only and points stale sections to the updater.
 - [Regression Guard marker repair](regression-guard-marker-repair.md) — Duplicate generated markers require manual removal before the canonical updater can restore documentation.
+- [MCP handoff validation](mcp-handoff-validation.md) — Use accessible combobox interactions for phase status and keep malformed baseline-catalog blocks separate from feature evidence.

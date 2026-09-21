@@ -315,8 +315,9 @@ paths:
     get:
       operationId: getReplitProjectConnection
       tags: [porting]
-      summary: Check whether Replit project creation is connected
-      description: Reports whether the API server can use the attached authorized Replit project-creation connection. No credentials are returned.
+      deprecated: true
+      summary: Legacy automatic project creation status
+      description: Legacy endpoint retained for compatibility. HTML Port Studio does not use or present an automatic project-creation connector; an external Replit MCP client creates the destination project.
       responses:
         "200":
           description: Connection availability for the signed-in user
@@ -334,8 +335,9 @@ paths:
     get:
       operationId: getReplitProjectConnectionSetup
       tags: [porting]
-      summary: Get the Replit project creation setup link
-      description: Returns Replit’s authenticated connection setup URL. Replit verifies workspace-owner eligibility; no credentials are returned.
+      deprecated: true
+      summary: Legacy automatic project creation setup
+      description: Legacy endpoint retained for compatibility. Do not use it for new handoffs; use an external Replit MCP client for project creation and the owner-bound bundle transfer endpoints for exact files.
       responses:
         "200":
           description: Project-creation connection setup state
@@ -536,8 +538,9 @@ paths:
     post:
       operationId: createReplitProject
       tags: [porting]
-      summary: Create a Replit project from the analyzed HTML
-      description: Sends the imported HTML unchanged through the server-only authorized Replit project connection and starts the ordered setup workflow.
+      deprecated: true
+      summary: Legacy automatic project handoff
+      description: Legacy endpoint retained for compatibility. New handoffs must not send source through an automatic connector; MCP creates the destination project and the pinned importer retrieves the exact bundle from the secure transfer package.
       requestBody:
         required: true
         content:
@@ -579,7 +582,8 @@ paths:
     get:
       operationId: getReplitProjectStatus
       tags: [porting]
-      summary: Get Replit project creation and setup status
+      deprecated: true
+      summary: Get legacy automatic project handoff status
       parameters:
         - name: jobId
           in: path
@@ -610,7 +614,8 @@ paths:
     post:
       operationId: retryReplitProjectSetup
       tags: [porting]
-      summary: Retry a failed Replit project setup step
+      deprecated: true
+      summary: Retry a legacy automatic project setup step
       parameters:
         - name: jobId
           in: path

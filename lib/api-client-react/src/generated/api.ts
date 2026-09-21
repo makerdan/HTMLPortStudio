@@ -686,8 +686,9 @@ export const getGetReplitProjectConnectionUrl = () => {
 }
 
 /**
- * Reports whether the API server can use the attached authorized Replit project-creation connection. No credentials are returned.
- * @summary Check whether Replit project creation is connected
+ * Legacy endpoint retained for compatibility. HTML Port Studio does not use or present an automatic project-creation connector; an external Replit MCP client creates the destination project.
+ * @deprecated
+ * @summary Legacy automatic project creation status
  */
 export const getReplitProjectConnection = async ( options?: Parameters<typeof customFetch>[1]): Promise<ReplitProjectConnectionStatus> => {
 
@@ -734,7 +735,8 @@ export type GetReplitProjectConnectionQueryError = ErrorType<ErrorResponse>
 
 
 /**
- * @summary Check whether Replit project creation is connected
+ * @deprecated
+ * @summary Legacy automatic project creation status
  */
 
 export function useGetReplitProjectConnection<TData = Awaited<ReturnType<typeof getReplitProjectConnection>>, TError = ErrorType<ErrorResponse>>(
@@ -764,8 +766,9 @@ export const getGetReplitProjectConnectionSetupUrl = () => {
 }
 
 /**
- * Returns Replit’s authenticated connection setup URL. Replit verifies workspace-owner eligibility; no credentials are returned.
- * @summary Get the Replit project creation setup link
+ * Legacy endpoint retained for compatibility. Do not use it for new handoffs; use an external Replit MCP client for project creation and the owner-bound bundle transfer endpoints for exact files.
+ * @deprecated
+ * @summary Legacy automatic project creation setup
  */
 export const getReplitProjectConnectionSetup = async ( options?: Parameters<typeof customFetch>[1]): Promise<ReplitProjectConnectionSetup> => {
 
@@ -812,7 +815,8 @@ export type GetReplitProjectConnectionSetupQueryError = ErrorType<ErrorResponse>
 
 
 /**
- * @summary Get the Replit project creation setup link
+ * @deprecated
+ * @summary Legacy automatic project creation setup
  */
 
 export function useGetReplitProjectConnectionSetup<TData = Awaited<ReturnType<typeof getReplitProjectConnectionSetup>>, TError = ErrorType<ErrorResponse>>(
@@ -1291,8 +1295,9 @@ export const getCreateReplitProjectUrl = () => {
 }
 
 /**
- * Sends the imported HTML unchanged through the server-only authorized Replit project connection and starts the ordered setup workflow.
- * @summary Create a Replit project from the analyzed HTML
+ * Legacy endpoint retained for compatibility. New handoffs must not send source through an automatic connector; MCP creates the destination project and the pinned importer retrieves the exact bundle from the secure transfer package.
+ * @deprecated
+ * @summary Legacy automatic project handoff
  */
 export const createReplitProject = async (replitProjectInput: ReplitProjectInput, options?: Parameters<typeof customFetch>[1]): Promise<ReplitProjectHandoff> => {
 
@@ -1341,7 +1346,8 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type CreateReplitProjectMutationError = ErrorType<ErrorResponse>
 
     /**
- * @summary Create a Replit project from the analyzed HTML
+ * @deprecated
+ * @summary Legacy automatic project handoff
  */
 export const useCreateReplitProject = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createReplitProject>>, TError,{data: BodyType<ReplitProjectInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -1363,7 +1369,8 @@ export const getGetReplitProjectStatusUrl = (jobId: string,) => {
 }
 
 /**
- * @summary Get Replit project creation and setup status
+ * @deprecated
+ * @summary Get legacy automatic project handoff status
  */
 export const getReplitProjectStatus = async (jobId: string, options?: Parameters<typeof customFetch>[1]): Promise<ReplitProjectHandoff> => {
 
@@ -1410,7 +1417,8 @@ export type GetReplitProjectStatusQueryError = ErrorType<ErrorResponse>
 
 
 /**
- * @summary Get Replit project creation and setup status
+ * @deprecated
+ * @summary Get legacy automatic project handoff status
  */
 
 export function useGetReplitProjectStatus<TData = Awaited<ReturnType<typeof getReplitProjectStatus>>, TError = ErrorType<ErrorResponse>>(
@@ -1440,7 +1448,8 @@ export const getRetryReplitProjectSetupUrl = (jobId: string,) => {
 }
 
 /**
- * @summary Retry a failed Replit project setup step
+ * @deprecated
+ * @summary Retry a legacy automatic project setup step
  */
 export const retryReplitProjectSetup = async (jobId: string, options?: Parameters<typeof customFetch>[1]): Promise<ReplitProjectHandoff> => {
 
@@ -1489,7 +1498,8 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type RetryReplitProjectSetupMutationError = ErrorType<ErrorResponse>
 
     /**
- * @summary Retry a failed Replit project setup step
+ * @deprecated
+ * @summary Retry a legacy automatic project setup step
  */
 export const useRetryReplitProjectSetup = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryReplitProjectSetup>>, TError,{jobId: string}, TContext>, request?: SecondParameter<typeof customFetch>}

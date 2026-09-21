@@ -655,6 +655,48 @@ test("keeps Replit connection setup usable from browsers and the Mac desktop app
   assert.match(source, /window\.addEventListener\('focus', refreshConnection\)/);
 });
 
+test("guides MCP-created projects without claiming automatic project creation", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+  const handoffStart = source.indexOf("function McpProjectHandoffPanel");
+  const handoffEnd = source.indexOf("function BundleTransferPanel", handoffStart);
+  const handoff = source.slice(handoffStart, handoffEnd);
+
+  assert.notEqual(handoffStart, -1);
+  assert.notEqual(handoffEnd, -1);
+  assert.match(handoff, /external Replit MCP client creates the project/);
+  assert.match(handoff, /Studio does not create projects or send source through MCP/);
+  assert.match(handoff, /MCP creates the project only/);
+  assert.match(handoff, /pinned "Import Source Bundle" and "Import Confirmation" skills/);
+  assert.match(handoff, /This prompt contains no source or transfer token/);
+  assert.match(handoff, /Never paste it into the MCP prompt, chat, a URL, or a command line/);
+  assert.match(handoff, /ZIP.*GitHub[\s\S]*fallback/);
+  assert.match(source, /<McpProjectHandoffPanel/);
+  assert.doesNotMatch(
+    source.slice(source.lastIndexOf("<McpProjectHandoffPanel")),
+    /useCreateReplitProject|useGetReplitProjectConnection/,
+  );
+});
+
+test("tracks handoff evidence independently and invalidates transfer state safely", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+  const handoffStart = source.indexOf("function McpProjectHandoffPanel");
+  const handoffEnd = source.indexOf("function BundleTransferPanel", handoffStart);
+  const handoff = source.slice(handoffStart, handoffEnd);
+
+  for (const phase of ["creation", "import", "sourceVerification", "runtimeVerification"]) {
+    assert.match(handoff, new RegExp(`'${phase}'`));
+  }
+  for (const status of ["not_started", "in_progress", "verified", "blocked"]) {
+    assert.match(handoff, new RegExp(`value="${status}"|value={["']${status}["']}`));
+  }
+  assert.match(handoff, /Returned Replit project ID/);
+  assert.match(handoff, /Returned Replit project URL/);
+  assert.match(handoff, /revokeMutation\.mutate\(\{ transferId \}\)/);
+  assert.match(handoff, /createMutation\.reset\(\)/);
+  assert.match(handoff, /Transfer package is \{transferState\}/);
+  assert.match(handoff, /source remains local to this Studio session/);
+});
+
 test("allowlists structured assistant and handoff errors", () => {
   const credentialResult = getStudioErrorMessage(
     {
