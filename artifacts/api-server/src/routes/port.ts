@@ -1326,8 +1326,16 @@ router.post("/port/poe/chat", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  const capability = parsed.data.capability ?? "generic-assistant";
-  if (!POE_CAPABILITIES[capability]) {
+  const requestedCapability = parsed.data.capability;
+  const capability =
+    requestedCapability === undefined
+      ? "generic-assistant"
+      : requestedCapability === "generic-assistant" ||
+          requestedCapability === "gemini-repair" ||
+          requestedCapability === "claude-repair"
+        ? requestedCapability
+        : null;
+  if (!capability) {
     sendPoeError(
       res,
       400,

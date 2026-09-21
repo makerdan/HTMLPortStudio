@@ -44,6 +44,7 @@ export const analyzeHtmlBodyThreeBundleMetadataResolvedCommitShaMax = 64;
 export const analyzeHtmlBodyThreeBundleMetadataEntrypointCandidatesMax = 20;
 
 
+
 export const AnalyzeHtmlBody = zod.union([zod.unknown(),zod.unknown()]).and(zod.object({
   "html": zod.string().min(1).max(analyzeHtmlBodyThreeHtmlMax).optional(),
   "bundle": zod.object({
@@ -99,6 +100,7 @@ export const AnalyzeHtmlResponse = zod.object({
 export const importHostedUrlBodyUrlMax = 2048;
 
 
+
 export const ImportHostedUrlBody = zod.object({
   "url": zod.string().min(1).max(importHostedUrlBodyUrlMax)
 })
@@ -126,6 +128,7 @@ export const importHostedUrlResponseBundleMetadataEntrypointCandidatesMax = 20;
 export const importHostedUrlResponseWarningsItemMax = 500;
 
 export const importHostedUrlResponseWarningsMax = 20;
+
 
 
 export const ImportHostedUrlResponse = zod.object({
@@ -162,6 +165,7 @@ export const ImportHostedUrlResponse = zod.object({
 export const importPlaygroundBodyUrlMax = 512;
 
 
+
 export const ImportPlaygroundBody = zod.object({
   "url": zod.string().min(1).max(importPlaygroundBodyUrlMax)
 })
@@ -189,6 +193,7 @@ export const importPlaygroundResponseBundleMetadataEntrypointCandidatesMax = 20;
 export const importPlaygroundResponseWarningsItemMax = 500;
 
 export const importPlaygroundResponseWarningsMax = 20;
+
 
 
 export const ImportPlaygroundResponse = zod.object({
@@ -225,6 +230,7 @@ export const ImportPlaygroundResponse = zod.object({
 export const getGithubRepositoryQueryUrlMax = 512;
 
 
+
 export const GetGithubRepositoryQueryParams = zod.object({
   "url": zod.coerce.string().min(1).max(getGithubRepositoryQueryUrlMax)
 })
@@ -233,6 +239,7 @@ export const getGithubRepositoryResponseRefsItemShaMin = 7;
 export const getGithubRepositoryResponseRefsItemShaMax = 64;
 
 export const getGithubRepositoryResponseRefsMax = 100;
+
 
 
 export const GetGithubRepositoryResponse = zod.object({
@@ -258,6 +265,7 @@ export const importGithubRepositoryBodyUrlMax = 512;
 export const importGithubRepositoryBodyRefMax = 256;
 
 export const importGithubRepositoryBodyEntrypointMax = 512;
+
 
 
 export const ImportGithubRepositoryBody = zod.object({
@@ -290,6 +298,7 @@ export const importGithubRepositoryResponseRepositoryRefsItemShaMin = 7;
 export const importGithubRepositoryResponseRepositoryRefsItemShaMax = 64;
 
 export const importGithubRepositoryResponseRepositoryRefsMax = 100;
+
 
 
 export const ImportGithubRepositoryResponse = zod.object({
@@ -360,6 +369,8 @@ export const ImportGithubRepositoryResponse = zod.object({
  */
 
 
+
+
 export const ListPoeModelsResponse = zod.object({
   "configured": zod.boolean(),
   "available": zod.boolean(),
@@ -399,6 +410,7 @@ export const chatWithPoeBodyMessagesMax = 40;
 export const chatWithPoeBodyMaxTokensMax = 4096;
 
 
+
 export const ChatWithPoeBody = zod.object({
   "model": zod.string().min(1),
   "capability": zod.enum(['generic-assistant', 'gemini-repair', 'claude-repair']).optional(),
@@ -418,10 +430,58 @@ export const ChatWithPoeResponse = zod.object({
 }).optional()
 })
 
+
 /**
  * @summary Read administrator Poe fallback configuration
  */
 export const getPoeFallbacksResponseOneFallbackModelIdsMax = 8;
+
+
+
+export const GetPoeFallbacksResponse = zod.object({
+  "fallbackModelIds": zod.array(zod.string()).max(getPoeFallbacksResponseOneFallbackModelIdsMax)
+}).and(zod.object({
+  "registry": zod.array(zod.object({
+  "id": zod.string(),
+  "provider": zod.string(),
+  "capabilities": zod.array(zod.string()),
+  "fallbackEligible": zod.boolean()
+}))
+}))
+
+
+/**
+ * @summary Replace administrator Poe fallback configuration
+ */
+export const updatePoeFallbacksBodyFallbackModelIdsMax = 8;
+
+
+
+export const UpdatePoeFallbacksBody = zod.object({
+  "fallbackModelIds": zod.array(zod.string()).max(updatePoeFallbacksBodyFallbackModelIdsMax)
+})
+
+export const updatePoeFallbacksResponseFallbackModelIdsMax = 8;
+
+
+
+export const UpdatePoeFallbacksResponse = zod.object({
+  "fallbackModelIds": zod.array(zod.string()).max(updatePoeFallbacksResponseFallbackModelIdsMax)
+})
+
+
+/**
+ * @summary Reset administrator Poe fallbacks to safe defaults
+ */
+export const resetPoeFallbacksResponseFallbackModelIdsMax = 8;
+
+
+
+export const ResetPoeFallbacksResponse = zod.object({
+  "fallbackModelIds": zod.array(zod.string()).max(resetPoeFallbacksResponseFallbackModelIdsMax)
+})
+
+
 /**
  * Legacy endpoint retained for compatibility. HTML Port Studio does not use or present an automatic project-creation connector; an external Replit MCP client creates the destination project.
  * @deprecated
@@ -468,6 +528,7 @@ export const createBundleTransferBodyBundleMetadataResolvedCommitShaMax = 64;
 export const createBundleTransferBodyBundleMetadataEntrypointCandidatesMax = 20;
 
 
+
 export const CreateBundleTransferBody = zod.object({
   "approved": zod.literal(true).describe('The signed-in owner confirms this is the currently reviewed normalized bundle.'),
   "bundle": zod.object({
@@ -504,6 +565,7 @@ export const createBundleTransferResponseOneManifestBundleSha256RegExp = new Reg
 export const createBundleTransferResponseOneRetrievalCountMin = 0;
 
 export const createBundleTransferResponseTwoTransferTokenMin = 32;
+
 
 
 export const CreateBundleTransferResponse = zod.object({
@@ -556,6 +618,7 @@ export const getBundleTransferResponseManifestBundleSha256RegExp = new RegExp('^
 export const getBundleTransferResponseRetrievalCountMin = 0;
 
 
+
 export const GetBundleTransferResponse = zod.object({
   "transferId": zod.string(),
   "manifestHash": zod.string().regex(getBundleTransferResponseManifestHashRegExp),
@@ -600,6 +663,7 @@ export const revokeBundleTransferResponseManifestFilesMax = 200;
 export const revokeBundleTransferResponseManifestBundleSha256RegExp = new RegExp('^[a-f0-9]{64}$');
 
 export const revokeBundleTransferResponseRetrievalCountMin = 0;
+
 
 
 export const RevokeBundleTransferResponse = zod.object({
@@ -647,6 +711,7 @@ export const completeBundleTransferResponseManifestFilesMax = 200;
 export const completeBundleTransferResponseManifestBundleSha256RegExp = new RegExp('^[a-f0-9]{64}$');
 
 export const completeBundleTransferResponseRetrievalCountMin = 0;
+
 
 
 export const CompleteBundleTransferResponse = zod.object({
@@ -752,6 +817,7 @@ export const getBundleTransferBundleResponseBundleMetadataResolvedCommitShaMax =
 export const getBundleTransferBundleResponseBundleMetadataEntrypointCandidatesMax = 20;
 
 
+
 export const GetBundleTransferBundleResponse = zod.object({
   "transferId": zod.string(),
   "manifestHash": zod.string().regex(getBundleTransferBundleResponseManifestHashRegExp),
@@ -817,6 +883,7 @@ export const createReplitProjectBodyThreeBundleMetadataResolvedRefMax = 256;
 export const createReplitProjectBodyThreeBundleMetadataResolvedCommitShaMax = 64;
 
 export const createReplitProjectBodyThreeBundleMetadataEntrypointCandidatesMax = 20;
+
 
 
 export const CreateReplitProjectBody = zod.union([zod.unknown(),zod.unknown()]).and(zod.object({
@@ -911,6 +978,7 @@ export const createSavedProjectBodyEditorStateReadinessChecklistItemRequiredChan
 export const createSavedProjectBodyEditorStateReadinessChecklistMax = 50;
 
 
+
 export const CreateSavedProjectBody = zod.object({
   "name": zod.string().min(1).max(createSavedProjectBodyNameMax),
   "bundle": zod.object({
@@ -1000,6 +1068,7 @@ export const createSavedProjectResponseTwoEditorStateReadinessChecklistItemTitle
 export const createSavedProjectResponseTwoEditorStateReadinessChecklistItemRequiredChangeMax = 2000;
 
 export const createSavedProjectResponseTwoEditorStateReadinessChecklistMax = 50;
+
 
 
 export const CreateSavedProjectResponse = zod.object({
@@ -1106,6 +1175,7 @@ export const getSavedProjectResponseTwoEditorStateReadinessChecklistItemTitleMax
 export const getSavedProjectResponseTwoEditorStateReadinessChecklistItemRequiredChangeMax = 2000;
 
 export const getSavedProjectResponseTwoEditorStateReadinessChecklistMax = 50;
+
 
 
 export const GetSavedProjectResponse = zod.object({
@@ -1216,6 +1286,7 @@ export const updateSavedProjectBodyEditorStateReadinessChecklistItemRequiredChan
 export const updateSavedProjectBodyEditorStateReadinessChecklistMax = 50;
 
 
+
 export const UpdateSavedProjectBody = zod.object({
   "name": zod.string().min(1).max(updateSavedProjectBodyNameMax),
   "bundle": zod.object({
@@ -1307,6 +1378,7 @@ export const updateSavedProjectResponseTwoEditorStateReadinessChecklistItemRequi
 export const updateSavedProjectResponseTwoEditorStateReadinessChecklistMax = 50;
 
 
+
 export const UpdateSavedProjectResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
@@ -1389,6 +1461,7 @@ export const DeleteSavedProjectResponse = zod.void()
  */
 
 
+
 export const GetReplitProjectStatusParams = zod.object({
   "jobId": zod.coerce.string().min(1)
 })
@@ -1415,6 +1488,7 @@ export const GetReplitProjectStatusResponse = zod.object({
  */
 
 
+
 export const RetryReplitProjectSetupParams = zod.object({
   "jobId": zod.coerce.string().min(1)
 })
@@ -1435,36 +1509,3 @@ export const RetryReplitProjectSetupResponse = zod.object({
 })
 
 
-/**
- * @summary Replace administrator Poe fallback configuration
- */
-export const updatePoeFallbacksBodyFallbackModelIdsMax = 8;
-export const updatePoeFallbacksResponseFallbackModelIdsMax = 8;
-export const resetPoeFallbacksResponseFallbackModelIdsMax = 8;
-
-export const ResetPoeFallbacksResponse = zod.object({
-  "fallbackModelIds": zod.array(zod.string()).max(resetPoeFallbacksResponseFallbackModelIdsMax)
-})
-
-export const UpdatePoeFallbacksBody = zod.object({
-  "fallbackModelIds": zod.array(zod.string()).max(updatePoeFallbacksBodyFallbackModelIdsMax)
-})
-
-export const GetPoeFallbacksResponse = zod.object({
-  "fallbackModelIds": zod.array(zod.string()).max(getPoeFallbacksResponseOneFallbackModelIdsMax)
-}).and(zod.object({
-  "registry": zod.array(zod.object({
-  "id": zod.string(),
-  "provider": zod.string(),
-  "capabilities": zod.array(zod.string()),
-  "fallbackEligible": zod.boolean()
-}))
-}))
-
-export const UpdatePoeFallbacksResponse = zod.object({
-  "fallbackModelIds": zod.array(zod.string()).max(updatePoeFallbacksResponseFallbackModelIdsMax)
-})
-
-/**
- * @summary Reset administrator Poe fallbacks to safe defaults
- */

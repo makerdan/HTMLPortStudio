@@ -43,7 +43,11 @@ function runStep(label, command, args, env = {}) {
   }
 }
 
-function writeValidationConfig(name, sourceConfig, { include, outDir, rootDir, tsBuildInfoFile, paths }) {
+function writeValidationConfig(
+  name,
+  sourceConfig,
+  { include, outDir, rootDir, tsBuildInfoFile, paths, typeRoots },
+) {
   const configDirectory = resolve(validationRoot, "configs");
   mkdirSync(configDirectory, { recursive: true });
   const configPath = resolve(configDirectory, name);
@@ -56,6 +60,7 @@ function writeValidationConfig(name, sourceConfig, { include, outDir, rootDir, t
         ? { tsBuildInfoFile: resolve(validationRoot, tsBuildInfoFile) }
         : {}),
       ...(paths ? { paths } : {}),
+      ...(typeRoots ? { typeRoots } : {}),
     },
     ...(include ? { include: [resolve(validationRoot, include)] } : {}),
   };
@@ -381,6 +386,7 @@ function main() {
           resolve(validationRoot, "api-zod-dist", "index.d.ts"),
         ],
       },
+      typeRoots: [resolve(root, "artifacts/api-server/node_modules/@types")],
     },
   );
   const studioValidationConfig = writeValidationConfig(
@@ -393,6 +399,10 @@ function main() {
           resolve(validationRoot, "api-client-react-dist", "index.d.ts"),
         ],
       },
+      typeRoots: [
+        resolve(root, "artifacts/html-port-studio/node_modules/@types"),
+        resolve(root, "artifacts/html-port-studio/node_modules"),
+      ],
     },
   );
 

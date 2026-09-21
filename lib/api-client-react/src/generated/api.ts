@@ -65,6 +65,7 @@ type AwaitedInput<T> = PromiseLike<T> | T;
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
+
 const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKey: K } => {
   const result = { queryKey } as T & { queryKey: K };
   for (const key of Object.keys(query)) {
@@ -81,6 +82,8 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
 };
 
 export const getHealthCheckUrl = () => {
+
+
 
 
   return `/api/healthz`
@@ -102,6 +105,9 @@ export const healthCheck = async ( options?: Parameters<typeof customFetch>[1]):
 );}
 
 
+
+
+
 export const getHealthCheckQueryKey = () => {
     return [
     `/api/healthz`
@@ -117,7 +123,11 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
   const queryKey =  queryOptions?.queryKey ?? getHealthCheckQueryKey();
 
 
+
     const queryFn: QueryFunction<Awaited<ReturnType<typeof healthCheck>>> = ({ signal }) => healthCheck({ signal, ...requestOptions });
+
+
+
 
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof healthCheck>>, TError, TData> & { queryKey: QueryKey }
@@ -144,7 +154,14 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
 }
 
 
+
+
+
+
+
 export const getAnalyzeHtmlUrl = () => {
+
+
 
 
   return `/api/port/analyze`
@@ -166,6 +183,9 @@ export const analyzeHtml = async (htmlInput: HtmlInput, options?: Parameters<typ
 );}
 
 
+
+
+
 export const getAnalyzeHtmlMutationOptions = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analyzeHtml>>, TError,{data: BodyType<HtmlInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof analyzeHtml>>, TError,{data: BodyType<HtmlInput>}, TContext> => {
@@ -178,11 +198,17 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {mutation: { mutationKey, }, request: undefined};
 
 
+
+
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof analyzeHtml>>, {data: BodyType<HtmlInput>}> = (props) => {
           const {data} = props ?? {};
 
           return  analyzeHtml(data,requestOptions)
         }
+
+
+
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -208,6 +234,8 @@ export const useAnalyzeHtml = <TError = ErrorType<ErrorResponse>,
 export const getImportHostedUrlUrl = () => {
 
 
+
+
   return `/api/port/hosted-url`
 }
 
@@ -227,6 +255,9 @@ export const importHostedUrl = async (hostedUrlInput: HostedUrlInput, options?: 
 );}
 
 
+
+
+
 export const getImportHostedUrlMutationOptions = <TError = ErrorType<ImportErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importHostedUrl>>, TError,{data: BodyType<HostedUrlInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof importHostedUrl>>, TError,{data: BodyType<HostedUrlInput>}, TContext> => {
@@ -239,11 +270,17 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {mutation: { mutationKey, }, request: undefined};
 
 
+
+
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof importHostedUrl>>, {data: BodyType<HostedUrlInput>}> = (props) => {
           const {data} = props ?? {};
 
           return  importHostedUrl(data,requestOptions)
         }
+
+
+
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -269,6 +306,8 @@ export const useImportHostedUrl = <TError = ErrorType<ImportErrorResponse>,
 export const getImportPlaygroundUrl = () => {
 
 
+
+
   return `/api/port/playground/import`
 }
 
@@ -288,6 +327,9 @@ export const importPlayground = async (playgroundImportInput: PlaygroundImportIn
 );}
 
 
+
+
+
 export const getImportPlaygroundMutationOptions = <TError = ErrorType<ImportErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importPlayground>>, TError,{data: BodyType<PlaygroundImportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof importPlayground>>, TError,{data: BodyType<PlaygroundImportInput>}, TContext> => {
@@ -300,11 +342,17 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {mutation: { mutationKey, }, request: undefined};
 
 
+
+
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof importPlayground>>, {data: BodyType<PlaygroundImportInput>}> = (props) => {
           const {data} = props ?? {};
 
           return  importPlayground(data,requestOptions)
         }
+
+
+
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -358,6 +406,9 @@ export const getGithubRepository = async (params: GetGithubRepositoryParams, opt
 );}
 
 
+
+
+
 export const getGetGithubRepositoryQueryKey = (params?: GetGithubRepositoryParams,) => {
     return [
     `/api/port/github/repository`, ...(params ? [params] : [])
@@ -373,7 +424,11 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
   const queryKey =  queryOptions?.queryKey ?? getGetGithubRepositoryQueryKey(params);
 
 
+
     const queryFn: QueryFunction<Awaited<ReturnType<typeof getGithubRepository>>> = ({ signal }) => getGithubRepository(params, { signal, ...requestOptions });
+
+
+
 
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getGithubRepository>>, TError, TData> & { queryKey: QueryKey }
@@ -400,7 +455,14 @@ export function useGetGithubRepository<TData = Awaited<ReturnType<typeof getGith
 }
 
 
+
+
+
+
+
 export const getImportGithubRepositoryUrl = () => {
+
+
 
 
   return `/api/port/github/import`
@@ -422,6 +484,9 @@ export const importGithubRepository = async (githubImportInput: GithubImportInpu
 );}
 
 
+
+
+
 export const getImportGithubRepositoryMutationOptions = <TError = ErrorType<ErrorResponse | GithubEntrypointChoice>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importGithubRepository>>, TError,{data: BodyType<GithubImportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof importGithubRepository>>, TError,{data: BodyType<GithubImportInput>}, TContext> => {
@@ -434,11 +499,17 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {mutation: { mutationKey, }, request: undefined};
 
 
+
+
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof importGithubRepository>>, {data: BodyType<GithubImportInput>}> = (props) => {
           const {data} = props ?? {};
 
           return  importGithubRepository(data,requestOptions)
         }
+
+
+
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -464,6 +535,8 @@ export const useImportGithubRepository = <TError = ErrorType<ErrorResponse | Git
 export const getListPoeModelsUrl = () => {
 
 
+
+
   return `/api/port/poe/models`
 }
 
@@ -483,6 +556,9 @@ export const listPoeModels = async ( options?: Parameters<typeof customFetch>[1]
 );}
 
 
+
+
+
 export const getListPoeModelsQueryKey = () => {
     return [
     `/api/port/poe/models`
@@ -498,7 +574,11 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
   const queryKey =  queryOptions?.queryKey ?? getListPoeModelsQueryKey();
 
 
+
     const queryFn: QueryFunction<Awaited<ReturnType<typeof listPoeModels>>> = ({ signal }) => listPoeModels({ signal, ...requestOptions });
+
+
+
 
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPoeModels>>, TError, TData> & { queryKey: QueryKey }
@@ -525,7 +605,14 @@ export function useListPoeModels<TData = Awaited<ReturnType<typeof listPoeModels
 }
 
 
+
+
+
+
+
 export const getChatWithPoeUrl = () => {
+
+
 
 
   return `/api/port/poe/chat`
@@ -547,6 +634,9 @@ export const chatWithPoe = async (poeChatInput: PoeChatInput, options?: Paramete
 );}
 
 
+
+
+
 export const getChatWithPoeMutationOptions = <TError = ErrorType<PoeErrorResponse | ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof chatWithPoe>>, TError,{data: BodyType<PoeChatInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof chatWithPoe>>, TError,{data: BodyType<PoeChatInput>}, TContext> => {
@@ -559,11 +649,17 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {mutation: { mutationKey, }, request: undefined};
 
 
+
+
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof chatWithPoe>>, {data: BodyType<PoeChatInput>}> = (props) => {
           const {data} = props ?? {};
 
           return  chatWithPoe(data,requestOptions)
         }
+
+
+
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -589,9 +685,225 @@ export const useChatWithPoe = <TError = ErrorType<PoeErrorResponse | ErrorRespon
 export const getGetPoeFallbacksUrl = () => {
 
 
+
+
   return `/api/port/poe/admin/fallbacks`
 }
+
+/**
+ * @summary Read administrator Poe fallback configuration
+ */
+export const getPoeFallbacks = async ( options?: Parameters<typeof customFetch>[1]): Promise<PoeFallbackConfiguration> => {
+
+  return customFetch<PoeFallbackConfiguration>(getGetPoeFallbacksUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPoeFallbacksQueryKey = () => {
+    return [
+    `/api/port/poe/admin/fallbacks`
+    ] as const;
+    }
+
+
+export const getGetPoeFallbacksQueryOptions = <TData = Awaited<ReturnType<typeof getPoeFallbacks>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPoeFallbacks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPoeFallbacksQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPoeFallbacks>>> = ({ signal }) => getPoeFallbacks({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPoeFallbacks>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPoeFallbacksQueryResult = NonNullable<Awaited<ReturnType<typeof getPoeFallbacks>>>
+export type GetPoeFallbacksQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Read administrator Poe fallback configuration
+ */
+
+export function useGetPoeFallbacks<TData = Awaited<ReturnType<typeof getPoeFallbacks>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPoeFallbacks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPoeFallbacksQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdatePoeFallbacksUrl = () => {
+
+
+
+
+  return `/api/port/poe/admin/fallbacks`
+}
+
+/**
+ * @summary Replace administrator Poe fallback configuration
+ */
+export const updatePoeFallbacks = async (poeFallbackInput: PoeFallbackInput, options?: Parameters<typeof customFetch>[1]): Promise<PoeFallbackInput> => {
+
+  return customFetch<PoeFallbackInput>(getUpdatePoeFallbacksUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(poeFallbackInput)
+  }
+);}
+
+
+
+
+
+export const getUpdatePoeFallbacksMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePoeFallbacks>>, TError,{data: BodyType<PoeFallbackInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updatePoeFallbacks>>, TError,{data: BodyType<PoeFallbackInput>}, TContext> => {
+
+const mutationKey = ['updatePoeFallbacks'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updatePoeFallbacks>>, {data: BodyType<PoeFallbackInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updatePoeFallbacks(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdatePoeFallbacksMutationResult = NonNullable<Awaited<ReturnType<typeof updatePoeFallbacks>>>
+    export type UpdatePoeFallbacksMutationBody = BodyType<PoeFallbackInput>
+    export type UpdatePoeFallbacksMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Replace administrator Poe fallback configuration
+ */
+export const useUpdatePoeFallbacks = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePoeFallbacks>>, TError,{data: BodyType<PoeFallbackInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updatePoeFallbacks>>,
+        TError,
+        {data: BodyType<PoeFallbackInput>},
+        TContext
+      > => {
+      return useMutation(getUpdatePoeFallbacksMutationOptions(options));
+    }
+
+export const getResetPoeFallbacksUrl = () => {
+
+
+
+
+  return `/api/port/poe/admin/fallbacks/reset`
+}
+
+/**
+ * @summary Reset administrator Poe fallbacks to safe defaults
+ */
+export const resetPoeFallbacks = async ( options?: Parameters<typeof customFetch>[1]): Promise<PoeFallbackInput> => {
+
+  return customFetch<PoeFallbackInput>(getResetPoeFallbacksUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getResetPoeFallbacksMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetPoeFallbacks>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resetPoeFallbacks>>, TError,void, TContext> => {
+
+const mutationKey = ['resetPoeFallbacks'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resetPoeFallbacks>>, void> = () => {
+
+
+          return  resetPoeFallbacks(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResetPoeFallbacksMutationResult = NonNullable<Awaited<ReturnType<typeof resetPoeFallbacks>>>
+
+    export type ResetPoeFallbacksMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Reset administrator Poe fallbacks to safe defaults
+ */
+export const useResetPoeFallbacks = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetPoeFallbacks>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resetPoeFallbacks>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getResetPoeFallbacksMutationOptions(options));
+    }
+
 export const getGetReplitProjectConnectionUrl = () => {
+
+
 
 
   return `/api/port/replit-project-connection`
@@ -614,6 +926,9 @@ export const getReplitProjectConnection = async ( options?: Parameters<typeof cu
 );}
 
 
+
+
+
 export const getGetReplitProjectConnectionQueryKey = () => {
     return [
     `/api/port/replit-project-connection`
@@ -629,7 +944,11 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
   const queryKey =  queryOptions?.queryKey ?? getGetReplitProjectConnectionQueryKey();
 
 
+
     const queryFn: QueryFunction<Awaited<ReturnType<typeof getReplitProjectConnection>>> = ({ signal }) => getReplitProjectConnection({ signal, ...requestOptions });
+
+
+
 
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getReplitProjectConnection>>, TError, TData> & { queryKey: QueryKey }
@@ -657,7 +976,14 @@ export function useGetReplitProjectConnection<TData = Awaited<ReturnType<typeof 
 }
 
 
+
+
+
+
+
 export const getGetReplitProjectConnectionSetupUrl = () => {
+
+
 
 
   return `/api/port/replit-project-connection/setup`
@@ -680,6 +1006,9 @@ export const getReplitProjectConnectionSetup = async ( options?: Parameters<type
 );}
 
 
+
+
+
 export const getGetReplitProjectConnectionSetupQueryKey = () => {
     return [
     `/api/port/replit-project-connection/setup`
@@ -695,7 +1024,11 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
   const queryKey =  queryOptions?.queryKey ?? getGetReplitProjectConnectionSetupQueryKey();
 
 
+
     const queryFn: QueryFunction<Awaited<ReturnType<typeof getReplitProjectConnectionSetup>>> = ({ signal }) => getReplitProjectConnectionSetup({ signal, ...requestOptions });
+
+
+
 
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getReplitProjectConnectionSetup>>, TError, TData> & { queryKey: QueryKey }
@@ -723,7 +1056,14 @@ export function useGetReplitProjectConnectionSetup<TData = Awaited<ReturnType<ty
 }
 
 
+
+
+
+
+
 export const getCreateBundleTransferUrl = () => {
+
+
 
 
   return `/api/port/bundle-transfers`
@@ -745,6 +1085,9 @@ export const createBundleTransfer = async (bundleTransferInput: BundleTransferIn
 );}
 
 
+
+
+
 export const getCreateBundleTransferMutationOptions = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBundleTransfer>>, TError,{data: BodyType<BundleTransferInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof createBundleTransfer>>, TError,{data: BodyType<BundleTransferInput>}, TContext> => {
@@ -757,11 +1100,17 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {mutation: { mutationKey, }, request: undefined};
 
 
+
+
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof createBundleTransfer>>, {data: BodyType<BundleTransferInput>}> = (props) => {
           const {data} = props ?? {};
 
           return  createBundleTransfer(data,requestOptions)
         }
+
+
+
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -787,6 +1136,8 @@ export const useCreateBundleTransfer = <TError = ErrorType<ErrorResponse>,
 export const getGetBundleTransferUrl = (transferId: string,) => {
 
 
+
+
   return `/api/port/bundle-transfers/${transferId}`
 }
 
@@ -806,6 +1157,9 @@ export const getBundleTransfer = async (transferId: string, options?: Parameters
 );}
 
 
+
+
+
 export const getGetBundleTransferQueryKey = (transferId: string,) => {
     return [
     `/api/port/bundle-transfers/${transferId}`
@@ -821,7 +1175,11 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
   const queryKey =  queryOptions?.queryKey ?? getGetBundleTransferQueryKey(transferId);
 
 
+
     const queryFn: QueryFunction<Awaited<ReturnType<typeof getBundleTransfer>>> = ({ signal }) => getBundleTransfer(transferId, { signal, ...requestOptions });
+
+
+
 
 
    return  { queryKey, queryFn, enabled: transferId !== null && transferId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getBundleTransfer>>, TError, TData> & { queryKey: QueryKey }
@@ -848,7 +1206,14 @@ export function useGetBundleTransfer<TData = Awaited<ReturnType<typeof getBundle
 }
 
 
+
+
+
+
+
 export const getRevokeBundleTransferUrl = (transferId: string,) => {
+
+
 
 
   return `/api/port/bundle-transfers/${transferId}/revoke`
@@ -869,6 +1234,9 @@ export const revokeBundleTransfer = async (transferId: string, options?: Paramet
 );}
 
 
+
+
+
 export const getRevokeBundleTransferMutationOptions = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof revokeBundleTransfer>>, TError,{transferId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof revokeBundleTransfer>>, TError,{transferId: string}, TContext> => {
@@ -881,11 +1249,17 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {mutation: { mutationKey, }, request: undefined};
 
 
+
+
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof revokeBundleTransfer>>, {transferId: string}> = (props) => {
           const {transferId} = props ?? {};
 
           return  revokeBundleTransfer(transferId,requestOptions)
         }
+
+
+
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -911,6 +1285,8 @@ export const useRevokeBundleTransfer = <TError = ErrorType<ErrorResponse>,
 export const getCompleteBundleTransferUrl = (transferId: string,) => {
 
 
+
+
   return `/api/port/bundle-transfers/${transferId}/complete`
 }
 
@@ -930,6 +1306,9 @@ export const completeBundleTransfer = async (transferId: string, options?: Param
 );}
 
 
+
+
+
 export const getCompleteBundleTransferMutationOptions = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeBundleTransfer>>, TError,{transferId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof completeBundleTransfer>>, TError,{transferId: string}, TContext> => {
@@ -942,11 +1321,17 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {mutation: { mutationKey, }, request: undefined};
 
 
+
+
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof completeBundleTransfer>>, {transferId: string}> = (props) => {
           const {transferId} = props ?? {};
 
           return  completeBundleTransfer(transferId,requestOptions)
         }
+
+
+
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -972,6 +1357,8 @@ export const useCompleteBundleTransfer = <TError = ErrorType<ErrorResponse>,
 export const getGetBundleTransferManifestUrl = (transferId: string,) => {
 
 
+
+
   return `/api/port/bundle-transfers/${transferId}/manifest`
 }
 
@@ -991,6 +1378,9 @@ export const getBundleTransferManifest = async (transferId: string, options?: Pa
 );}
 
 
+
+
+
 export const getGetBundleTransferManifestQueryKey = (transferId: string,) => {
     return [
     `/api/port/bundle-transfers/${transferId}/manifest`
@@ -1006,7 +1396,11 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
   const queryKey =  queryOptions?.queryKey ?? getGetBundleTransferManifestQueryKey(transferId);
 
 
+
     const queryFn: QueryFunction<Awaited<ReturnType<typeof getBundleTransferManifest>>> = ({ signal }) => getBundleTransferManifest(transferId, { signal, ...requestOptions });
+
+
+
 
 
    return  { queryKey, queryFn, enabled: transferId !== null && transferId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getBundleTransferManifest>>, TError, TData> & { queryKey: QueryKey }
@@ -1033,7 +1427,14 @@ export function useGetBundleTransferManifest<TData = Awaited<ReturnType<typeof g
 }
 
 
+
+
+
+
+
 export const getGetBundleTransferBundleUrl = (transferId: string,) => {
+
+
 
 
   return `/api/port/bundle-transfers/${transferId}/bundle`
@@ -1055,6 +1456,9 @@ export const getBundleTransferBundle = async (transferId: string, options?: Para
 );}
 
 
+
+
+
 export const getGetBundleTransferBundleQueryKey = (transferId: string,) => {
     return [
     `/api/port/bundle-transfers/${transferId}/bundle`
@@ -1070,7 +1474,11 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
   const queryKey =  queryOptions?.queryKey ?? getGetBundleTransferBundleQueryKey(transferId);
 
 
+
     const queryFn: QueryFunction<Awaited<ReturnType<typeof getBundleTransferBundle>>> = ({ signal }) => getBundleTransferBundle(transferId, { signal, ...requestOptions });
+
+
+
 
 
    return  { queryKey, queryFn, enabled: transferId !== null && transferId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getBundleTransferBundle>>, TError, TData> & { queryKey: QueryKey }
@@ -1097,7 +1505,14 @@ export function useGetBundleTransferBundle<TData = Awaited<ReturnType<typeof get
 }
 
 
+
+
+
+
+
 export const getCreateReplitProjectUrl = () => {
+
+
 
 
   return `/api/port/replit-projects`
@@ -1120,6 +1535,9 @@ export const createReplitProject = async (replitProjectInput: ReplitProjectInput
 );}
 
 
+
+
+
 export const getCreateReplitProjectMutationOptions = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createReplitProject>>, TError,{data: BodyType<ReplitProjectInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof createReplitProject>>, TError,{data: BodyType<ReplitProjectInput>}, TContext> => {
@@ -1132,11 +1550,17 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {mutation: { mutationKey, }, request: undefined};
 
 
+
+
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof createReplitProject>>, {data: BodyType<ReplitProjectInput>}> = (props) => {
           const {data} = props ?? {};
 
           return  createReplitProject(data,requestOptions)
         }
+
+
+
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -1163,6 +1587,8 @@ export const useCreateReplitProject = <TError = ErrorType<ErrorResponse>,
 export const getListSavedProjectsUrl = () => {
 
 
+
+
   return `/api/port/saved-projects`
 }
 
@@ -1181,6 +1607,9 @@ export const listSavedProjects = async ( options?: Parameters<typeof customFetch
 );}
 
 
+
+
+
 export const getListSavedProjectsQueryKey = () => {
     return [
     `/api/port/saved-projects`
@@ -1196,7 +1625,11 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
   const queryKey =  queryOptions?.queryKey ?? getListSavedProjectsQueryKey();
 
 
+
     const queryFn: QueryFunction<Awaited<ReturnType<typeof listSavedProjects>>> = ({ signal }) => listSavedProjects({ signal, ...requestOptions });
+
+
+
 
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSavedProjects>>, TError, TData> & { queryKey: QueryKey }
@@ -1223,7 +1656,14 @@ export function useListSavedProjects<TData = Awaited<ReturnType<typeof listSaved
 }
 
 
+
+
+
+
+
 export const getCreateSavedProjectUrl = () => {
+
+
 
 
   return `/api/port/saved-projects`
@@ -1244,6 +1684,9 @@ export const createSavedProject = async (savedProjectInput: SavedProjectInput, o
 );}
 
 
+
+
+
 export const getCreateSavedProjectMutationOptions = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSavedProject>>, TError,{data: BodyType<SavedProjectInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof createSavedProject>>, TError,{data: BodyType<SavedProjectInput>}, TContext> => {
@@ -1256,11 +1699,17 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {mutation: { mutationKey, }, request: undefined};
 
 
+
+
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSavedProject>>, {data: BodyType<SavedProjectInput>}> = (props) => {
           const {data} = props ?? {};
 
           return  createSavedProject(data,requestOptions)
         }
+
+
+
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -1286,6 +1735,8 @@ export const useCreateSavedProject = <TError = ErrorType<ErrorResponse>,
 export const getGetSavedProjectUrl = (projectId: string,) => {
 
 
+
+
   return `/api/port/saved-projects/${projectId}`
 }
 
@@ -1304,6 +1755,9 @@ export const getSavedProject = async (projectId: string, options?: Parameters<ty
 );}
 
 
+
+
+
 export const getGetSavedProjectQueryKey = (projectId: string,) => {
     return [
     `/api/port/saved-projects/${projectId}`
@@ -1319,7 +1773,11 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
   const queryKey =  queryOptions?.queryKey ?? getGetSavedProjectQueryKey(projectId);
 
 
+
     const queryFn: QueryFunction<Awaited<ReturnType<typeof getSavedProject>>> = ({ signal }) => getSavedProject(projectId, { signal, ...requestOptions });
+
+
+
 
 
    return  { queryKey, queryFn, enabled: projectId !== null && projectId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSavedProject>>, TError, TData> & { queryKey: QueryKey }
@@ -1346,7 +1804,14 @@ export function useGetSavedProject<TData = Awaited<ReturnType<typeof getSavedPro
 }
 
 
+
+
+
+
+
 export const getUpdateSavedProjectUrl = (projectId: string,) => {
+
+
 
 
   return `/api/port/saved-projects/${projectId}`
@@ -1368,6 +1833,9 @@ export const updateSavedProject = async (projectId: string,
 );}
 
 
+
+
+
 export const getUpdateSavedProjectMutationOptions = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSavedProject>>, TError,{projectId: string;data: BodyType<SavedProjectInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof updateSavedProject>>, TError,{projectId: string;data: BodyType<SavedProjectInput>}, TContext> => {
@@ -1380,11 +1848,17 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {mutation: { mutationKey, }, request: undefined};
 
 
+
+
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateSavedProject>>, {projectId: string;data: BodyType<SavedProjectInput>}> = (props) => {
           const {projectId,data} = props ?? {};
 
           return  updateSavedProject(projectId,data,requestOptions)
         }
+
+
+
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -1410,6 +1884,8 @@ export const useUpdateSavedProject = <TError = ErrorType<ErrorResponse>,
 export const getDeleteSavedProjectUrl = (projectId: string,) => {
 
 
+
+
   return `/api/port/saved-projects/${projectId}`
 }
 
@@ -1428,6 +1904,9 @@ export const deleteSavedProject = async (projectId: string, options?: Parameters
 );}
 
 
+
+
+
 export const getDeleteSavedProjectMutationOptions = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSavedProject>>, TError,{projectId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof deleteSavedProject>>, TError,{projectId: string}, TContext> => {
@@ -1440,11 +1919,17 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {mutation: { mutationKey, }, request: undefined};
 
 
+
+
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteSavedProject>>, {projectId: string}> = (props) => {
           const {projectId} = props ?? {};
 
           return  deleteSavedProject(projectId,requestOptions)
         }
+
+
+
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -1470,6 +1955,8 @@ export const useDeleteSavedProject = <TError = ErrorType<ErrorResponse>,
 export const getGetReplitProjectStatusUrl = (jobId: string,) => {
 
 
+
+
   return `/api/port/replit-projects/${jobId}`
 }
 
@@ -1489,6 +1976,9 @@ export const getReplitProjectStatus = async (jobId: string, options?: Parameters
 );}
 
 
+
+
+
 export const getGetReplitProjectStatusQueryKey = (jobId: string,) => {
     return [
     `/api/port/replit-projects/${jobId}`
@@ -1504,7 +1994,11 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
   const queryKey =  queryOptions?.queryKey ?? getGetReplitProjectStatusQueryKey(jobId);
 
 
+
     const queryFn: QueryFunction<Awaited<ReturnType<typeof getReplitProjectStatus>>> = ({ signal }) => getReplitProjectStatus(jobId, { signal, ...requestOptions });
+
+
+
 
 
    return  { queryKey, queryFn, enabled: jobId !== null && jobId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getReplitProjectStatus>>, TError, TData> & { queryKey: QueryKey }
@@ -1532,7 +2026,14 @@ export function useGetReplitProjectStatus<TData = Awaited<ReturnType<typeof getR
 }
 
 
+
+
+
+
+
 export const getRetryReplitProjectSetupUrl = (jobId: string,) => {
+
+
 
 
   return `/api/port/replit-projects/${jobId}/retry`
@@ -1554,6 +2055,9 @@ export const retryReplitProjectSetup = async (jobId: string, options?: Parameter
 );}
 
 
+
+
+
 export const getRetryReplitProjectSetupMutationOptions = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryReplitProjectSetup>>, TError,{jobId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof retryReplitProjectSetup>>, TError,{jobId: string}, TContext> => {
@@ -1566,11 +2070,17 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {mutation: { mutationKey, }, request: undefined};
 
 
+
+
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof retryReplitProjectSetup>>, {jobId: string}> = (props) => {
           const {jobId} = props ?? {};
 
           return  retryReplitProjectSetup(jobId,requestOptions)
         }
+
+
+
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -1594,177 +2104,3 @@ export const useRetryReplitProjectSetup = <TError = ErrorType<ErrorResponse>,
       return useMutation(getRetryReplitProjectSetupMutationOptions(options));
     }
 
-
-    export type ResetPoeFallbacksMutationResult = NonNullable<Awaited<ReturnType<typeof resetPoeFallbacks>>>
-
-export const getGetPoeFallbacksQueryOptions = <TData = Awaited<ReturnType<typeof getPoeFallbacks>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPoeFallbacks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-) => {
-
-const {query: queryOptions, request: requestOptions} = options ?? {};
-
-  const queryKey =  queryOptions?.queryKey ?? getGetPoeFallbacksQueryKey();
-
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPoeFallbacks>>> = ({ signal }) => getPoeFallbacks({ signal, ...requestOptions });
-
-
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPoeFallbacks>>, TError, TData> & { queryKey: QueryKey }
-}
-
-/**
- * @summary Read administrator Poe fallback configuration
- */
-export const getPoeFallbacks = async ( options?: Parameters<typeof customFetch>[1]): Promise<PoeFallbackConfiguration> => {
-
-  return customFetch<PoeFallbackConfiguration>(getGetPoeFallbacksUrl(),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-/**
- * @summary Replace administrator Poe fallback configuration
- */
-export const updatePoeFallbacks = async (poeFallbackInput: PoeFallbackInput, options?: Parameters<typeof customFetch>[1]): Promise<PoeFallbackInput> => {
-
-  return customFetch<PoeFallbackInput>(getUpdatePoeFallbacksUrl(),
-  {
-    ...options,
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(poeFallbackInput)
-  }
-);}
-
-    /**
- * @summary Replace administrator Poe fallback configuration
- */
-export const useUpdatePoeFallbacks = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePoeFallbacks>>, TError,{data: BodyType<PoeFallbackInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof updatePoeFallbacks>>,
-        TError,
-        {data: BodyType<PoeFallbackInput>},
-        TContext
-      > => {
-      return useMutation(getUpdatePoeFallbacksMutationOptions(options));
-    }
-
-export const getResetPoeFallbacksUrl = () => {
-
-
-  return `/api/port/poe/admin/fallbacks/reset`
-}
-
-    export type ResetPoeFallbacksMutationError = ErrorType<unknown>
-
-export const getResetPoeFallbacksMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetPoeFallbacks>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof resetPoeFallbacks>>, TError,void, TContext> => {
-
-const mutationKey = ['resetPoeFallbacks'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resetPoeFallbacks>>, void> = () => {
-
-
-          return  resetPoeFallbacks(requestOptions)
-        }
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-export type GetPoeFallbacksQueryError = ErrorType<ErrorResponse>
-
-export const getUpdatePoeFallbacksUrl = () => {
-
-
-  return `/api/port/poe/admin/fallbacks`
-}
-
-export type GetPoeFallbacksQueryResult = NonNullable<Awaited<ReturnType<typeof getPoeFallbacks>>>
-
-/**
- * @summary Read administrator Poe fallback configuration
- */
-
-export function useGetPoeFallbacks<TData = Awaited<ReturnType<typeof getPoeFallbacks>>, TError = ErrorType<ErrorResponse>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPoeFallbacks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-
- ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-
-  const queryOptions = getGetPoeFallbacksQueryOptions(options)
-
-  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
-
-  return withQueryKey(query, queryOptions.queryKey);
-}
-
-export const getGetPoeFallbacksQueryKey = () => {
-    return [
-    `/api/port/poe/admin/fallbacks`
-    ] as const;
-    }
-
-    export type UpdatePoeFallbacksMutationResult = NonNullable<Awaited<ReturnType<typeof updatePoeFallbacks>>>
-
-export const getUpdatePoeFallbacksMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePoeFallbacks>>, TError,{data: BodyType<PoeFallbackInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof updatePoeFallbacks>>, TError,{data: BodyType<PoeFallbackInput>}, TContext> => {
-
-const mutationKey = ['updatePoeFallbacks'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updatePoeFallbacks>>, {data: BodyType<PoeFallbackInput>}> = (props) => {
-          const {data} = props ?? {};
-
-          return  updatePoeFallbacks(data,requestOptions)
-        }
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type UpdatePoeFallbacksMutationError = ErrorType<unknown>
-
-/**
- * @summary Reset administrator Poe fallbacks to safe defaults
- */
-export const resetPoeFallbacks = async ( options?: Parameters<typeof customFetch>[1]): Promise<PoeFallbackInput> => {
-
-  return customFetch<PoeFallbackInput>(getResetPoeFallbacksUrl(),
-  {
-    ...options,
-    method: 'POST'
-
-
-  }
-);}
-
-    /**
- * @summary Reset administrator Poe fallbacks to safe defaults
- */
-export const useResetPoeFallbacks = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetPoeFallbacks>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof resetPoeFallbacks>>,
-        TError,
-        void,
-        TContext
-      > => {
-      return useMutation(getResetPoeFallbacksMutationOptions(options));
-    }
-
-    export type UpdatePoeFallbacksMutationBody = BodyType<PoeFallbackInput>
