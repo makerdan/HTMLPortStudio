@@ -14,12 +14,12 @@ observed in the private repository.
 - Visibility: private, as confirmed for this task
 - Local evidence: Node 24, pnpm 10.26.1, and a pnpm workspace with
   `pnpm-lock.yaml`
-- Remote evidence: see the verification snapshot below; no successful remote
-  workflow run or required-check configuration is currently available
+- Remote evidence: see the verification snapshot below; no activated workflow,
+  remote run, artifact, or required-check configuration is currently available
 
 ## Verification snapshot
 
-Read-only GitHub API checks on September 9, 2026, using the repository's
+Read-only GitHub API checks on September 21, 2026, using the repository's
 authenticated GitHub connection, found:
 
 - The repository exists, is private, and has `main` as its default branch.
@@ -29,6 +29,9 @@ authenticated GitHub connection, found:
   not activated either workflow on the remote default branch. The workflow
   files are present locally but are not yet available in the GitHub repository
   revision being inspected.
+- `GET /actions/artifacts` returned zero artifacts. No real failed,
+  successful, upload-failure, or intentional post-merge-skip run is therefore
+  available for runtime comparison.
 - `main` reported `protected: false`.
 - Both the branch-protection and repository-rulesets endpoints returned
   `403` with GitHub's message that the feature requires GitHub Pro or a public
@@ -41,6 +44,25 @@ This is evidence that remote activation and branch protection are not complete,
 not evidence that the workflow jobs pass. A real pull-request, `main` push, or
 scheduled post-merge run must be observed after both workflow files reach
 GitHub.
+
+
+### Artifact upload runtime confirmation status
+
+Task-level runtime confirmation remains unavailable because GitHub has not
+activated either workflow. The local contract and its tests establish the
+intended boundaries, but they cannot substitute for the requested real-run
+observations:
+
+| Observation | Current status |
+| --- | --- |
+| Failed validation or production build retains only the bounded artifact for three days | Not observed; no workflow run exists |
+| Missing artifact or failed upload leaves the mandatory job and stable aggregate unchanged | Not observed; no workflow run exists |
+| Successful run and intentional post-merge skip retain no diagnostic artifact | Not observed; no workflow run exists |
+
+Do not report these runtime cases as confirmed until the workflow files are
+available on GitHub and corresponding read-only run and artifact records can be
+compared. No remote workflow was dispatched, rerun, approved, pushed, or
+otherwise mutated during this check.
 
 The existing Replit workflows remain the local validation owners. This note
 does not replace `.replit` or add a second application validation contract;
