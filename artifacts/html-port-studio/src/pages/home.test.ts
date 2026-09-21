@@ -827,7 +827,8 @@ test("uses exact live Poe identifiers and preserves retryable assistant state", 
   const assistantSource = source.slice(assistantStart, repairStart);
   const repairSource = source.slice(repairStart);
 
-  assert.match(repairSource, /poeData\?\.configured \? poeData\.models\[0\] : undefined/);
+  assert.match(repairSource, /getConfirmedPoeModel\(poeData, 'claude-repair'\)/);
+  assert.match(repairSource, /getConfirmedPoeModel\(poeData, 'gemini-repair'\)/);
   assert.match(repairSource, /model: confirmedRepairModel/);
   assert.match(assistantSource, /capability: 'generic-assistant'/);
   assert.match(
@@ -843,6 +844,20 @@ test("uses exact live Poe identifiers and preserves retryable assistant state", 
   assert.match(repairSource, /Retry loading models/);
   assert.match(repairSource, /setPrompt\(message\)/);
   assert.match(repairSource, /setPendingPrompt\(message\)/);
+});
+
+test("requires the documented live Poe capability contract before dispatch", async () => {
+  const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+  const contractStart = source.indexOf("function getConfirmedPoeModel");
+  const contractEnd = source.indexOf("const SEVERITY_ICONS", contractStart);
+  const contract = source.slice(contractStart, contractEnd);
+
+  assert.notEqual(contractStart, -1);
+  assert.match(contract, /data\.available/);
+  assert.match(contract, /capability\.endpoint !== '\/v1\/chat\/completions'/);
+  assert.match(contract, /capability\.contract !== 'text-only'/);
+  assert.match(contract, /capability\.owner !== 'api-server'/);
+  assert.match(source, /poeData\?\.configured && poeData\.available/);
 });
 
 test("redacts every supported credential family before repair context is assembled", () => {
@@ -928,7 +943,7 @@ test("requires redacted consent, review, confirmation, re-scan, and undo in Fix 
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
 
   assert.doesNotMatch(source, /Claude-Sonnet-4\.5/);
-  assert.match(source, /poeData\?\.configured \? poeData\.models\[0\] : undefined/);
+  assert.match(source, /getConfirmedPoeModel\(poeData, 'claude-repair'\)/);
   assert.match(source, /credentialRedaction\.safe &&\s*shareConfirmed/s);
   assert.match(source, /only the complete redacted copy will be shared with Claude/i);
   assert.match(source, /Request redacted Claude repair/);
@@ -1059,6 +1074,32 @@ test("exposes a bounded Poe retry countdown without exposing server details", ()
   assert.doesNotMatch(presentation.message, /provider|proxy|details/i);
 });
 
+test("maps Poe setup and protection failures to safe retry guidance", () => {
+  assert.match(
+    getStudioErrorMessage(
+      { data: { code: "AUTHENTICATION_NOT_CONFIGURED", error: "secret setup details" } },
+      "fallback",
+    ),
+    /sign-in setup is temporarily unavailable/i,
+  );
+  assert.match(
+    getStudioErrorMessage(
+      { data: { code: "POE_NOT_CONFIGURED", error: "POE_API_KEY2=secret" } },
+      "fallback",
+    ),
+    /ask an administrator to configure/i,
+  );
+  const rateLimitPresentation = getStudioErrorPresentation(
+    {
+      data: { code: "POE_RATE_LIMIT_UNAVAILABLE", error: "redis credentials" },
+    },
+    "fallback",
+  );
+  assert.match(rateLimitPresentation.message, /temporarily unavailable/i);
+  assert.equal(rateLimitPresentation.retryAfterSeconds, undefined);
+  assert.doesNotMatch(rateLimitPresentation.message, /redis|credentials/i);
+});
+
 test("keeps every Poe-backed assistant request retryable during cooldown", async () => {
   const source = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
 
@@ -1069,6 +1110,8 @@ test("keeps every Poe-backed assistant request retryable during cooldown", async
   assert.ok((source.match(/setRateLimitRetryAt\(/g) ?? []).length >= 3);
   assert.match(source, /setPrompt\(submittedPrompt\)/);
   assert.match(source, /setPendingPrompt\(message\)/);
+  assert.match(source, /latestSelectedModelRef\.current !== submittedModel/);
+  assert.match(source, /latestRepairModelRef\.current !== submittedModel/);
 });
 
 test("does not render raw server error fields in non-analysis surfaces", async () => {

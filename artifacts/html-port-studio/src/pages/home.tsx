@@ -37,6 +37,7 @@ import type {
   PlaygroundImport,
   PlaygroundImportInput,
   BundleTransferCreated,
+  PoeModels,
 } from '@workspace/api-client-react';
 import {
   SOURCE_TEXT_LIMIT_LABEL,
@@ -152,6 +153,33 @@ const SOURCE_MODE_LABELS = {
 } as const;
 
 type SourceChoice = keyof typeof SOURCE_MODE_LABELS;
+type PoeCapabilityId = 'generic-assistant' | 'gemini-repair' | 'claude-repair';
+
+function getPoeCapability(
+  data: PoeModels | undefined,
+  capabilityId: PoeCapabilityId,
+) {
+  return data?.capabilities.find((capability) => capability.id === capabilityId);
+}
+
+function getConfirmedPoeModel(
+  data: PoeModels | undefined,
+  capabilityId: PoeCapabilityId,
+): string | undefined {
+  const capability = getPoeCapability(data, capabilityId);
+  if (
+    !data?.configured ||
+    !data.available ||
+    !capability ||
+    capability.endpoint !== '/v1/chat/completions' ||
+    capability.contract !== 'text-only' ||
+    capability.owner !== 'api-server'
+  ) {
+    return undefined;
+  }
+
+  return data.models.find((model) => model.trim().length > 0);
+}
 
 const SEVERITY_ICONS = {
   info: <Info className="h-4 w-4 text-primary" />,
@@ -343,9 +371,13 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
   const chatRequestRevisionRef = useRef(0);
   const latestHtmlRef = useRef(html);
   latestHtmlRef.current = html;
+  const latestSelectedModelRef = useRef(selectedModel);
+  latestSelectedModelRef.current = selectedModel;
   const rateLimitRemainingSeconds = useRateLimitCountdown(rateLimitRetryAt);
   const documentContainsCredential = useMemo(() => containsCredential(html), [html]);
-  const availableModels = poeData?.configured ? poeData.models : [];
+  const hasAssistantContract = Boolean(getPoeCapability(poeData, 'generic-assistant'));
+  const availableModels =
+    poeData?.configured && poeData.available && hasAssistantContract ? poeData.models : [];
   const selectedModelConfirmed = availableModels.includes(selectedModel);
 
   useEffect(() => {
@@ -373,6 +405,7 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
     ) return;
 
     const submittedPrompt = prompt.trim();
+    const submittedModel = selectedModel;
     const requestRevision = ++chatRequestRevisionRef.current;
     const newMessage: PoeMessage = { role: 'user', content: submittedPrompt };
     const newHistory = [...chatHistory, newMessage];
@@ -393,7 +426,8 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
       onSuccess: (res: PoeChatResponse) => {
         if (
           requestRevision !== chatRequestRevisionRef.current ||
-          latestHtmlRef.current !== html
+          latestHtmlRef.current !== html ||
+          latestSelectedModelRef.current !== submittedModel
         ) return;
         setPrompt('');
         setRateLimitRetryAt(null);
@@ -402,7 +436,8 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
       onError: (error: unknown) => {
         if (
           requestRevision !== chatRequestRevisionRef.current ||
-          latestHtmlRef.current !== html
+          latestHtmlRef.current !== html ||
+          latestSelectedModelRef.current !== submittedModel
         ) return;
         setChatHistory(prev => prev.filter((message, index) => index !== prev.length - 1));
         setPrompt(submittedPrompt);
@@ -474,7 +509,7 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
     );
   }
 
-  if (!poeData.models.length) {
+  if (!poeData.available || !availableModels.length) {
     return (
       <div className="flex h-full flex-col items-center justify-center p-6 text-center">
         <AlertTriangle className="mb-4 h-8 w-8 text-warning" />
@@ -515,7 +550,7 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
                 <SelectValue placeholder="Select a model" />
               </SelectTrigger>
               <SelectContent>
-                {poeData.models.map((m: string) => (
+            {availableModels.map((m: string) => (
                   <SelectItem key={m} value={m} className="text-xs">{m}</SelectItem>
                 ))}
               </SelectContent>
@@ -1830,7 +1865,9 @@ function ClaudeRepairPanel({
   const [rateLimitRetryAt, setRateLimitRetryAt] = useState<number | null>(null);
   const [promptSizeError, setPromptSizeError] = useState<string | null>(null);
   const requestRevisionRef = useRef(0);
-  const confirmedModel = poeData?.configured ? poeData.models[0] : undefined;
+  const confirmedModel = getConfirmedPoeModel(poeData, 'claude-repair');
+  const latestModelRef = useRef<string | undefined>(confirmedModel);
+  latestModelRef.current = confirmedModel;
   const prompt = useMemo(() => {
     try {
       const value = buildClaudeRepairPrompt(bundle, analysis);
@@ -1889,7 +1926,10 @@ function ClaudeRepairPanel({
       },
     }, {
       onSuccess: (response: PoeChatResponse) => {
-        if (requestRevision !== requestRevisionRef.current) return;
+        if (
+          requestRevision !== requestRevisionRef.current ||
+          latestModelRef.current !== confirmedModel
+        ) return;
           setRateLimitRetryAt(null);
         const result = validateClaudePatchResponse(response.content, bundle, analysis.findings);
         if (!result.ok) {
@@ -1899,7 +1939,10 @@ function ClaudeRepairPanel({
         setProposal(result.edits);
       },
       onError: (error: unknown) => {
-        if (requestRevision !== requestRevisionRef.current) return;
+        if (
+          requestRevision !== requestRevisionRef.current ||
+          latestModelRef.current !== confirmedModel
+        ) return;
         const presentation = getStudioErrorPresentation(
           error,
           'Claude could not prepare a repair proposal. Nothing was changed.',
@@ -4280,8 +4323,12 @@ function PoeRepairPanel({
   );
   const initialPrompt = useMemo(() => buildRepairPrompt(html), [html]);
   const rateLimitRemainingSeconds = useRateLimitCountdown(rateLimitRetryAt);
-  const confirmedGeminiModel = poeData?.configured ? poeData.models[0] : undefined;
-  const confirmedClaudeModel = poeData?.configured ? poeData.models[0] : undefined;
+  const confirmedGeminiModel = getConfirmedPoeModel(poeData, 'gemini-repair');
+  const confirmedClaudeModel = getConfirmedPoeModel(poeData, 'claude-repair');
+  const latestRepairModelRef = useRef<string | undefined>(confirmedGeminiModel);
+  latestRepairModelRef.current = documentContainsCredential
+    ? confirmedClaudeModel
+    : confirmedGeminiModel;
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -4319,6 +4366,7 @@ function PoeRepairPanel({
       ? confirmedClaudeModel
       : confirmedGeminiModel;
     if (!confirmedRepairModel) return;
+    const submittedModel = confirmedRepairModel;
 
     if (!isInitial && documentContainsCredential) {
       trackEvent('credential_recovery_proposal_requested');
@@ -4344,7 +4392,8 @@ function PoeRepairPanel({
         onSuccess: (res: PoeChatResponse) => {
           if (
             requestRevision !== requestRevisionRef.current ||
-            latestSourceRef.current !== html
+            latestSourceRef.current !== html ||
+            latestRepairModelRef.current !== submittedModel
           ) return;
           const safeResponse = sanitizeUntrustedRepairText(res.content);
           setPrompt('');
@@ -4358,7 +4407,8 @@ function PoeRepairPanel({
         onError: (error: unknown) => {
           if (
             requestRevision !== requestRevisionRef.current ||
-            latestSourceRef.current !== html
+            latestSourceRef.current !== html ||
+            latestRepairModelRef.current !== submittedModel
           ) return;
           setChatHistory((prev) => prev.filter((_message, index) => index !== prev.length - 1));
           setPrompt(message);
@@ -4386,6 +4436,7 @@ function PoeRepairPanel({
       modelsError ||
       !poeData ||
       !poeData.configured ||
+      !poeData.available ||
       !confirmedGeminiModel ||
       documentContainsCredential ||
       startedSourceRef.current === html

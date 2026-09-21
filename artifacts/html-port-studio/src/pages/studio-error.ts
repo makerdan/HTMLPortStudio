@@ -9,6 +9,8 @@ export type StudioErrorPresentation = {
 
 export const STUDIO_ERROR_MESSAGES = {
   AUTHENTICATION_REQUIRED: 'Log in to continue with this Replit project action.',
+  AUTHENTICATION_NOT_CONFIGURED:
+    'Sign-in setup is temporarily unavailable. Try again later or ask an administrator to check the Studio setup.',
   BUNDLE_AMBIGUOUS:
     'Send either one HTML document or one source bundle, not both, then try again.',
   BUNDLE_DUPLICATE_PATH:
@@ -41,7 +43,7 @@ export const STUDIO_ERROR_MESSAGES = {
   POE_MODEL_UNAVAILABLE:
     'The requested Poe model is no longer available. Refresh model availability, then try again.',
   POE_NOT_CONFIGURED:
-    'The assistant is not configured on this server yet. Try again later.',
+    'The assistant is not configured on this server yet. Ask an administrator to configure it, then try again.',
   POE_PROVIDER_UNAVAILABLE:
     'The assistant is temporarily unavailable. Your request is ready to retry.',
   POE_RATE_LIMITED:
@@ -238,6 +240,7 @@ export function getStudioErrorPresentation(
       : undefined,
     retryAfterSeconds:
       code === 'POE_RATE_LIMITED' ||
+      code === 'POE_RATE_LIMIT_UNAVAILABLE' ||
       code === 'POE_TIMEOUT' ||
       code === 'POE_PROVIDER_UNAVAILABLE'
         ? getRetryAfterSeconds(error)
