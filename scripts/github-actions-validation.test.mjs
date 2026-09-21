@@ -34,6 +34,25 @@ function jobBlock(workflow, jobName) {
   );
 }
 
+function stableJobBlock(workflow, jobName) {
+  const marker = `\n  ${jobName}:\n`;
+  const start = workflow.indexOf(marker);
+  const guidance =
+    "See docs/validation/github-actions.md: Checkpoint operating procedure and Rollback procedure.";
+  assert.notEqual(
+    start,
+    -1,
+    `stable GitHub job "${jobName}" is missing or renamed. ${guidance}`,
+  );
+  const block = jobBlock(workflow, jobName);
+  assert.match(
+    block,
+    new RegExp(`\\n\\s+name:\\s+${jobName.replaceAll("-", "[-]")}(?:\\s|$)`),
+    `stable GitHub job "${jobName}" display name drifted. ${guidance}`,
+  );
+  return block;
+}
+
 function decision(overrides = {}) {
   return decidePostMergeBuild({
     currentSha: "current-head",
@@ -65,6 +84,19 @@ test("pull requests run the canonical production build with the pinned toolchain
   assert.match(pullRequestWorkflow, /pnpm install --frozen-lockfile/);
   assert.match(pullRequestWorkflow, /node-version: 24/);
   assert.match(pullRequestWorkflow, /npm install --global pnpm@10\.26\.1/);
+});
+
+test("stable required and post-merge job names stay aligned with checkpoint guidance", () => {
+  const aggregate = stableJobBlock(pullRequestWorkflow, "validation");
+  for (const jobName of ["test-standard", "validate-api", "production-build"]) {
+    stableJobBlock(pullRequestWorkflow, jobName);
+    assert.match(
+      aggregate,
+      new RegExp(`\\n\\s+- ${jobName}\\n`),
+      `stable GitHub aggregate no longer requires "${jobName}". See docs/validation/github-actions.md: Checkpoint operating procedure and Rollback procedure.`,
+    );
+  }
+  stableJobBlock(postMergeWorkflow, "post-merge-build");
 });
 
 test("post-merge workflow is limited to main pushes and a 30-minute schedule", () => {
