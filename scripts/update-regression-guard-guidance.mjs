@@ -49,6 +49,17 @@ function readFailureMessage(relativeFile, error) {
   );
 }
 
+function writeFailureMessage(relativeFile, error, rollbackError) {
+  const rollbackStatus = rollbackError
+    ? ` Rollback also failed: ${rollbackError.message}. Inspect the guidance documents before retrying.`
+    : " Earlier document changes were rolled back; no partial repair was retained.";
+  return (
+    `[REGRESSION-GUARD-DOCS] Could not write guidance document: ${relativeFile}.` +
+    `${rollbackStatus} ` +
+    `Run ${updaterCommand} after resolving the write failure.`
+  );
+}
+
 export function updateRegressionGuardGuidance({
   root = ROOT,
   guidanceFiles = files,
@@ -60,6 +71,7 @@ export function updateRegressionGuardGuidance({
 } = {}) {
   let changed = false;
   let failed = false;
+  const stagedWrites = [];
   for (const relativeFile of guidanceFiles) {
     const file = path.isAbsolute(relativeFile)
       ? relativeFile
@@ -101,12 +113,37 @@ export function updateRegressionGuardGuidance({
     }
 
     if (next !== text) {
-      writeFile(file, next);
-      changed = true;
+      stagedWrites.push({ file, relativeFile, original: text, next });
     }
   }
 
   if (failed) return 1;
+
+  // Policy: stage every document first, then apply the writes as one logical
+  // update. If a write fails, restore all earlier writes before returning
+  // failure so operators never mistake a partial repair for success.
+  const written = [];
+  for (const staged of stagedWrites) {
+    try {
+      writeFile(staged.file, staged.next);
+      written.push(staged);
+    } catch (error) {
+      let rollbackError;
+      for (const previous of written.reverse()) {
+        try {
+          writeFile(previous.file, previous.original);
+        } catch (restoreError) {
+          rollbackError ??= restoreError;
+        }
+      }
+      reportError(
+        writeFailureMessage(staged.relativeFile, error, rollbackError),
+      );
+      return 1;
+    }
+  }
+  changed = stagedWrites.length > 0;
+
   if (checkOnly) {
     reportOutput(
       "[REGRESSION-GUARD-DOCS] Generated guidance is current (read-only).",

@@ -775,6 +775,57 @@ test("guidance CLI reports every broken fixture document without mutating tracke
   }
 });
 
+test("guidance updater rolls back earlier repairs when a later write fails", () => {
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "regression-guard-write-failure-"),
+  );
+  const firstFile = "first-guidance.md";
+  const secondFile = "second-guidance.md";
+  const firstPath = path.join(directory, firstFile);
+  const secondPath = path.join(directory, secondFile);
+  const source = fs.readFileSync(projectGuidance, "utf8");
+  const stale = source.replace(
+    "The permitted exceptions are:",
+    "The permitted exceptions have drifted:",
+  );
+  const errors = [];
+  const writes = [];
+  fs.writeFileSync(firstPath, stale);
+  fs.writeFileSync(secondPath, stale);
+
+  try {
+    const status = updateRegressionGuardGuidance({
+      root: directory,
+      guidanceFiles: [firstFile, secondFile],
+      reportError: (message) => errors.push(message),
+      writeFile: (file, text) => {
+        writes.push(file);
+        if (file === secondPath) {
+          throw new Error("simulated permission failure");
+        }
+        fs.writeFileSync(file, text);
+      },
+    });
+
+    assert.equal(status, 1);
+    assert.equal(errors.length, 1);
+    assert.match(
+      errors[0],
+      /Could not write guidance document: second-guidance\.md/,
+    );
+    assert.match(errors[0], /Earlier document changes were rolled back/);
+    assert.match(
+      errors[0],
+      /Run node scripts\/update-regression-guard-guidance\.mjs/,
+    );
+    assert.deepEqual(writes, [firstPath, secondPath, firstPath]);
+    assert.equal(fs.readFileSync(firstPath, "utf8"), stale);
+    assert.equal(fs.readFileSync(secondPath, "utf8"), stale);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("guidance freshness rejects malformed generated blocks with an updater command", () => {
   const original = fs.readFileSync(projectGuidance, "utf8");
   const malformed = original.replace(
