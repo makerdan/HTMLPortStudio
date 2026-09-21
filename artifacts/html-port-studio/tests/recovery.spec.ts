@@ -91,6 +91,70 @@ const playgroundImport = {
   warnings: [],
 };
 
+const poeCapabilities = [
+  {
+    version: 1,
+    id: "generic-assistant",
+    endpoint: "/v1/chat/completions",
+    contract: "text-only",
+    limits: { maxMessages: 40, maxCompletionTokens: 4096 },
+    privacyClass: "user-content",
+    fallback: "none",
+    owner: "api-server",
+    reviewEvidence: "Poe live catalogue plus server boundary review",
+    capabilities: {
+      toolCalling: "unavailable",
+      vision: "unavailable",
+      structuredOutput: "unavailable",
+      streaming: "unavailable",
+    },
+  },
+  {
+    version: 1,
+    id: "gemini-repair",
+    endpoint: "/v1/chat/completions",
+    contract: "text-only",
+    limits: { maxMessages: 40, maxCompletionTokens: 4096 },
+    privacyClass: "redacted-source",
+    fallback: "generic-assistant",
+    owner: "api-server",
+    reviewEvidence: "Poe live catalogue plus redacted-source repair review",
+    capabilities: {
+      toolCalling: "unavailable",
+      vision: "unavailable",
+      structuredOutput: "unavailable",
+      streaming: "unavailable",
+    },
+  },
+  {
+    version: 1,
+    id: "claude-repair",
+    endpoint: "/v1/chat/completions",
+    contract: "text-only",
+    limits: { maxMessages: 40, maxCompletionTokens: 4096 },
+    privacyClass: "redacted-source",
+    fallback: "generic-assistant",
+    owner: "api-server",
+    reviewEvidence: "Poe live catalogue plus redacted-source repair review",
+    capabilities: {
+      toolCalling: "unavailable",
+      vision: "unavailable",
+      structuredOutput: "unavailable",
+      streaming: "unavailable",
+    },
+  },
+];
+
+function poeModels(models: string[]) {
+  return {
+    configured: true,
+    available: models.length > 0,
+    models,
+    message: "Live models loaded from Poe.",
+    capabilities: poeCapabilities,
+  };
+}
+
 const hostedImportFailures = [
   ["HOSTED_URL_INVALID", "The hosted link is invalid.", "Use a complete HTTPS URL."],
   ["HOSTED_URL_UNSUPPORTED_PROTOCOL", "The hosted link uses an unsupported protocol.", "Use HTTPS."],
@@ -183,7 +247,7 @@ test("recovers from a model-load failure with the retry control", async ({ page 
     return route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ configured: true, models: ["Claude-3.5-Sonnet"] }),
+      body: JSON.stringify(poeModels(["Claude-3.5-Sonnet"])),
     });
   });
 
@@ -204,7 +268,7 @@ test("keeps a failed assistant prompt available and retries successfully", async
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ configured: true, models: ["Claude-3.5-Sonnet"] }),
+      body: JSON.stringify(poeModels(["Claude-3.5-Sonnet"])),
     }),
   );
   await page.route("**/api/port/poe/chat", (route) => {
@@ -834,7 +898,7 @@ test("stops handoff polling after an error and only resumes on retry", async ({ 
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ configured: true, models: ["Claude-3.5-Sonnet"] }),
+      body: JSON.stringify(poeModels(["Claude-3.5-Sonnet"])),
     }),
   );
   await page.route("**/api/port/replit-project-connection", (route) =>
@@ -1286,8 +1350,7 @@ test("keeps credential recovery analytics coarse across every browser outcome", 
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        configured: true,
-        models: ["Claude-Sonnet-4.6"],
+        ...poeModels(["Claude-Sonnet-4.6"]),
         message: "model-output-private-catalogue-detail",
       }),
     }),
@@ -1581,7 +1644,7 @@ async function openClaudeReview(
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ configured: true, models: ["Claude-Sonnet-4.6"] }),
+      body: JSON.stringify(poeModels(["Claude-Sonnet-4.6"])),
     }),
   );
   await page.goto("/");
@@ -1598,7 +1661,7 @@ test("gates Claude on the exact live model and exhausts bounded attempts", async
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ configured: true, models: ["Claude-Sonnet-4.5"] }),
+      body: JSON.stringify(poeModels(["Claude-Sonnet-4.5"])),
     }),
   );
   await page.route("**/api/port/poe/chat", (route) => {
@@ -1621,7 +1684,7 @@ test("gates Claude on the exact live model and exhausts bounded attempts", async
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ configured: true, models: ["Claude-Sonnet-4.6"] }),
+      body: JSON.stringify(poeModels(["Claude-Sonnet-4.6"])),
     }),
   );
   await page.getByRole("button", { name: "Refresh model catalogue" }).click();

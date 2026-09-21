@@ -164,11 +164,12 @@ type PoeCapabilityId = 'generic-assistant' | 'gemini-repair' | 'claude-repair';
 type HandoffPhase = 'creation' | 'import' | 'sourceVerification' | 'runtimeVerification';
 type HandoffPhaseStatus = 'not_started' | 'in_progress' | 'verified' | 'blocked';
 
+const CLAUDE_REPAIR_MODEL = 'Claude-Sonnet-4.6';
 function getPoeCapability(
   data: PoeModels | undefined,
   capabilityId: PoeCapabilityId,
 ) {
-  return data?.capabilities.find((capability) => capability.id === capabilityId);
+  return data?.capabilities?.find((capability) => capability.id === capabilityId);
 }
 
 function getConfirmedPoeModel(
@@ -187,7 +188,11 @@ function getConfirmedPoeModel(
     return undefined;
   }
 
-  return data.models.find((model) => model.trim().length > 0);
+  return data.models.find(
+    (model) =>
+      model.trim().length > 0 &&
+      (capabilityId !== 'claude-repair' || model === CLAUDE_REPAIR_MODEL),
+  );
 }
 
 const SEVERITY_ICONS = {
