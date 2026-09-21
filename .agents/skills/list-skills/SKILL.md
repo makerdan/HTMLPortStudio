@@ -72,18 +72,27 @@ filename alone, or a documentation claim alone.
 
 Perform only these read-only inspections:
 
-1. Confirm the project root without printing or reporting an absolute/canonical
-   workspace path.
+1. Confirm the project root by checking the expected relative roots from the
+   current working directory, without printing or reporting an
+   absolute/canonical workspace path. Use a safe project label such as the
+   repository directory name or `Current project`; never derive the label from
+   a secret or expose the canonical path.
 2. Enumerate immediate directories under `.local/custom_skills/`.
 3. For each candidate, inspect only enough of its `SKILL.md` frontmatter to
-   identify its purpose. The candidate is valid only when `SKILL.md` is a
-   regular, readable, non-symlinked file with usable required identity data.
+   identify its purpose. Parse the bounded frontmatter between the first
+   `---` delimiter and the next `---` delimiter. The candidate is valid only
+   when `SKILL.md` is a regular, readable, non-symlinked file, the frontmatter
+   parses, and it has a non-empty `name` and `description`; otherwise record a
+   malformed/invalid finding without reading the skill body.
 4. Enumerate immediate directories under `.agents/skills/`, excluding the
    literal `.workspace-projections` entry.
 5. Enumerate immediate directories under
    `.agents/skills/.workspace-projections/` separately.
 6. For project entries, require a regular, readable, non-symlinked `SKILL.md`
-   and use the immediate directory name as the project skill ID.
+   and use the immediate directory name as the project skill ID. A project
+   entry is valid only when its bounded frontmatter parses and has a
+   non-empty `name` and `description`; otherwise preserve it as an invalid
+   project-entry finding.
 7. Compare IDs byte-for-byte and case-sensitively. Do not normalize case,
    punctuation, separators, aliases, display names, or hyphens.
 8. Inspect project-owned implementation scope read-only. Stop at a bounded
@@ -127,9 +136,21 @@ Never guess or silently drop an entry. Record each condition under `Findings`,
   finding, not an applied private/custom skill.
 - A runtime candidate with no valid direct or projection match belongs in
   `Available, Not Applied`, including when project behavior appears similar.
+- An invalid runtime candidate is still represented in the
+  `Available, Not Applied` column when its directory ID is safely readable.
+  Its nested `Skill Status` is `Invalid`, its `Implementation Status` and
+  `Coverage` are `Unknown`, and `Evidence`/`Gaps` explain the invalidity.
+  It is never silently converted into an available valid skill or omitted
+  because its `SKILL.md` is malformed.
 - If both a valid direct entry and a valid projection have the same exact ID,
   place the candidate in `Project-Installed` and call out the duplicate
   application under `Findings`; do not create a second comparison-column row.
+- A projection match, including a direct-plus-projection match, is placed in
+  the `Project-Installed` column but has `Skill Status: Workspace-integrated`.
+  A direct-only match has `Skill Status: Project-Installed`. A
+  direct-plus-projection match is also reported as `Duplicate application` in
+  `Findings`; that is a finding label, not a third comparison column or a
+  replacement for the nested `Skill Status` vocabulary.
 - Duplicate immediate IDs or identity conflicts are separate findings. Never
   collapse them by display name or by guessing which entry is authoritative.
 - If implementation scope is inaccessible, report `Implementation status
