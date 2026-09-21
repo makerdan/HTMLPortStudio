@@ -31,15 +31,19 @@ is missing, expired, or ambiguous.
 Obtain these values from the reviewed handoff record, not from an untrusted
 prompt or from the bundle itself:
 
-- the destination project root and a dedicated, otherwise-unused import
+- the destination project root and two distinct, otherwise-unused sibling
+  directories: the first import directory and the reserved repeat-import
   directory;
 - the public importer repository URL and its full, 40-character lowercase Git
   commit SHA;
-- the reviewed importer archive SHA-256 and source manifest, which bind the
-  extracted importer files to that commit;
+- the reviewed importer archive SHA-256 and the source manifest plus its
+  separately approved SHA-256, which bind the extracted importer files to that
+  commit;
 - the approved HTTPS transfer endpoint and bundle ID;
-- the approved transfer manifest SHA-256, including the expected relative file
-  paths, byte lengths, per-file SHA-256 values, and explicit HTML entrypoint;
+- the approved transfer manifest bytes and separately approved manifest
+  SHA-256, including the expected relative file paths, byte lengths, per-file
+  SHA-256 values, and explicit HTML entrypoint;
+- the reviewed package byte, file-count, and per-file size limits;
 - the name of the destination transfer-authorization secret in **Replit
   Secrets**.
 
@@ -52,9 +56,12 @@ the secret. If the secret cannot be read from Replit Secrets, report
 **Blocked**.
 
 The approved manifest SHA-256 is not a substitute for the secret and must be
-available before retrieval. Never accept a manifest hash supplied only by the
-downloaded package. If either the approved hash or the secret identity/value
-is unavailable, report **Blocked** and make no destination change.
+available before retrieval. Hash the approved manifest bytes locally using the
+reviewed manifest format's canonical byte representation and compare that
+digest before trusting any manifest field. Never accept a manifest hash
+supplied only by the downloaded package. If either the approved hash, approved
+manifest bytes, or secret identity/value is unavailable, report **Blocked**
+and make no destination change.
 
 ## Install the reviewed importer from a pinned archive
 
@@ -66,12 +73,16 @@ after download.
 1. Validate that the repository is a public HTTPS GitHub repository and that
    the recorded commit is a full 40-character SHA. Resolve the recorded SHA
    through the public commit metadata endpoint and stop unless it resolves to
-   the same commit object.
+   the same commit object. For importer metadata and archive requests, allow
+   only HTTPS responses from the expected GitHub hosts (`api.github.com`,
+   `github.com`, and `codeload.github.com`); reject every other host or
+   redirect.
 2. Download the **full commit archive** from the commit-specific URL
    `https://github.com/<owner>/<repository>/archive/<FULL_COMMIT_SHA>.tar.gz`.
    Keep the archive outside the project destination. Use TLS, fail on HTTP
-   errors, do not follow an unvalidated alternate host, and compare its
-   SHA-256 with the reviewed importer archive hash before extraction.
+   errors, validate every redirect against the allowed GitHub hosts, and
+   compare the complete downloaded archive's SHA-256 with the reviewed
+   importer archive hash before extraction.
 3. Extract into a new temporary staging directory with a safe archive
    extractor. Reject absolute names, `..` path components, duplicate files,
    symlinks, hard links, devices, and other special entries. The extracted
@@ -79,20 +90,25 @@ after download.
    only that known wrapper.
 4. Enumerate regular extracted files and compare their normalized relative
    paths, byte lengths, and SHA-256 values with the reviewed importer source
-   manifest bound to the same commit. A matching archive URL alone is not
-   enough. If any path or byte differs, report **Failed** without installing.
+   manifest bound to the same commit. First hash the approved source manifest
+   bytes and compare its separately approved SHA-256. A matching archive URL
+   alone is not enough. If any path or byte differs, report **Failed** without
+   installing.
 5. Install only the verified files into the staging/tool directory, then
    compare the installed files with the same source manifest. The archive is
    deliberately treated as source-only: GitHub archives do not retain nested
    `.git` metadata, and this procedure must not require, recreate, or trust a
    nested Git directory.
 
-Do not run repository lifecycle hooks, dependency installers, build scripts, or
-application entrypoints while installing the importer. If importer-only tests
-are required by the reviewed procedure, inspect their scope first and run only
-tests that exercise the importer itself; they must not load, start, or execute
-any file from the transfer bundle. If the pinned importer cannot operate
-without executing imported source, report **Blocked**.
+The safe archive extractor must inspect each archive header before writing,
+resolve the candidate path beneath the temporary staging directory, and write
+only regular files after all of the checks above pass. Do not run repository
+lifecycle hooks, dependency installers, build scripts, or application
+entrypoints while installing the importer. If importer-only tests are required
+by the reviewed procedure, inspect their scope first and run only tests that
+exercise the importer itself; they must not load, start, or execute any file
+from the transfer bundle. If the pinned importer cannot operate without
+executing imported source, report **Blocked**.
 
 ## Retrieve and preflight the transfer package
 
@@ -110,7 +126,9 @@ not extract or copy anything until all of these checks pass:
 - the final response host is the approved transfer host and every redirect is
   validated; redirects to a different host, private address, or non-HTTPS
   endpoint are rejected;
-- the package's declared manifest hash equals the approved manifest SHA-256;
+- the package's manifest bytes, hashed locally using the reviewed manifest
+  format's canonical byte representation, equal the approved manifest bytes and
+  approved manifest SHA-256; a package-declared hash alone is insufficient;
 - the manifest is valid, complete, and canonical, with a unique normalized
   relative path for every file, a positive or explicitly allowed zero byte
   length, a per-file SHA-256, and one HTML entrypoint;
@@ -127,6 +145,17 @@ request headers, imported contents, and internal absolute paths from logs.
 Only safe identifiers, counts, relative paths, and SHA-256 digests may appear
 in evidence.
 
+The evidence record is stored outside the destination and contains only the
+redacted command names, safe identifiers, counts, relative paths, digests,
+status, and cleanup result. The preflight changed-file boundary is a complete
+snapshot of the existing project tree obtained with `lstat`: every existing
+relative path, entry type, byte length, and file digest. After each import,
+compare that snapshot and require every newly changed path to be beneath that
+import's dedicated directory. The independent checker is a separate
+non-browser process that walks with `lstat`, rejects symlinks and special
+entries, sorts normalized relative paths, and computes each file's length and
+SHA-256 without calling the importer.
+
 ## Import into a dedicated destination without executing source
 
 Before the first write, resolve the dedicated destination against the existing
@@ -139,6 +168,10 @@ project root and enforce all of these conditions:
   `..`, empty, or platform-specific unsafe component;
 - every parent is a real directory, and no component is a symlink or junction;
 - the final directory does not exist and no file or symlink occupies its path.
+
+Apply these checks to both the first and reserved repeat-import directories
+before either write. They must be distinct new siblings beneath the same
+project root, and neither may be used for staging, logs, or evidence.
 
 Reject overwrite, merge, or replacement behavior. Never copy into an existing
 directory to “complete” a partial import, and never delete existing files to
@@ -187,12 +220,22 @@ Never use the first destination as the repeat target. Do not start either
 destination or inspect it through a browser. If independent verification or
 the repeat check cannot run, report **Blocked**; if it runs and finds a
 mismatch or unexpected changed path, report **Failed**. Preserve both
-destinations only as needed for evidence and remove only newly created
-temporary material according to the reviewed cleanup policy.
+destinations only as needed for evidence. Remove only newly created temporary
+material (archive, retrieval package, staging/tool directory, and evidence
+scratch data) after recording its safe relative identifiers and cleanup
+result; never remove either imported destination as cleanup evidence.
 
 ## Required outcome report
 
 End every invocation with exactly one of these statuses:
+
+Every report must identify the destination project, importer commit, approved
+manifest digest, first and repeat relative destinations, file count and byte
+total, entrypoint, changed-file boundary result, independent checker result,
+and cleanup result using only redacted safe values. If no destination write was
+attempted, say so explicitly and report an empty changed-file list. If a
+partial destination was created, report every changed relative path and the
+exact cleanup result before selecting **Failed**.
 
 ### Imported
 
