@@ -11,26 +11,23 @@ import {
   handoffJobsTable,
   handoffStepsTable,
   handoffTransferPackagesTable,
-  savedProjectsTable,
-  poeRoutingConfigTable,
   takePoeChatRateLimit as takeSharedPoeChatRateLimit,
   type HandoffJobRow,
   type HandoffStepRow,
   type HandoffTransferPackageRow,
 } from "@workspace/db";
-import { and, asc, eq, gt, lt, or } from "drizzle-orm";
+import { and, asc, desc, eq, gt, lt, or } from "drizzle-orm";
 import { requireTrustedCookieOrigin } from "../middlewares/csrfMiddleware";
-import { isAdministrator, requireAuth } from "../middlewares/clerkAuthMiddleware";
+import { requireAuth } from "../middlewares/clerkAuthMiddleware";
 import { fetchHostedUrl, HostedUrlError } from "./hosted-url";
 import { importPlayground, PlaygroundError } from "./playground";
 import {
   POE_CAPABILITIES,
-  POE_MODELS,
-  getApprovedPoeModels,
-  getPoeModel,
   parseCompletion,
   poeRequest,
   PoeProviderError,
+  validateCatalogue,
+  type PoeCapabilityId,
 } from "../lib/poe-provider";
 import {
   AnalyzeHtmlBody,
@@ -51,15 +48,11 @@ import {
   ImportPlaygroundResponse,
   CreateBundleTransferBody,
   CreateBundleTransferResponse,
+  ConfirmBundleTransferProjectBody,
+  ConfirmBundleTransferProjectResponse,
   GetBundleTransferResponse,
   GetBundleTransferManifestResponse,
   GetBundleTransferBundleResponse,
-  CreateSavedProjectBody,
-  CreateSavedProjectResponse,
-  GetSavedProjectResponse,
-  ListSavedProjectsResponse,
-  UpdateSavedProjectBody,
-  UpdateSavedProjectResponse,
 } from "@workspace/api-zod";
 import {
   canonicalSkillInstallRequest,
@@ -242,13 +235,30 @@ export function analyzeBundle(bundle: SourceBundle) {
     steps,
   };
 }
+type PoeModelCatalogue = {
+  configured: boolean;
+  available: boolean;
+  models: string[];
+  failed?: boolean;
+  message?: string;
+};
+
 export const POE_CHAT_REQUEST_MAX_BYTES = 512 * 1024;
 export const POE_CHAT_MAX_COMPLETION_TOKENS = 4_096;
 const POE_CHAT_RATE_LIMIT_WINDOW_MS = 60_000;
 const POE_CHAT_RATE_LIMIT_MAX_REQUESTS = 6;
+const POE_MODEL_CATALOGUE_CACHE_TTL_MS = 30_000;
+const POE_MODEL_CATALOGUE_FAILURE_CACHE_TTL_MS = 5_000;
 const POE_RETRY_AFTER_MAX_SECONDS = 60;
 const POE_RETRY_AFTER_DEFAULT_SECONDS = 5;
 
+type PoeModelCatalogueCache = {
+  value: PoeModelCatalogue;
+  expiresAt: number;
+};
+
+let poeModelCatalogueCache: PoeModelCatalogueCache | null = null;
+let poeModelCatalogueInFlight: Promise<PoeModelCatalogue> | null = null;
 
 function poeClientKey(req: Request): string {
   return req.ip || req.socket.remoteAddress || "unknown";
@@ -269,6 +279,78 @@ async function takePoeChatRateLimit(req: Request): Promise<{
     return {
       allowed: false,
       storageUnavailable: true,
+    };
+  }
+}
+
+async function loadPoeModelCatalogue(): Promise<PoeModelCatalogue> {
+  const now = Date.now();
+  if (poeModelCatalogueCache && poeModelCatalogueCache.expiresAt > now) {
+    return poeModelCatalogueCache.value;
+  }
+  if (poeModelCatalogueInFlight) {
+    return poeModelCatalogueInFlight;
+  }
+
+  poeModelCatalogueInFlight = loadPoeModelCatalogueFromPoe();
+  try {
+    const catalogue = await poeModelCatalogueInFlight;
+    poeModelCatalogueCache = {
+      value: catalogue,
+      expiresAt:
+        Date.now() +
+        (catalogue.failed
+          ? POE_MODEL_CATALOGUE_FAILURE_CACHE_TTL_MS
+          : POE_MODEL_CATALOGUE_CACHE_TTL_MS),
+    };
+    return catalogue;
+  } finally {
+    poeModelCatalogueInFlight = null;
+  }
+}
+
+async function loadPoeModelCatalogueFromPoe(): Promise<PoeModelCatalogue> {
+  if (!process.env.POE_API_KEY2) {
+    return {
+      configured: false,
+      models: [],
+      message: "Add POE_API_KEY2 in Replit Secrets to enable Poe.",
+      available: false,
+      failed: false,
+    };
+  }
+
+  try {
+    const response = await poeRequest("/models");
+    if (!response.ok) {
+      return {
+        configured: true,
+        models: [],
+        message: "Poe model availability could not be loaded. Retry the request.",
+        available: false,
+        failed: true,
+      };
+    }
+
+    const body: unknown = await response.json();
+    const models = validateCatalogue(body);
+
+    return {
+      configured: true,
+      models,
+      message: models.length
+        ? "Live models loaded from Poe."
+        : "Poe is configured, but returned no models.",
+      available: models.length > 0,
+      failed: false,
+    };
+  } catch {
+    return {
+      configured: true,
+      models: [],
+      message: "Poe could not be reached. Your key was not changed.",
+      available: false,
+      failed: true,
     };
   }
 }
@@ -630,6 +712,14 @@ type BundleTransferManifest = {
 };
 
 type BundleTransferState = "active" | "expired" | "revoked" | "completed" | "exhausted";
+type HandoffAttemptState =
+  | "created"
+  | "awaiting_reconciliation"
+  | "destination_confirmed"
+  | "transfer_active"
+  | "expired"
+  | "revoked"
+  | "completed";
 
 const BUNDLE_TRANSFER_TOKEN_BYTES = 32;
 const BUNDLE_TRANSFER_DEFAULT_TTL_MS = 15 * 60 * 1000;
@@ -709,8 +799,23 @@ function transferState(row: Pick<
 
 function publicTransfer(
   row: HandoffTransferPackageRow,
-  transferToken?: string,
+  transferToken?: string | null,
+  attempt?: HandoffJobRow | null,
 ) {
+  const resolvedAttemptState: HandoffAttemptState =
+    transferState(row) === "expired"
+      ? "expired"
+      : transferState(row) === "revoked"
+        ? "revoked"
+        : transferState(row) === "completed"
+          ? "completed"
+          : attempt?.attemptState === "destination_confirmed"
+            ? "destination_confirmed"
+            : attempt?.attemptState === "awaiting_reconciliation"
+              ? "awaiting_reconciliation"
+              : attempt?.attemptState === "transfer_active"
+                ? "transfer_active"
+                : "created";
   return {
     transferId: row.id,
     manifestHash: row.manifestHash,
@@ -722,14 +827,34 @@ function publicTransfer(
     revokedAt: row.revokedAt?.toISOString() ?? null,
     completedAt: row.completedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
-    ...(transferToken
+    attemptId: attempt?.attemptId ?? null,
+    sourceRevision: attempt?.sourceRevision ?? null,
+    projectName: attempt?.projectName ?? null,
+    attemptState: resolvedAttemptState,
+    destinationProjectId: attempt?.destinationProjectId ?? null,
+    destinationProjectUrl: attempt?.destinationProjectUrl ?? null,
+    ...(transferToken !== undefined
       ? {
-          transferToken,
+          transferToken: transferToken ?? null,
           instructions:
-            "Store this token once in the destination Replit project's Replit Secrets. Do not put it in a prompt, URL, command line, browser storage, or Git repository.",
+            transferToken
+              ? "Store this token once in the destination Replit project's Replit Secrets. Do not put it in a prompt, URL, command line, browser storage, or Git repository."
+              : null,
         }
       : {}),
   };
+}
+
+async function loadAttemptForTransfer(
+  transfer: HandoffTransferPackageRow,
+): Promise<HandoffJobRow | null> {
+  if (!transfer.handoffJobId) return null;
+  const [attempt] = await db
+    .select()
+    .from(handoffJobsTable)
+    .where(eq(handoffJobsTable.id, transfer.handoffJobId))
+    .limit(1);
+  return attempt ?? null;
 }
 
 function transferAuthorization(req: Request): string | null {
@@ -1242,14 +1367,23 @@ router.post("/port/playground/import", async (req, res): Promise<void> => {
 });
 
 router.get("/port/poe/models", requireAuth, async (_req, res): Promise<void> => {
-  const models = getApprovedPoeModels();
+    const catalogue = await loadPoeModelCatalogue();
+  if (catalogue.failed) {
+    sendPoeError(
+      res,
+      503,
+      "POE_MODEL_UNAVAILABLE",
+      "Poe model availability could not be loaded. Retry model loading.",
+    );
+    return;
+  }
   res.set("Cache-Control", "private, max-age=30");
   res.json(
     ListPoeModelsResponse.parse({
-      configured: Boolean(process.env.POE_API_KEY2),
-      available: models.length > 0,
-      models: models.map((model) => model.id),
-      message: "Approved Poe models are defined by the server registry. Availability is confirmed by explicit probes.",
+      configured: catalogue.configured,
+      available: catalogue.available,
+      models: catalogue.models,
+      message: catalogue.message,
       capabilities: Object.values(POE_CAPABILITIES),
     }),
   );
@@ -1326,16 +1460,8 @@ router.post("/port/poe/chat", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  const requestedCapability = parsed.data.capability;
-  const capability =
-    requestedCapability === undefined
-      ? "generic-assistant"
-      : requestedCapability === "generic-assistant" ||
-          requestedCapability === "gemini-repair" ||
-          requestedCapability === "claude-repair"
-        ? requestedCapability
-        : null;
-  if (!capability) {
+  const capability = (parsed.data.capability ?? "generic-assistant") as PoeCapabilityId;
+  if (!POE_CAPABILITIES[capability]) {
     sendPoeError(
       res,
       400,
@@ -1368,7 +1494,24 @@ router.post("/port/poe/chat", requireAuth, async (req, res): Promise<void> => {
   }
 
   try {
-    getPoeModel(parsed.data.model, capability);
+    const catalogue = await loadPoeModelCatalogue();
+    if (
+      !catalogue.configured ||
+      !catalogue.available ||
+      !isPoeModelConfirmed(catalogue.models, parsed.data.model)
+    ) {
+      req.log.warn(
+        { configured: catalogue.configured, available: catalogue.available },
+        "Poe model was not confirmed by the live catalogue",
+      );
+      sendPoeError(
+        res,
+        503,
+        "POE_MODEL_UNAVAILABLE",
+        "The requested Poe model is not currently available. Refresh model availability and try again.",
+      );
+      return;
+    }
 
     const providerAbortController = new AbortController();
     const abortProviderRequest = () => providerAbortController.abort();
@@ -1572,23 +1715,116 @@ router.post(
     }
 
     const manifest = buildTransferManifest(bundle);
+    const requestedAttemptId = parsed.data.attemptId ?? randomUUID();
+    const sourceRevision = parsed.data.sourceRevision?.trim() || manifest.bundleSha256;
+    const projectName =
+      parsed.data.projectName?.trim().slice(0, 100) || safeProjectName(bundle).slice(0, 100);
+
+    const [existingAttempt] = await db
+      .select()
+      .from(handoffJobsTable)
+      .where(
+        and(
+          eq(handoffJobsTable.ownerId, req.dbUser!.id),
+          eq(handoffJobsTable.attemptId, requestedAttemptId),
+        ),
+      )
+      .limit(1);
+    if (existingAttempt) {
+      if (
+        existingAttempt.sourceRevision !== sourceRevision ||
+        existingAttempt.projectName !== projectName ||
+        stableJson(existingAttempt.sourceBundle) !== stableJson(bundle)
+      ) {
+        res.status(409).json({
+          error: "This handoff attempt belongs to a different source revision.",
+          code: "HANDOFF_ATTEMPT_SOURCE_MISMATCH",
+        });
+        return;
+      }
+      const [existingTransfer] = await db
+        .select()
+        .from(handoffTransferPackagesTable)
+        .where(eq(handoffTransferPackagesTable.handoffJobId, existingAttempt.id))
+        .orderBy(desc(handoffTransferPackagesTable.createdAt))
+        .limit(1);
+      if (existingTransfer && transferState(existingTransfer) === "active") {
+        if (existingTransfer.manifestHash !== manifestHash(manifest)) {
+          res.status(409).json({
+            error: "This handoff attempt already contains a different source bundle.",
+            code: "HANDOFF_ATTEMPT_SOURCE_MISMATCH",
+          });
+          return;
+        }
+        res.status(200).json(
+          CreateBundleTransferResponse.parse(
+            publicTransfer(existingTransfer, null, existingAttempt),
+          ),
+        );
+        return;
+      }
+    }
+
     const rawToken = randomBytes(BUNDLE_TRANSFER_TOKEN_BYTES).toString("base64url");
-    const [created] = await db
-      .insert(handoffTransferPackagesTable)
-      .values({
-        id: randomUUID(),
-        ownerId: req.dbUser!.id,
-        sourceBundle: bundle,
-        manifest,
-        manifestHash: manifestHash(manifest),
-        tokenHash: transferTokenHash(rawToken),
-        expiresAt: new Date(Date.now() + transferTtlMs()),
-        retrievalLimit: transferRetrievalLimit(),
-      })
-      .returning();
+    const created = await db.transaction(async (tx) => {
+      let attempt = existingAttempt;
+      if (!attempt) {
+        const [insertedAttempt] = await tx
+          .insert(handoffJobsTable)
+          .values({
+            id: randomUUID(),
+            ownerId: req.dbUser!.id,
+            sourceHtml:
+              bundle.files.find((file) => file.path === bundle.entrypoint)?.content ?? "",
+            sourceBundle: bundle,
+            projectName,
+            attemptId: requestedAttemptId,
+            sourceRevision,
+            attemptState: "transfer_active",
+            status: "queued",
+          })
+          .onConflictDoNothing({
+            target: [handoffJobsTable.ownerId, handoffJobsTable.attemptId],
+          })
+          .returning();
+        attempt = insertedAttempt;
+        if (!attempt) {
+          [attempt] = await tx
+            .select()
+            .from(handoffJobsTable)
+            .where(
+              and(
+                eq(handoffJobsTable.ownerId, req.dbUser!.id),
+                eq(handoffJobsTable.attemptId, requestedAttemptId),
+              ),
+            )
+            .limit(1);
+        }
+      }
+      if (!attempt) throw new Error("HANDOFF_ATTEMPT_CREATE_FAILED");
+      const [transfer] = await tx
+        .insert(handoffTransferPackagesTable)
+        .values({
+          id: randomUUID(),
+          ownerId: req.dbUser!.id,
+          handoffJobId: attempt.id,
+          sourceBundle: bundle,
+          manifest,
+          manifestHash: manifestHash(manifest),
+          tokenHash: transferTokenHash(rawToken),
+          expiresAt: new Date(Date.now() + transferTtlMs()),
+          retrievalLimit: transferRetrievalLimit(),
+        })
+        .returning();
+      await tx
+        .update(handoffJobsTable)
+        .set({ attemptState: "transfer_active", updatedAt: new Date() })
+        .where(eq(handoffJobsTable.id, attempt.id));
+      return { attempt, transfer };
+    });
 
     res.status(201).json(
-      CreateBundleTransferResponse.parse(publicTransfer(created, rawToken)),
+      CreateBundleTransferResponse.parse(publicTransfer(created.transfer, rawToken, created.attempt)),
     );
   },
 );
@@ -1605,7 +1841,11 @@ router.get(
       invalidTransferResponse(res);
       return;
     }
-    res.json(GetBundleTransferResponse.parse(publicTransfer(transfer)));
+    res.json(
+      GetBundleTransferResponse.parse(
+        publicTransfer(transfer, undefined, await loadAttemptForTransfer(transfer)),
+      ),
+    );
   },
 );
 
@@ -1635,7 +1875,15 @@ router.post(
         ),
       )
       .returning();
-    res.json(GetBundleTransferResponse.parse(publicTransfer(revoked ?? transfer)));
+    const current = revoked ?? transfer;
+    const attempt = await loadAttemptForTransfer(current);
+    if (attempt) {
+      await db
+        .update(handoffJobsTable)
+        .set({ attemptState: "revoked", updatedAt: new Date() })
+        .where(eq(handoffJobsTable.id, attempt.id));
+    }
+    res.json(GetBundleTransferResponse.parse(publicTransfer(current, undefined, attempt)));
   },
 );
 
@@ -1665,7 +1913,74 @@ router.post(
         ),
       )
       .returning();
-    res.json(GetBundleTransferResponse.parse(publicTransfer(completed ?? transfer)));
+    const current = completed ?? transfer;
+    const attempt = await loadAttemptForTransfer(current);
+    if (attempt) {
+      await db
+        .update(handoffJobsTable)
+        .set({ attemptState: "completed", updatedAt: new Date() })
+        .where(eq(handoffJobsTable.id, attempt.id));
+    }
+    res.json(GetBundleTransferResponse.parse(publicTransfer(current, undefined, attempt)));
+  },
+);
+
+router.post(
+  "/port/bundle-transfers/:transferId/confirm-project",
+  requireTrustedCookieOrigin,
+  requireAuth,
+  async (req, res): Promise<void> => {
+    const parsed = ConfirmBundleTransferProjectBody.safeParse(req.body);
+    const projectId = parsed.success ? parsed.data.projectId.trim() : "";
+    const projectUrl = parsed.success ? parsed.data.projectUrl?.trim() : undefined;
+    if (
+      !projectId ||
+      /[\u0000-\u001f\u007f\s]/.test(projectId) ||
+      (projectUrl !== undefined &&
+        (!/^https:\/\//i.test(projectUrl) || /[\u0000-\u001f\u007f]/.test(projectUrl)))
+    ) {
+      res.status(400).json({
+        error: "Enter one confirmed Replit project ID and, optionally, its HTTPS URL.",
+        code: "HANDOFF_DESTINATION_INVALID",
+      });
+      return;
+    }
+    const transferId = transferRouteId(req);
+    const transfer = transferId
+      ? await loadTransferForOwner(transferId, req.dbUser!.id)
+      : null;
+    const attempt = transfer ? await loadAttemptForTransfer(transfer) : null;
+    if (!transfer || !attempt) {
+      invalidTransferResponse(res);
+      return;
+    }
+    if (attempt.destinationProjectId && attempt.destinationProjectId !== projectId) {
+      res.status(409).json({
+        error: "A different project is already attached to this handoff attempt.",
+        code: "HANDOFF_DESTINATION_ALREADY_CONFIRMED",
+      });
+      return;
+    }
+    const [updatedAttempt] = await db
+      .update(handoffJobsTable)
+      .set({
+        destinationProjectId: projectId,
+        destinationProjectUrl: projectUrl ?? attempt.destinationProjectUrl,
+        attemptState: "destination_confirmed",
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(handoffJobsTable.id, attempt.id),
+          eq(handoffJobsTable.ownerId, req.dbUser!.id),
+        ),
+      )
+      .returning();
+    res.json(
+      ConfirmBundleTransferProjectResponse.parse(
+        publicTransfer(transfer, undefined, updatedAttempt ?? attempt),
+      ),
+    );
   },
 );
 
@@ -2010,204 +2325,5 @@ function normalizeBundle(input: { html?: string; bundle?: SourceBundle }): Sourc
     metadata: { displayName: extractTitle(input.html) },
   };
 }
-
-function savedProjectSummary(row: {
-  id: string;
-  name: string;
-  sourceType: string;
-  entrypoint: string;
-  analysis: unknown;
-  createdAt: Date;
-  updatedAt: Date;
-}) {
-  return {
-    id: row.id,
-    name: row.name,
-    sourceType: row.sourceType,
-    entrypoint: row.entrypoint,
-    analysisStatus:
-      typeof row.analysis === "object" &&
-      row.analysis !== null &&
-      (row.analysis as { findings?: unknown }).findings
-        ? "ready"
-        : "stale",
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-  };
-}
-
-function savedProjectResponse(row: {
-  id: string;
-  name: string;
-  sourceType: string;
-  entrypoint: string;
-  sourceBundle: unknown;
-  analysis: unknown;
-  editorState: unknown;
-  createdAt: Date;
-  updatedAt: Date;
-}) {
-  return GetSavedProjectResponse.parse({
-    ...savedProjectSummary(row),
-    bundle: row.sourceBundle,
-    analysis: row.analysis,
-    editorState: row.editorState,
-  });
-}
-
-function savedProjectNotFound(res: ExpressResponse): void {
-  res.status(404).json({
-    error: "That saved project is unavailable.",
-    code: "SAVED_PROJECT_NOT_FOUND",
-  });
-}
-
-function parseSavedProjectInput(body: unknown): {
-  name: string;
-  bundle: SourceBundle;
-  analysis: unknown;
-  editorState: unknown;
-} | null {
-  const parsed = CreateSavedProjectBody.safeParse(body);
-  if (!parsed.success) return null;
-  try {
-    const bundle = normalizeBundle({ bundle: parsed.data.bundle as SourceBundle });
-    return {
-      name: parsed.data.name.trim(),
-      bundle,
-      analysis: parsed.data.analysis,
-      editorState: parsed.data.editorState,
-    };
-  } catch {
-    return null;
-  }
-}
-
-router.get("/port/saved-projects", requireAuth, async (req, res): Promise<void> => {
-  const rows = await db
-    .select({
-      id: savedProjectsTable.id,
-      name: savedProjectsTable.name,
-      sourceType: savedProjectsTable.sourceType,
-      entrypoint: savedProjectsTable.entrypoint,
-      analysis: savedProjectsTable.analysis,
-      createdAt: savedProjectsTable.createdAt,
-      updatedAt: savedProjectsTable.updatedAt,
-    })
-    .from(savedProjectsTable)
-    .where(eq(savedProjectsTable.ownerId, req.dbUser!.id))
-    .orderBy(asc(savedProjectsTable.updatedAt));
-  res.json(ListSavedProjectsResponse.parse(rows.map((row) => savedProjectSummary(row))));
-});
-
-router.post(
-  "/port/saved-projects",
-  requireTrustedCookieOrigin,
-  requireAuth,
-  async (req, res): Promise<void> => {
-    const input = parseSavedProjectInput(req.body);
-    if (!input || !input.name) {
-      res.status(400).json({
-        error: "Provide a project name and one valid normalized source bundle.",
-        code: "INVALID_SAVED_PROJECT",
-      });
-      return;
-    }
-    const [row] = await db
-      .insert(savedProjectsTable)
-      .values({
-        id: randomUUID(),
-        ownerId: req.dbUser!.id,
-        name: input.name,
-        sourceType: input.bundle.sourceType,
-        entrypoint: input.bundle.entrypoint,
-        sourceBundle: input.bundle,
-        analysis: input.analysis,
-        editorState: input.editorState,
-      })
-      .returning();
-    res.status(201).json(CreateSavedProjectResponse.parse(savedProjectResponse(row)));
-  },
-);
-
-router.get("/port/saved-projects/:projectId", requireAuth, async (req, res): Promise<void> => {
-  const [row] = await db
-    .select()
-    .from(savedProjectsTable)
-    .where(
-      and(
-        eq(savedProjectsTable.id, req.params.projectId as string),
-        eq(savedProjectsTable.ownerId, req.dbUser!.id),
-      ),
-    )
-    .limit(1);
-  if (!row) {
-    savedProjectNotFound(res);
-    return;
-  }
-  res.json(GetSavedProjectResponse.parse(savedProjectResponse(row)));
-});
-
-router.patch(
-  "/port/saved-projects/:projectId",
-  requireTrustedCookieOrigin,
-  requireAuth,
-  async (req, res): Promise<void> => {
-    const parsed = UpdateSavedProjectBody.safeParse(req.body);
-    const input = parsed.success ? parseSavedProjectInput(parsed.data) : null;
-    if (!input || !input.name) {
-      res.status(400).json({
-        error: "Provide a project name and one valid normalized source bundle.",
-        code: "INVALID_SAVED_PROJECT",
-      });
-      return;
-    }
-    const [row] = await db
-      .update(savedProjectsTable)
-      .set({
-        name: input.name,
-        sourceType: input.bundle.sourceType,
-        entrypoint: input.bundle.entrypoint,
-        sourceBundle: input.bundle,
-        analysis: input.analysis,
-        editorState: input.editorState,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(savedProjectsTable.id, req.params.projectId as string),
-          eq(savedProjectsTable.ownerId, req.dbUser!.id),
-        ),
-      )
-      .returning();
-    if (!row) {
-      savedProjectNotFound(res);
-      return;
-    }
-    res.json(UpdateSavedProjectResponse.parse(savedProjectResponse(row)));
-  },
-);
-
-router.delete(
-  "/port/saved-projects/:projectId",
-  requireTrustedCookieOrigin,
-  requireAuth,
-  async (req, res): Promise<void> => {
-    const [row] = await db
-      .delete(savedProjectsTable)
-      .where(
-        and(
-          eq(savedProjectsTable.id, req.params.projectId as string),
-          eq(savedProjectsTable.ownerId, req.dbUser!.id),
-        ),
-      )
-      .returning({ id: savedProjectsTable.id });
-    if (!row) {
-      savedProjectNotFound(res);
-      return;
-    }
-    res.status(204).send();
-  },
-);
 
 export default router;

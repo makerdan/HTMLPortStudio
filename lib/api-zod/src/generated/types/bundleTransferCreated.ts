@@ -7,8 +7,11 @@
  */
 import type { BundleTransfer } from './bundleTransfer';
 
-export type BundleTransferCreated = BundleTransfer & {
-  /** @minLength 32 */
-  transferToken: string;
-  instructions: string;
-};
+export type BundleTransferCreated = BundleTransfer & ({
+  /**
+     * @minLength 32
+     * @nullable
+     */
+  transferToken: string | null;
+  instructions: string | null;
+});

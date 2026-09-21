@@ -22,6 +22,11 @@ export const handoffJobsTable = pgTable(
     sourceHtml: text("source_html").notNull(),
     sourceBundle: jsonb("source_bundle"),
     projectName: text("project_name").notNull(),
+    attemptId: varchar("attempt_id", { length: 64 }),
+    sourceRevision: varchar("source_revision", { length: 128 }),
+    attemptState: varchar("attempt_state", { length: 32 }).notNull().default("created"),
+    destinationProjectId: text("destination_project_id"),
+    destinationProjectUrl: text("destination_project_url"),
     status: varchar("status", { length: 16 }).notNull().default("queued"),
     projectId: text("project_id"),
     projectUrl: text("project_url"),
@@ -37,6 +42,7 @@ export const handoffJobsTable = pgTable(
   },
   (table) => [
     index("handoff_jobs_owner_idx").on(table.ownerId),
+    uniqueIndex("handoff_jobs_owner_attempt_unique").on(table.ownerId, table.attemptId),
     index("handoff_jobs_resume_idx").on(table.status, table.leaseExpiresAt),
   ],
 );
@@ -96,30 +102,6 @@ export const handoffTransferPackagesTable = pgTable(
   ],
 );
 
-export const savedProjectsTable = pgTable(
-  "saved_projects",
-  {
-    id: uuid("id").primaryKey(),
-    ownerId: varchar("owner_id")
-      .notNull()
-      .references(() => usersTable.id, { onDelete: "cascade" }),
-    name: varchar("name", { length: 120 }).notNull(),
-    sourceType: varchar("source_type", { length: 32 }).notNull(),
-    entrypoint: varchar("entrypoint", { length: 512 }).notNull(),
-    sourceBundle: jsonb("source_bundle").notNull(),
-    analysis: jsonb("analysis").notNull(),
-    editorState: jsonb("editor_state").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow()
-      .$onUpdate(() => new Date()),
-  },
-  (table) => [
-    index("saved_projects_owner_updated_idx").on(table.ownerId, table.updatedAt),
-  ],
-);
-
 export const handoffJobsRelations = relations(handoffJobsTable, ({ many, one }) => ({
   owner: one(usersTable, {
     fields: [handoffJobsTable.ownerId],
@@ -150,14 +132,6 @@ export const handoffTransferPackagesRelations = relations(
   }),
 );
 
-export const savedProjectsRelations = relations(savedProjectsTable, ({ one }) => ({
-  owner: one(usersTable, {
-    fields: [savedProjectsTable.ownerId],
-    references: [usersTable.id],
-  }),
-}));
-
 export type HandoffJobRow = typeof handoffJobsTable.$inferSelect;
 export type HandoffStepRow = typeof handoffStepsTable.$inferSelect;
 export type HandoffTransferPackageRow = typeof handoffTransferPackagesTable.$inferSelect;
-export type SavedProjectRow = typeof savedProjectsTable.$inferSelect;

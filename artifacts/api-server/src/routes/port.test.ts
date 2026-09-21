@@ -286,19 +286,27 @@ test("covers the analysis boundary matrix and origin routing", async () => {
   }
 });
 
-test("requires an exact server registry model before chat forwarding", async () => {
+test("requires an exact live Poe model confirmation before chat forwarding", async () => {
   const source = await readFile(new URL("./port.ts", import.meta.url), "utf8");
   const chatStart = source.indexOf('router.post("/port/poe/chat"');
   const chatEnd = source.indexOf('router.get("/port/replit-project-connection"', chatStart);
   const chatSource = source.slice(chatStart, chatEnd);
+  const catalogueIndex = chatSource.indexOf("await loadPoeModelCatalogue()");
+  const completionIndex = chatSource.indexOf('poeRequest("/chat/completions"');
 
   assert.notEqual(chatStart, -1);
   assert.notEqual(chatEnd, -1);
   assert.match(source, /router\.get\("\/port\/poe\/models", requireAuth/);
   assert.match(chatSource, /router\.post\("\/port\/poe\/chat", requireAuth/);
-  assert.match(chatSource, /getPoeModel\(parsed\.data\.model, capability\)/);
-  assert.doesNotMatch(source, /loadPoeModelCatalogue|\/v1\/models/);
-  assert.match(source, /POE_MODELS/);
+  assert.ok(catalogueIndex >= 0);
+  assert.ok(completionIndex > catalogueIndex);
+  assert.match(chatSource, /isPoeModelConfirmed\(catalogue\.models, parsed\.data\.model\)/);
+  assert.match(source, /models\.some\(\(model\) => model === requestedModel\)/);
+  assert.match(chatSource, /sendPoeError\([\s\S]*?"POE_MODEL_UNAVAILABLE"/);
+  assert.match(
+    chatSource,
+    /The requested Poe model is not currently available\. Refresh model availability and try again\./,
+  );
   assert.match(source, /model: parsed\.data\.model/);
   assert.doesNotMatch(chatSource, /toLowerCase|toUpperCase|PascalCase/);
 });
@@ -422,7 +430,7 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
 
     const catalogue = await jsonRequest(`${baseUrl}/port/poe/models`);
     assert.equal(catalogue.status, 200);
-    assert.ok((catalogue.body.models as string[]).includes(confirmedModel));
+    assert.deepEqual(catalogue.body.models, [confirmedModel]);
 
     const successfulChat = await jsonRequest(`${baseUrl}/port/poe/chat`, {
       method: "POST",
@@ -586,7 +594,7 @@ test("bounds public Poe traffic before provider forwarding and caches models", a
     assert.equal(secondCatalogue.status, 200);
     assert.ok((firstCatalogue.body.models as string[]).includes(confirmedModel));
     assert.deepEqual(secondCatalogue.body.models, firstCatalogue.body.models);
-    assert.equal(modelRequests, 0);
+    assert.equal(modelRequests, 1);
 
     const oversized = await jsonRequest(`${baseUrl}/port/poe/chat`, {
       method: "POST",
@@ -1115,6 +1123,16 @@ test("delivers approved bundles through opaque, owner-bound transfer grants", as
   const baseUrl = `${origin}/api`;
   const ownerHeaders = { "x-test-clerk-user-id": ownerId };
   const otherOwnerHeaders = { "x-test-clerk-user-id": otherOwnerId };
+  const attemptId = randomUUID();
+  const sourceRevision = "revision-transfer-fixture-1";
+  const projectName = "Poe Port - Transfer fixture";
+  const transferBody = {
+    approved: true,
+    bundle,
+    attemptId,
+    sourceRevision,
+    projectName,
+  };
 
   try {
     await waitFor(async () => {
@@ -1136,7 +1154,7 @@ test("delivers approved bundles through opaque, owner-bound transfer grants", as
     const created = await jsonRequest(`${baseUrl}/port/bundle-transfers`, {
       method: "POST",
       headers: { ...ownerHeaders, Origin: origin, "Content-Type": "application/json" },
-      body: JSON.stringify({ approved: true, bundle }),
+      body: JSON.stringify(transferBody),
     });
     assert.equal(created.status, 201);
     const transferId = String(created.body.transferId);
@@ -1147,7 +1165,64 @@ test("delivers approved bundles through opaque, owner-bound transfer grants", as
     assert.match(String(created.body.manifestHash), /^[a-f0-9]{64}$/);
     assert.match(String(created.body.expiresAt), /T/);
     assert.match(String(created.body.instructions), /Replit Secrets/);
+    assert.equal(created.body.attemptId, attemptId);
+    assert.equal(created.body.sourceRevision, sourceRevision);
+    assert.equal(created.body.projectName, projectName);
+    assert.equal(created.body.attemptState, "transfer_active");
     assert.doesNotMatch(`${baseUrl}/port/bundle-transfers/${transferId}`, new RegExp(transferToken));
+
+    const repeatedCreate = await jsonRequest(`${baseUrl}/port/bundle-transfers`, {
+      method: "POST",
+      headers: { ...ownerHeaders, Origin: origin, "Content-Type": "application/json" },
+      body: JSON.stringify(transferBody),
+    });
+    assert.equal(repeatedCreate.status, 200);
+    assert.equal(repeatedCreate.body.transferId, transferId);
+    assert.equal(repeatedCreate.body.transferToken, null);
+
+    const staleRevision = await jsonRequest(`${baseUrl}/port/bundle-transfers`, {
+      method: "POST",
+      headers: { ...ownerHeaders, Origin: origin, "Content-Type": "application/json" },
+      body: JSON.stringify({ ...transferBody, sourceRevision: "revision-transfer-fixture-2" }),
+    });
+    assert.equal(staleRevision.status, 409);
+    assert.equal(staleRevision.body.code, "HANDOFF_ATTEMPT_SOURCE_MISMATCH");
+
+    const otherOwnerConfirmation = await jsonRequest(
+      `${baseUrl}/port/bundle-transfers/${transferId}/confirm-project`,
+      {
+        method: "POST",
+        headers: { ...otherOwnerHeaders, Origin: origin, "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: "other-owner-project" }),
+      },
+    );
+    assert.equal(otherOwnerConfirmation.status, 404);
+
+    const confirmation = await jsonRequest(
+      `${baseUrl}/port/bundle-transfers/${transferId}/confirm-project`,
+      {
+        method: "POST",
+        headers: { ...ownerHeaders, Origin: origin, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: "project-confirmed-once",
+          projectUrl: "https://replit.com/@owner/project-confirmed-once",
+        }),
+      },
+    );
+    assert.equal(confirmation.status, 200);
+    assert.equal(confirmation.body.destinationProjectId, "project-confirmed-once");
+    assert.equal(confirmation.body.attemptState, "destination_confirmed");
+
+    const differentConfirmation = await jsonRequest(
+      `${baseUrl}/port/bundle-transfers/${transferId}/confirm-project`,
+      {
+        method: "POST",
+        headers: { ...ownerHeaders, Origin: origin, "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: "different-project" }),
+      },
+    );
+    assert.equal(differentConfirmation.status, 409);
+    assert.equal(differentConfirmation.body.code, "HANDOFF_DESTINATION_ALREADY_CONFIRMED");
 
     const ownerStatus = await jsonRequest(
       `${baseUrl}/port/bundle-transfers/${transferId}`,

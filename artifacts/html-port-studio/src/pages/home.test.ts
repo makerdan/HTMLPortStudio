@@ -3,10 +3,15 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   HANDOFF_RECOVERY_STORAGE_KEY,
+  MCP_HANDOFF_RECOVERY_STORAGE_KEY,
   createHandoffRecovery,
+  createMcpHandoffRecovery,
   isValidHandoffRecoveryMetadata,
+  isValidMcpHandoffRecoveryMetadata,
   readHandoffRecovery,
+  readMcpHandoffRecovery,
   writeHandoffRecovery,
+  writeMcpHandoffRecovery,
 } from "../session-recovery.ts";
 import { getAnalysisErrorPresentation } from "./analysis-error.ts";
 import { reconcileReadinessChecklist } from "./readiness-checklist.ts";
@@ -761,8 +766,7 @@ test("keeps every assistant and handoff API code mapped to safe Studio copy", as
     "POE_CHAT_REQUEST_TOO_LARGE",
     "POE_COMPLETION_INVALID",
     "POE_INVALID_REQUEST",
-    "POE_CAPABILITY_UNSUPPORTED",
-    "POE_MODEL_UNREGISTERED",
+    "POE_MODEL_UNAVAILABLE",
     "POE_NOT_CONFIGURED",
     "POE_PROVIDER_UNAVAILABLE",
     "POE_RATE_LIMITED",
@@ -1217,6 +1221,46 @@ test("does not share recovery metadata between separate browser sessions", () =>
   assert.equal(readHandoffRecovery(secondTab), null);
 });
 
+test("resumes one MCP attempt without storing transfer authorization", () => {
+  const storage = makeStorage();
+  const metadata = createMcpHandoffRecovery(
+    "123e4567-e89b-12d3-a456-426614174000",
+    "owner-123",
+    "123e4567-e89b-12d3-a456-426614174001",
+    "source-revision-7",
+    "Poe Port - Stable name",
+    "123e4567-e89b-12d3-a456-426614174002",
+  );
+
+  assert.equal(writeMcpHandoffRecovery(metadata, storage), true);
+  assert.deepEqual(readMcpHandoffRecovery(storage), metadata);
+  assert.match(storage.value(MCP_HANDOFF_RECOVERY_STORAGE_KEY) ?? "", /Stable name/);
+  assert.doesNotMatch(
+    storage.value(MCP_HANDOFF_RECOVERY_STORAGE_KEY) ?? "",
+    /token|authorization|sourceHtml|credential/i,
+  );
+  assert.equal(isValidMcpHandoffRecoveryMetadata(metadata), true);
+});
+
+test("rejects MCP recovery records that mix revisions or extra fields", () => {
+  const storage = makeStorage({
+    [MCP_HANDOFF_RECOVERY_STORAGE_KEY]: JSON.stringify({
+      ...createMcpHandoffRecovery(
+        "123e4567-e89b-12d3-a456-426614174000",
+        "owner-123",
+        "123e4567-e89b-12d3-a456-426614174001",
+        "source-revision-7",
+        "Poe Port - Stable name",
+        "123e4567-e89b-12d3-a456-426614174002",
+      ),
+      sourceHtml: "<script>secret</script>",
+    }),
+  });
+
+  assert.equal(readMcpHandoffRecovery(storage), null);
+  assert.equal(storage.value(MCP_HANDOFF_RECOVERY_STORAGE_KEY), null);
+});
+
 test("discards invalid and stale recovery records instead of restoring them", () => {
   const storage = makeStorage({
     [HANDOFF_RECOVERY_STORAGE_KEY]: JSON.stringify({
@@ -1253,6 +1297,9 @@ test("exposes the reload boundary, owner reconciliation, and lifecycle cleanup",
   assert.match(source, /metadata\.ownerId === user\.id/);
   assert.match(source, /metadata\.browserSessionId === browserSessionId/);
   assert.match(source, /clearHandoffRecovery\(\)/);
+  assert.match(source, /clearMcpHandoffRecovery\(\)/);
+  assert.match(source, /readMcpHandoffRecovery\(\)/);
+  assert.match(source, /sourceRevision/);
   assert.match(source, /Starting a new source clears this recovery record/);
   assert.match(source, /studio-auth:logout/);
   assert.match(authSource, /dispatchEvent\(new Event\("studio-auth:logout"\)\)/);
@@ -1399,37 +1446,4 @@ test("keeps the editor stale when analysis fails", async () => {
   assert.notEqual(submitStart, -1);
   assert.match(submitSource, /onError: \(\) => \{\s*if \(sessionId !== importSessionRef\.current \|\| requestRevision !== sourceRevisionRef\.current\) return;\s*\/\/ A failed retry must never make the current revision look analyzed\.\s*\/\/ Keep the existing report and editor feedback available for another attempt\.\s*setAnalysisStale\(true\);/s);
   assert.doesNotMatch(submitSource, /onError:[\s\S]*setAnalysisData\(null\)/);
-});
-
-test("covers the authenticated saved-project lifecycle without mixing browser recovery state", async () => {
-  const home = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
-  const routes = await readFile(
-    new URL("../../../api-server/src/routes/port.ts", import.meta.url),
-    "utf8",
-  );
-  const schema = await readFile(
-    new URL("../../../../lib/api-spec/openapi.yaml", import.meta.url),
-    "utf8",
-  );
-
-  for (const hook of [
-    "useListSavedProjects",
-    "useCreateSavedProject",
-    "useGetSavedProject",
-    "useUpdateSavedProject",
-    "useDeleteSavedProject",
-  ]) {
-    assert.match(home, new RegExp(hook));
-  }
-  assert.match(home, /Server-saved source and analysis are separate from browser-only recovery metadata/);
-  assert.match(home, /savedProjectRequestRef\.current \+= 1/);
-  assert.match(home, /Your current source was kept/);
-  assert.match(home, /setSavedProjectId\(null\)/);
-  assert.match(routes, /eq\(savedProjectsTable\.ownerId, req\.dbUser!\.id\)/);
-  assert.match(routes, /router\.delete\(\s*[\s\S]*saved-projects\/:projectId/);
-  assert.match(routes, /normalizeBundle\(\{ bundle: parsed\.data\.bundle as SourceBundle \}\)/);
-  assert.match(schema, /operationId: listSavedProjects/);
-  assert.match(schema, /operationId: createSavedProject/);
-  assert.match(schema, /operationId: updateSavedProject/);
-  assert.match(schema, /operationId: deleteSavedProject/);
 });

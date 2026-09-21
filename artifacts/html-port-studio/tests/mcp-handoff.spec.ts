@@ -28,6 +28,12 @@ const transfer = {
   revokedAt: null,
   completedAt: null,
   createdAt: "2026-09-21T00:00:00.000Z",
+  attemptId: "123e4567-e89b-12d3-a456-426614174001",
+  sourceRevision: "0",
+  projectName: "Poe Port - Demo app",
+  attemptState: "transfer_active",
+  destinationProjectId: null,
+  destinationProjectUrl: null,
 };
 
 test("guides an authenticated owner through MCP creation and exact-file transfer", async ({ page }) => {
@@ -73,6 +79,18 @@ test("guides an authenticated owner through MCP creation and exact-file transfer
     }
     return route.continue();
   });
+  await page.route("**/api/port/bundle-transfers/*/confirm-project", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...transfer,
+        attemptState: "destination_confirmed",
+        destinationProjectId: "project-123",
+        destinationProjectUrl: "https://replit.com/@owner/demo",
+      }),
+    }),
+  );
 
   await page.goto("/");
   await page.getByPlaceholder(/paste your html/i).fill(source);
@@ -80,15 +98,17 @@ test("guides an authenticated owner through MCP creation and exact-file transfer
 
   await expect(page.getByText("Guided MCP project handoff")).toBeVisible();
   await page.getByRole("button", { name: "Create secure transfer package" }).click();
-  await expect(page.getByRole("heading", { name: "MCP project-creation prompt" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Reconcile the MCP result before creating anything else" })).toBeVisible();
   const prompt = page.locator("pre").filter({ hasText: "external Replit MCP client" });
   await expect(prompt).toBeVisible();
   await expect(prompt).not.toContainText("destination-secret-token");
   await expect(page.getByText("Save the destination secret privately")).toBeVisible();
 
-  await page.getByLabel("Returned Replit project ID").fill("project-123");
+  await page.getByRole("button", { name: "I found no match" }).click();
+  await expect(page.getByRole("heading", { name: "Confirmed zero matches: MCP creation prompt" })).toBeVisible();
+  await page.getByLabel("One confirmed — Returned Replit project ID").fill("project-123");
   await page.getByLabel("Returned Replit project URL").fill("https://replit.com/@owner/demo");
-  await page.getByRole("button", { name: "Save project identity" }).click();
+  await page.getByRole("button", { name: "Confirm selected project" }).click();
   await page.getByRole("combobox", { name: "Project creation status" }).click();
   await expect(page.getByRole("option", { name: "Verified" })).toBeVisible();
 

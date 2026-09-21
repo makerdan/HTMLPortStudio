@@ -7,6 +7,7 @@
  */
 
 export * from './bundleTransfer';
+export * from './bundleTransferAttemptState';
 export * from './bundleTransferBundleResponse';
 export * from './bundleTransferCreated';
 export * from './bundleTransferInput';
@@ -15,6 +16,7 @@ export * from './bundleTransferManifestFile';
 export * from './bundleTransferManifestResponse';
 export * from './bundleTransferManifestVersion';
 export * from './bundleTransferState';
+export * from './confirmBundleTransferProjectInput';
 export * from './errorResponse';
 export * from './getGithubRepositoryParams';
 export * from './githubEntrypointChoice';

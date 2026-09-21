@@ -581,6 +581,55 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /port/bundle-transfers/{transferId}/confirm-project:
+    post:
+      operationId: confirmBundleTransferProject
+      tags: [porting]
+      summary: Confirm the one intended MCP-created project
+      description: Records one user-confirmed destination identity after external MCP reconciliation. The Studio never queries MCP or deletes duplicates.
+      parameters:
+        - name: transferId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmBundleTransferProjectInput"
+      responses:
+        "200":
+          description: Confirmed destination identity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BundleTransfer"
+        "400":
+          description: Destination identity is incomplete or invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Login required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Transfer is not owned by the caller or is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: A different destination identity is already attached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /port/replit-projects:
     post:
       operationId: createReplitProject
@@ -1027,6 +1076,31 @@ components:
           description: The signed-in owner confirms this is the currently reviewed normalized bundle.
         bundle:
           $ref: "#/components/schemas/SourceBundle"
+        attemptId:
+          type: string
+          pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+          description: Stable browser-generated attempt identity reused after reloads and repeated clicks.
+        sourceRevision:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Revision identity for the exact reviewed source bundle.
+        projectName:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Generated destination name held stable for this attempt.
+    ConfirmBundleTransferProjectInput:
+      type: object
+      required: [projectId]
+      properties:
+        projectId:
+          type: string
+          minLength: 1
+          maxLength: 200
+        projectUrl:
+          type: string
+          maxLength: 2048
     BundleTransferManifestFile:
       type: object
       required: [path, bytes, sha256]
@@ -1067,7 +1141,7 @@ components:
           pattern: "^[a-f0-9]{64}$"
     BundleTransfer:
       type: object
-      required: [transferId, manifestHash, manifest, expiresAt, retrievalLimit, retrievalCount, state, revokedAt, completedAt, createdAt]
+      required: [transferId, manifestHash, manifest, expiresAt, retrievalLimit, retrievalCount, state, revokedAt, completedAt, createdAt, attemptId, sourceRevision, projectName, attemptState, destinationProjectId, destinationProjectUrl]
       properties:
         transferId:
           type: string
@@ -1097,6 +1171,24 @@ components:
         createdAt:
           type: string
           format: date-time
+        attemptId:
+          type: string
+          nullable: true
+        sourceRevision:
+          type: string
+          nullable: true
+        projectName:
+          type: string
+          nullable: true
+        attemptState:
+          type: string
+          enum: [created, awaiting_reconciliation, destination_confirmed, transfer_active, expired, revoked, completed]
+        destinationProjectId:
+          type: string
+          nullable: true
+        destinationProjectUrl:
+          type: string
+          nullable: true
     BundleTransferCreated:
       allOf:
         - $ref: "#/components/schemas/BundleTransfer"
@@ -1104,10 +1196,11 @@ components:
           required: [transferToken, instructions]
           properties:
             transferToken:
-              type: string
+              type: [string, "null"]
               minLength: 32
             instructions:
               type: string
+              nullable: true
     BundleTransferManifestResponse:
       type: object
       required: [transferId, manifestHash, manifest, expiresAt]

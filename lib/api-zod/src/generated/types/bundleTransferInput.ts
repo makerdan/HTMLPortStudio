@@ -11,4 +11,21 @@ export interface BundleTransferInput {
   /** The signed-in owner confirms this is the currently reviewed normalized bundle. */
   approved: true;
   bundle: SourceBundle;
+  /**
+     * Stable browser-generated attempt identity reused after reloads and repeated clicks.
+     * @pattern ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$
+     */
+  attemptId?: string;
+  /**
+     * Revision identity for the exact reviewed source bundle.
+     * @minLength 1
+     * @maxLength 128
+     */
+  sourceRevision?: string;
+  /**
+     * Generated destination name held stable for this attempt.
+     * @minLength 1
+     * @maxLength 100
+     */
+  projectName?: string;
 }

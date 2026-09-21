@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { BundleTransferAttemptState } from './bundleTransferAttemptState';
 import type { BundleTransferManifest } from './bundleTransferManifest';
 import type { BundleTransferState } from './bundleTransferState';
 
@@ -24,4 +25,10 @@ export interface BundleTransfer {
   /** @nullable */
   completedAt: Date | null;
   createdAt: Date;
+  attemptId: string | null;
+  sourceRevision: string | null;
+  projectName: string | null;
+  attemptState: BundleTransferAttemptState;
+  destinationProjectId: string | null;
+  destinationProjectUrl: string | null;
 }

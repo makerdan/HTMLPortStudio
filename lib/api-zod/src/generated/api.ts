@@ -527,6 +527,11 @@ export const createBundleTransferBodyBundleMetadataResolvedCommitShaMax = 64;
 
 export const createBundleTransferBodyBundleMetadataEntrypointCandidatesMax = 20;
 
+export const createBundleTransferBodyAttemptIdRegExp = new RegExp('^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$');
+export const createBundleTransferBodySourceRevisionMax = 128;
+
+export const createBundleTransferBodyProjectNameMax = 100;
+
 
 
 export const CreateBundleTransferBody = zod.object({
@@ -549,7 +554,10 @@ export const CreateBundleTransferBody = zod.object({
   "resolvedCommitSha": zod.string().max(createBundleTransferBodyBundleMetadataResolvedCommitShaMax).optional(),
   "entrypointCandidates": zod.array(zod.string()).max(createBundleTransferBodyBundleMetadataEntrypointCandidatesMax).optional()
 })
-})
+}),
+  "attemptId": zod.string().regex(createBundleTransferBodyAttemptIdRegExp).optional().describe('Stable browser-generated attempt identity reused after reloads and repeated clicks.'),
+  "sourceRevision": zod.string().min(1).max(createBundleTransferBodySourceRevisionMax).optional().describe('Revision identity for the exact reviewed source bundle.'),
+  "projectName": zod.string().min(1).max(createBundleTransferBodyProjectNameMax).optional().describe('Generated destination name held stable for this attempt.')
 })
 
 export const createBundleTransferResponseOneManifestHashRegExp = new RegExp('^[a-f0-9]{64}$');
@@ -590,10 +598,16 @@ export const CreateBundleTransferResponse = zod.object({
   "state": zod.enum(['active', 'expired', 'revoked', 'completed', 'exhausted']),
   "revokedAt": zod.coerce.date().nullable(),
   "completedAt": zod.coerce.date().nullable(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "attemptId": zod.string().nullable(),
+  "sourceRevision": zod.string().nullable(),
+  "projectName": zod.string().nullable(),
+  "attemptState": zod.enum(['created', 'awaiting_reconciliation', 'destination_confirmed', 'transfer_active', 'expired', 'revoked', 'completed']),
+  "destinationProjectId": zod.string().nullable(),
+  "destinationProjectUrl": zod.string().nullable()
 }).and(zod.object({
-  "transferToken": zod.string().min(createBundleTransferResponseTwoTransferTokenMin),
-  "instructions": zod.string()
+  "transferToken": zod.string().min(createBundleTransferResponseTwoTransferTokenMin).nullable(),
+  "instructions": zod.string().nullable()
 }))
 
 
@@ -641,7 +655,13 @@ export const GetBundleTransferResponse = zod.object({
   "state": zod.enum(['active', 'expired', 'revoked', 'completed', 'exhausted']),
   "revokedAt": zod.coerce.date().nullable(),
   "completedAt": zod.coerce.date().nullable(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "attemptId": zod.string().nullable(),
+  "sourceRevision": zod.string().nullable(),
+  "projectName": zod.string().nullable(),
+  "attemptState": zod.enum(['created', 'awaiting_reconciliation', 'destination_confirmed', 'transfer_active', 'expired', 'revoked', 'completed']),
+  "destinationProjectId": zod.string().nullable(),
+  "destinationProjectUrl": zod.string().nullable()
 })
 
 
@@ -688,7 +708,13 @@ export const RevokeBundleTransferResponse = zod.object({
   "state": zod.enum(['active', 'expired', 'revoked', 'completed', 'exhausted']),
   "revokedAt": zod.coerce.date().nullable(),
   "completedAt": zod.coerce.date().nullable(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "attemptId": zod.string().nullable(),
+  "sourceRevision": zod.string().nullable(),
+  "projectName": zod.string().nullable(),
+  "attemptState": zod.enum(['created', 'awaiting_reconciliation', 'destination_confirmed', 'transfer_active', 'expired', 'revoked', 'completed']),
+  "destinationProjectId": zod.string().nullable(),
+  "destinationProjectUrl": zod.string().nullable()
 })
 
 
@@ -736,7 +762,13 @@ export const CompleteBundleTransferResponse = zod.object({
   "state": zod.enum(['active', 'expired', 'revoked', 'completed', 'exhausted']),
   "revokedAt": zod.coerce.date().nullable(),
   "completedAt": zod.coerce.date().nullable(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "attemptId": zod.string().nullable(),
+  "sourceRevision": zod.string().nullable(),
+  "projectName": zod.string().nullable(),
+  "attemptState": zod.enum(['created', 'awaiting_reconciliation', 'destination_confirmed', 'transfer_active', 'expired', 'revoked', 'completed']),
+  "destinationProjectId": zod.string().nullable(),
+  "destinationProjectUrl": zod.string().nullable()
 })
 
 
@@ -854,6 +886,71 @@ export const GetBundleTransferBundleResponse = zod.object({
 })
 }),
   "expiresAt": zod.coerce.date()
+})
+
+
+/**
+ * Records one user-confirmed destination identity after external MCP reconciliation. The Studio never queries MCP or deletes duplicates.
+ * @summary Confirm the one intended MCP-created project
+ */
+export const ConfirmBundleTransferProjectParams = zod.object({
+  "transferId": zod.coerce.string()
+})
+
+export const confirmBundleTransferProjectBodyProjectIdMax = 200;
+
+export const confirmBundleTransferProjectBodyProjectUrlMax = 2048;
+
+
+
+export const ConfirmBundleTransferProjectBody = zod.object({
+  "projectId": zod.string().min(1).max(confirmBundleTransferProjectBodyProjectIdMax),
+  "projectUrl": zod.string().max(confirmBundleTransferProjectBodyProjectUrlMax).optional()
+})
+
+export const confirmBundleTransferProjectResponseManifestHashRegExp = new RegExp('^[a-f0-9]{64}$');
+
+
+export const confirmBundleTransferProjectResponseManifestFilesItemBytesMin = 0;
+
+export const confirmBundleTransferProjectResponseManifestFilesItemSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+export const confirmBundleTransferProjectResponseManifestFilesMax = 200;
+
+export const confirmBundleTransferProjectResponseManifestBundleSha256RegExp = new RegExp('^[a-f0-9]{64}$');
+
+export const confirmBundleTransferProjectResponseRetrievalCountMin = 0;
+
+
+
+export const ConfirmBundleTransferProjectResponse = zod.object({
+  "transferId": zod.string(),
+  "manifestHash": zod.string().regex(confirmBundleTransferProjectResponseManifestHashRegExp),
+  "manifest": zod.object({
+  "version": zod.literal(1),
+  "sourceType": zod.enum(['pasted_html', 'single_file', 'zip_project', 'github_repository', 'hosted_page', 'playground']),
+  "entrypoint": zod.string(),
+  "fileCount": zod.number().min(1),
+  "totalBytes": zod.number().min(1),
+  "files": zod.array(zod.object({
+  "path": zod.string(),
+  "bytes": zod.number().min(confirmBundleTransferProjectResponseManifestFilesItemBytesMin),
+  "sha256": zod.string().regex(confirmBundleTransferProjectResponseManifestFilesItemSha256RegExp)
+})).min(1).max(confirmBundleTransferProjectResponseManifestFilesMax),
+  "bundleSha256": zod.string().regex(confirmBundleTransferProjectResponseManifestBundleSha256RegExp)
+}),
+  "expiresAt": zod.coerce.date(),
+  "retrievalLimit": zod.number().min(1),
+  "retrievalCount": zod.number().min(confirmBundleTransferProjectResponseRetrievalCountMin),
+  "state": zod.enum(['active', 'expired', 'revoked', 'completed', 'exhausted']),
+  "revokedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "attemptId": zod.string().nullable(),
+  "sourceRevision": zod.string().nullable(),
+  "projectName": zod.string().nullable(),
+  "attemptState": zod.enum(['created', 'awaiting_reconciliation', 'destination_confirmed', 'transfer_active', 'expired', 'revoked', 'completed']),
+  "destinationProjectId": zod.string().nullable(),
+  "destinationProjectUrl": zod.string().nullable()
 })
 
 

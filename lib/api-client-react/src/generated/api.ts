@@ -25,6 +25,7 @@ import type {
   BundleTransferCreated,
   BundleTransferInput,
   BundleTransferManifestResponse,
+  ConfirmBundleTransferProjectInput,
   ErrorResponse,
   GetGithubRepositoryParams,
   GithubEntrypointChoice,
@@ -1509,6 +1510,79 @@ export function useGetBundleTransferBundle<TData = Awaited<ReturnType<typeof get
 
 
 
+
+export const getConfirmBundleTransferProjectUrl = (transferId: string,) => {
+
+
+
+
+  return `/api/port/bundle-transfers/${transferId}/confirm-project`
+}
+
+/**
+ * Records one user-confirmed destination identity after external MCP reconciliation. The Studio never queries MCP or deletes duplicates.
+ * @summary Confirm the one intended MCP-created project
+ */
+export const confirmBundleTransferProject = async (transferId: string,
+    confirmBundleTransferProjectInput: ConfirmBundleTransferProjectInput, options?: Parameters<typeof customFetch>[1]): Promise<BundleTransfer> => {
+
+  return customFetch<BundleTransfer>(getConfirmBundleTransferProjectUrl(transferId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(confirmBundleTransferProjectInput)
+  }
+);}
+
+
+
+
+
+export const getConfirmBundleTransferProjectMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmBundleTransferProject>>, TError,{transferId: string;data: BodyType<ConfirmBundleTransferProjectInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof confirmBundleTransferProject>>, TError,{transferId: string;data: BodyType<ConfirmBundleTransferProjectInput>}, TContext> => {
+
+const mutationKey = ['confirmBundleTransferProject'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof confirmBundleTransferProject>>, {transferId: string;data: BodyType<ConfirmBundleTransferProjectInput>}> = (props) => {
+          const {transferId,data} = props ?? {};
+
+          return  confirmBundleTransferProject(transferId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ConfirmBundleTransferProjectMutationResult = NonNullable<Awaited<ReturnType<typeof confirmBundleTransferProject>>>
+    export type ConfirmBundleTransferProjectMutationBody = BodyType<ConfirmBundleTransferProjectInput>
+    export type ConfirmBundleTransferProjectMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Confirm the one intended MCP-created project
+ */
+export const useConfirmBundleTransferProject = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmBundleTransferProject>>, TError,{transferId: string;data: BodyType<ConfirmBundleTransferProjectInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof confirmBundleTransferProject>>,
+        TError,
+        {transferId: string;data: BodyType<ConfirmBundleTransferProjectInput>},
+        TContext
+      > => {
+      return useMutation(getConfirmBundleTransferProjectMutationOptions(options));
+    }
 
 export const getCreateReplitProjectUrl = () => {
 

@@ -32,3 +32,4 @@
 - [Regression Guard guidance freshness](regression-guard-guidance-freshness.md) — Keep policy and examples generated from one source; validation checks them read-only and points stale sections to the updater.
 - [Regression Guard marker repair](regression-guard-marker-repair.md) — Duplicate generated markers require manual removal before the canonical updater can restore documentation.
 - [MCP handoff validation](mcp-handoff-validation.md) — Use accessible combobox interactions for phase status and keep malformed baseline-catalog blocks separate from feature evidence.
+- [MCP handoff attempt reconciliation](mcp-handoff-attempt-reconciliation.md) — Treat external MCP creation as unknown until one destination ID is explicitly confirmed.

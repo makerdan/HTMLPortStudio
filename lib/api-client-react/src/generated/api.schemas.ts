@@ -171,6 +171,33 @@ export interface BundleTransferInput {
   /** The signed-in owner confirms this is the currently reviewed normalized bundle. */
   approved: true;
   bundle: SourceBundle;
+  /**
+     * Stable browser-generated attempt identity reused after reloads and repeated clicks.
+     * @pattern ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$
+     */
+  attemptId?: string;
+  /**
+     * Revision identity for the exact reviewed source bundle.
+     * @minLength 1
+     * @maxLength 128
+     */
+  sourceRevision?: string;
+  /**
+     * Generated destination name held stable for this attempt.
+     * @minLength 1
+     * @maxLength 100
+     */
+  projectName?: string;
+}
+
+export interface ConfirmBundleTransferProjectInput {
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  projectId: string;
+  /** @maxLength 2048 */
+  projectUrl?: string;
 }
 
 export interface BundleTransferManifestFile {
@@ -216,6 +243,19 @@ export const BundleTransferState = {
   exhausted: 'exhausted',
 } as const;
 
+export type BundleTransferAttemptState = typeof BundleTransferAttemptState[keyof typeof BundleTransferAttemptState];
+
+
+export const BundleTransferAttemptState = {
+  created: 'created',
+  awaiting_reconciliation: 'awaiting_reconciliation',
+  destination_confirmed: 'destination_confirmed',
+  transfer_active: 'transfer_active',
+  expired: 'expired',
+  revoked: 'revoked',
+  completed: 'completed',
+} as const;
+
 export interface BundleTransfer {
   transferId: string;
   /** @pattern ^[a-f0-9]{64}$ */
@@ -232,13 +272,22 @@ export interface BundleTransfer {
   /** @nullable */
   completedAt: string | null;
   createdAt: string;
+  attemptId: string | null;
+  sourceRevision: string | null;
+  projectName: string | null;
+  attemptState: BundleTransferAttemptState;
+  destinationProjectId: string | null;
+  destinationProjectUrl: string | null;
 }
 
-export type BundleTransferCreated = BundleTransfer & {
-  /** @minLength 32 */
-  transferToken: string;
-  instructions: string;
-};
+export type BundleTransferCreated = BundleTransfer & ({
+  /**
+     * @minLength 32
+     * @nullable
+     */
+  transferToken: string | null;
+  instructions: string | null;
+});
 
 export interface BundleTransferManifestResponse {
   transferId: string;

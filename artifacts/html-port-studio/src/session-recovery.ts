@@ -2,6 +2,7 @@ export const HANDOFF_RECOVERY_STORAGE_KEY = 'html-port-studio:handoff-recovery';
 export const HANDOFF_BROWSER_SESSION_KEY = 'html-port-studio:browser-session';
 export const HANDOFF_RECOVERY_VERSION = 1 as const;
 export const HANDOFF_RECOVERY_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+export const MCP_HANDOFF_RECOVERY_STORAGE_KEY = 'html-port-studio:mcp-handoff-recovery';
 
 type RecoveryStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
@@ -10,6 +11,19 @@ export type HandoffRecoveryMetadata = {
   jobId: string;
   ownerId: string;
   browserSessionId: string;
+  createdAt: number;
+};
+
+export type McpHandoffRecoveryMetadata = {
+  version: typeof HANDOFF_RECOVERY_VERSION;
+  attemptId: string;
+  ownerId: string;
+  browserSessionId: string;
+  sourceRevision: string;
+  projectName: string;
+  transferId: string;
+  destinationProjectId: string | null;
+  destinationProjectUrl: string | null;
   createdAt: number;
 };
 
@@ -126,6 +140,119 @@ export function createHandoffRecovery(
     jobId,
     ownerId,
     browserSessionId,
+    createdAt,
+  };
+}
+
+export function isValidMcpHandoffRecoveryMetadata(
+  value: unknown,
+  now = Date.now(),
+): value is McpHandoffRecoveryMetadata {
+  if (typeof value !== 'object' || value === null) return false;
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record).sort();
+  const expectedKeys = [
+    'attemptId',
+    'browserSessionId',
+    'createdAt',
+    'destinationProjectId',
+    'destinationProjectUrl',
+    'ownerId',
+    'projectName',
+    'sourceRevision',
+    'transferId',
+    'version',
+  ];
+  if (keys.length !== expectedKeys.length || keys.some((key, index) => key !== expectedKeys[index])) {
+    return false;
+  }
+  return (
+    record.version === HANDOFF_RECOVERY_VERSION &&
+    isUuid(record.attemptId) &&
+    isUuid(record.browserSessionId) &&
+    typeof record.ownerId === 'string' &&
+    record.ownerId.length > 0 &&
+    record.ownerId.length <= 200 &&
+    typeof record.sourceRevision === 'string' &&
+    record.sourceRevision.length > 0 &&
+    record.sourceRevision.length <= 128 &&
+    typeof record.projectName === 'string' &&
+    record.projectName.length > 0 &&
+    record.projectName.length <= 100 &&
+    isUuid(record.transferId) &&
+    (record.destinationProjectId === null || typeof record.destinationProjectId === 'string') &&
+    (record.destinationProjectUrl === null || typeof record.destinationProjectUrl === 'string') &&
+    typeof record.createdAt === 'number' &&
+    Number.isSafeInteger(record.createdAt) &&
+    record.createdAt > 0 &&
+    record.createdAt <= now + 5 * 60 * 1000 &&
+    now - record.createdAt <= HANDOFF_RECOVERY_MAX_AGE_MS
+  );
+}
+
+export function readMcpHandoffRecovery(
+  storage = browserStorage(),
+  now = Date.now(),
+): McpHandoffRecoveryMetadata | null {
+  if (!storage) return null;
+  try {
+    const raw = storage.getItem(MCP_HANDOFF_RECOVERY_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (isValidMcpHandoffRecoveryMetadata(parsed, now)) return parsed;
+    storage.removeItem(MCP_HANDOFF_RECOVERY_STORAGE_KEY);
+  } catch {
+    try {
+      storage.removeItem(MCP_HANDOFF_RECOVERY_STORAGE_KEY);
+    } catch {
+      // Storage can become unavailable between reads and writes.
+    }
+  }
+  return null;
+}
+
+export function writeMcpHandoffRecovery(
+  metadata: McpHandoffRecoveryMetadata,
+  storage = browserStorage(),
+): boolean {
+  if (!storage || !isValidMcpHandoffRecoveryMetadata(metadata)) return false;
+  try {
+    storage.setItem(MCP_HANDOFF_RECOVERY_STORAGE_KEY, JSON.stringify(metadata));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function clearMcpHandoffRecovery(storage = browserStorage()): void {
+  try {
+    storage?.removeItem(MCP_HANDOFF_RECOVERY_STORAGE_KEY);
+  } catch {
+    // Clearing recovery state is best-effort when browser storage is unavailable.
+  }
+}
+
+export function createMcpHandoffRecovery(
+  attemptId: string,
+  ownerId: string,
+  browserSessionId: string,
+  sourceRevision: string,
+  projectName: string,
+  transferId: string,
+  destinationProjectId: string | null = null,
+  destinationProjectUrl: string | null = null,
+  createdAt = Date.now(),
+): McpHandoffRecoveryMetadata {
+  return {
+    version: HANDOFF_RECOVERY_VERSION,
+    attemptId,
+    ownerId,
+    browserSessionId,
+    sourceRevision,
+    projectName,
+    transferId,
+    destinationProjectId,
+    destinationProjectUrl,
     createdAt,
   };
 }
