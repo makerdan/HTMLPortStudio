@@ -195,3 +195,4 @@ The guard section follows the plan's baseline and validation sections and does n
 The permitted exceptions are: a race condition requiring real timing, an unmockable external API behavior, a visual regression with no screenshot infrastructure, or a fix that removes the feature entirely.
 A guard-writing task may instead declare `**Self-satisfying**` and identify its guard or test deliverable.
 Placeholder, vague, wrong-layer, and misplaced declarations fail strict validation. Regression Guard never replaces Failure Gate or raises the plan's validation ceiling.
+<!-- END GENERATED REGRESSION GUARD POLICY -->
