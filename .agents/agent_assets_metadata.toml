@@ -42,3 +42,17 @@ mtime_ms = 1787889187864
 storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:ced8e084-60d0-4238-8abc-31704510412d/06b9a766-a1ce-4e67-b1db-13ad1804b1cd/b82a5139-a0cc-4d20-aa3a-8779773446aa"
 storage_version_token = "1787889191664135"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "AroOgnzF4QX-ZpjZczrZt"
+uri = "file://exports/list-skills-skill.zip"
+type = "unspecified"
+title = "List Skills skill (ZIP)"
+description = "Canonical .agents/skills/list-skills skill packaged as a direct-download ZIP."
+logical_id = "c37a3e82-193e-457e-8556-a463304a2f21"
+content_hash = "sha256:5a9069b1754e4fb3db02f2a468fe333d2fb5e14e5596c62ee0f50849ec187bbc"
+size = 6146
+mtime_ms = 1790035015136
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:ced8e084-60d0-4238-8abc-31704510412d/c37a3e82-193e-457e-8556-a463304a2f21/a2155afa-75be-428b-9572-c0d9c185339b"
+storage_version_token = "1790035018573782"
+content_type = "application/octet-stream"
