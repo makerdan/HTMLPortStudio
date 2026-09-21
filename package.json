@@ -6,6 +6,7 @@
     "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
     "free-ports": "node scripts/free-ports.mjs",
+    "git-sync-recovery": "node scripts/git-sync-recovery.mjs",
     "lint": "pnpm exec prettier --check package.json artifacts/api-server/package.json artifacts/html-port-studio/package.json artifacts/mockup-sandbox/package.json",
     "test:static": "pnpm run typecheck && pnpm run lint && pnpm run validate:clerk-skill",
     "test:unit": "pnpm run validate:studio-analytics && node --test scripts/port-authority.test.mjs scripts/free-ports.test.mjs scripts/validate-api-codegen.test.mjs scripts/check-failure-gate.test.mjs scripts/check-regression-guard.test.mjs scripts/workspace-skill.test.mjs scripts/validation-tier-registration.test.mjs scripts/ci-evidence.test.mjs scripts/github-actions-validation.test.mjs scripts/git-sync-recovery.test.mjs && pnpm --filter @workspace/html-port-studio run test:unit",
