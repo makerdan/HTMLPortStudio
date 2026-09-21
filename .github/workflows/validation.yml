@@ -280,11 +280,54 @@ jobs:
           const fs = require("node:fs");
           const maxBytes = 16 * 1024;
           const allowedStatuses = new Set(["success", "failure", "cancelled", "skipped"]);
-          const raw = JSON.parse(process.env.EVIDENCE_UPSTREAM);
+          const allowedUpstreamJobs = [
+            "test-standard",
+            "validate-api",
+            "production-build",
+            "validation",
+          ];
+          const safeName = (value, fallback) => {
+            const name = String(value ?? "");
+            return /^[A-Za-z0-9._-]{1,100}$/.test(name) ? name : fallback;
+          };
+          const safeLabel = (value, fallback, maxLength = 160) => {
+            const label = String(value ?? "").trim();
+            return /^[A-Za-z0-9][A-Za-z0-9 ._:/-]*$/.test(label) &&
+              label.length <= maxLength
+              ? label
+              : fallback;
+          };
+          const safeRef = (value) => {
+            const ref = String(value ?? "").trim();
+            return /^[A-Za-z0-9][A-Za-z0-9._/@:+-]*$/.test(ref)
+              ? ref.slice(0, 160)
+              : "unknown-ref";
+          };
+          const safeSha = (value) =>
+            /^[0-9a-f]{7,64}$/i.test(String(value ?? ""))
+              ? String(value)
+              : "unknown-sha";
+          const safeRunAttempt = (value) => {
+            const attempt = Number(value);
+            return Number.isSafeInteger(attempt) && attempt >= 1 && attempt <= 1000
+              ? attempt
+              : 1;
+          };
+          const runId = safeName(process.env.EVIDENCE_RUN_ID, "unknown-run");
+          const runAttempt = safeRunAttempt(process.env.EVIDENCE_RUN_ATTEMPT);
+          let raw = {};
+          try {
+            const parsed = JSON.parse(process.env.EVIDENCE_UPSTREAM || "{}");
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+              raw = parsed;
+            }
+          } catch {
+            raw = {};
+          }
           const upstream = Object.fromEntries(
-            Object.entries(raw).map(([name, status]) => [
+            allowedUpstreamJobs.map((name) => [
               name,
-              allowedStatuses.has(status) ? status : "failure",
+              allowedStatuses.has(raw[name]) ? raw[name] : "failure",
             ]),
           );
           const values = Object.values(upstream);
@@ -298,13 +341,13 @@ jobs:
           const envelope = {
             version: 1,
             metadata: {
-              workflow: process.env.EVIDENCE_WORKFLOW,
-              job: process.env.EVIDENCE_JOB,
-              event: process.env.EVIDENCE_EVENT,
-              runId: process.env.EVIDENCE_RUN_ID,
-              runAttempt: Number(process.env.EVIDENCE_RUN_ATTEMPT),
-              commitSha: process.env.EVIDENCE_SHA,
-              ref: process.env.EVIDENCE_REF.slice(0, 160),
+              workflow: safeLabel(process.env.EVIDENCE_WORKFLOW, "unknown-workflow"),
+              job: safeLabel(process.env.EVIDENCE_JOB, "unknown-job"),
+              event: safeLabel(process.env.EVIDENCE_EVENT, "unknown-event"),
+              runId,
+              runAttempt,
+              commitSha: safeSha(process.env.EVIDENCE_SHA),
+              ref: safeRef(process.env.EVIDENCE_REF),
               browserProject: "not-applicable",
               apiScope: "not-applicable",
               validationScope: "workflow-aggregate",
@@ -333,14 +376,14 @@ jobs:
               eligibilityDurationMs: 0,
               commandDurationMs: 0,
               uploadDurationMs: 0,
-              retryCount: Math.max(0, Number(process.env.EVIDENCE_RUN_ATTEMPT) - 1),
+              retryCount: Math.min(runAttempt - 1, 10),
               cancelled: status === "cancelled",
               uploadStatus: "pending",
               artifactSizeBytes: 0,
               artifactSizeLimitBytes: maxBytes,
             },
             artifacts: [{
-              name: process.env.EVIDENCE_ARTIFACT_NAME,
+              name: safeName(process.env.EVIDENCE_ARTIFACT_NAME, `ci-diagnostic-${runId}`),
               kind: "compact-evidence",
               condition: "failure-or-cancellation",
               retentionDays: 3,
@@ -348,7 +391,7 @@ jobs:
             }],
             localComparison: {
               status: "not-compared",
-              tier: process.env.EVIDENCE_TIER,
+              tier: safeName(process.env.EVIDENCE_TIER, "not-specified"),
             },
             excerpts: [
               `Upstream statuses: ${Object.entries(upstream).map(([name, value]) => `${name}=${value}`).join(", ")}`,
@@ -371,6 +414,10 @@ jobs:
           }
           fs.writeFileSync(process.env.EVIDENCE_OUTPUT, body, { flag: "wx" });
           fs.appendFileSync(
+            process.env.GITHUB_OUTPUT,
+            `artifact_name=${envelope.artifacts[0].name}\n`,
+          );
+          fs.appendFileSync(
             process.env.GITHUB_STEP_SUMMARY,
             `## CI diagnostic summary\n\n- Lifecycle: \`${status}\`\n- Scope: validation \`${envelope.metadata.validationScope}\`; browser project \`${envelope.metadata.browserProject}\`; API scope \`${envelope.metadata.apiScope}\`\n- Duration: job=\`${envelope.metrics.jobDurationMs}ms\`; setup=\`${envelope.metrics.setupDurationMs}ms\`; dependency-install=\`${envelope.metrics.dependencyInstallDurationMs}ms\`; browser-install=\`${envelope.metrics.browserInstallDurationMs}ms\`; command=\`${envelope.metrics.commandDurationMs}ms\`\n- Upstream: ${envelope.excerpts[0]}\n- Artifact: size \`${envelope.metrics.artifactSizeBytes} bytes\`; bounded status-only evidence; authoritative validation is unchanged\n`,
           );
@@ -382,7 +429,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ci-diagnostic-github-validation-ci-diagnostics-${{ github.run_id }}
+          name: ${{ steps.prepare.outputs.artifact_name }}
           path: ${{ runner.temp }}/ci-evidence-workflow.artifact.json
           if-no-files-found: ignore
           retention-days: 3

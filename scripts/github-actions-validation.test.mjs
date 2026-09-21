@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { decidePostMergeBuild } from "./post-merge-build-policy.mjs";
@@ -51,6 +54,62 @@ function stableJobBlock(workflow, jobName) {
     `stable GitHub job "${jobName}" display name drifted. ${guidance}`,
   );
   return block;
+}
+
+function cleanDiagnosticsScript(workflow, jobName) {
+  const diagnostics = jobBlock(workflow, jobName);
+  const startMarker = "node <<'NODE'\n";
+  const endMarker = "\n          NODE";
+  const start = diagnostics.indexOf(startMarker);
+  const end = diagnostics.indexOf(endMarker, start);
+  assert.notEqual(start, -1, `missing clean diagnostics script in ${jobName}`);
+  assert.notEqual(end, -1, `unterminated clean diagnostics script in ${jobName}`);
+  return diagnostics
+    .slice(start + startMarker.length, end)
+    .split("\n")
+    .map((line) => line.replace(/^          /, ""))
+    .join("\n");
+}
+
+function runCleanDiagnostics(workflow, jobName, upstream) {
+  const directory = fs.mkdtempSync(join(tmpdir(), "ci-diagnostics-"));
+  const output = join(directory, "evidence.json");
+  const outputCommands = join(directory, "github-output");
+  const summary = join(directory, "summary");
+  const result = spawnSync(
+    process.execPath,
+    ["-e", cleanDiagnosticsScript(workflow, jobName)],
+    {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        EVIDENCE_OUTPUT: output,
+        EVIDENCE_WORKFLOW: "<workflow>\nprovider-secret",
+        EVIDENCE_JOB: "<job>\nprovider-secret",
+        EVIDENCE_EVENT: "<event>\nprovider-secret",
+        EVIDENCE_RUN_ID: "123\nprovider-secret",
+        EVIDENCE_RUN_ATTEMPT: "not-an-integer",
+        EVIDENCE_SHA: "provider-secret",
+        EVIDENCE_REF: "refs/heads/main\nprovider-secret",
+        EVIDENCE_ARTIFACT_NAME: "<artifact>\nprovider-secret",
+        EVIDENCE_TIER: "<tier>\nprovider-secret",
+        EVIDENCE_EXPECTED_SKIPS: "post-merge-build,provider-secret",
+        EVIDENCE_UPSTREAM: JSON.stringify(upstream),
+        GITHUB_OUTPUT: outputCommands,
+        GITHUB_STEP_SUMMARY: summary,
+      },
+    },
+  );
+  assert.equal(
+    result.status,
+    0,
+    `${jobName} diagnostics failed: ${result.stderr}`,
+  );
+  return {
+    envelope: JSON.parse(fs.readFileSync(output, "utf8")),
+    outputName: fs.readFileSync(outputCommands, "utf8").trim(),
+    artifact: fs.readFileSync(output, "utf8"),
+  };
 }
 
 function decision(overrides = {}) {
@@ -225,6 +284,127 @@ test("workflow diagnostics preserve lifecycle, safe metrics, and fail-closed agg
     githubActionsDocumentation,
     /authoritative validation.*unchanged/i,
   );
+});
+
+test("clean diagnostics sanitize hostile metadata before upload", () => {
+  for (const [workflow, expectedJobs] of [
+    [
+      pullRequestWorkflow,
+      ["test-standard", "validate-api", "production-build", "validation"],
+    ],
+    [postMergeWorkflow, ["eligibility", "post-merge-build"]],
+  ]) {
+    const diagnostics = jobBlock(
+      workflow,
+      workflow === pullRequestWorkflow
+        ? "ci-diagnostics"
+        : "post-merge-diagnostics",
+    );
+    assert.match(diagnostics, /const safeName =/);
+    assert.match(diagnostics, /const safeLabel =/);
+    assert.match(diagnostics, /const safeRef =/);
+    assert.match(diagnostics, /const safeSha =/);
+    assert.match(diagnostics, /const safeRunAttempt =/);
+    assert.match(diagnostics, /unknown-workflow/);
+    assert.match(diagnostics, /unknown-job/);
+    assert.match(diagnostics, /unknown-event/);
+    assert.match(diagnostics, /unknown-run/);
+    assert.match(diagnostics, /unknown-sha/);
+    assert.match(diagnostics, /unknown-ref/);
+    assert.match(diagnostics, /try \{/);
+    assert.match(diagnostics, /catch \{/);
+    assert.match(diagnostics, /!Array\.isArray\(parsed\)/);
+    assert.match(diagnostics, /allowedStatuses\.has\(raw\[name\]\)/);
+    for (const job of expectedJobs) {
+      assert.match(
+        diagnostics,
+        new RegExp(`"${job}"`),
+        `missing upstream allowlist entry: ${job}`,
+      );
+    }
+    assert.match(diagnostics, /authoritative: "unchanged"/);
+    assert.match(diagnostics, /tier: safeName/);
+    assert.match(diagnostics, /name: safeName/);
+    assert.match(diagnostics, /GITHUB_OUTPUT/);
+    assert.doesNotMatch(diagnostics, /workflow: process\.env\.EVIDENCE_WORKFLOW/);
+    assert.doesNotMatch(diagnostics, /runId: process\.env\.EVIDENCE_RUN_ID/);
+    assert.doesNotMatch(diagnostics, /ref: process\.env\.EVIDENCE_REF\.slice/);
+    assert.doesNotMatch(diagnostics, /commitSha: process\.env\.EVIDENCE_SHA/);
+  }
+  assert.match(
+    postMergeWorkflow,
+    /filter\(\(name\) => allowedExpectedSkips\.has\(name\)\)/,
+  );
+  assert.match(
+    pullRequestWorkflow,
+    /name: \$\{\{ steps\.prepare\.outputs\.artifact_name \}\}/,
+  );
+  assert.match(
+    postMergeWorkflow,
+    /name: \$\{\{ steps\.prepare\.outputs\.artifact_name \}\}/,
+  );
+});
+
+test("clean diagnostics emit fixed metadata for hostile provider values", () => {
+  for (const [workflow, jobName, upstream, expectedStatus] of [
+    [
+      pullRequestWorkflow,
+      "ci-diagnostics",
+      {
+        "test-standard": "<status>",
+        "validate-api": "success",
+        "production-build": "provider-status",
+        validation: "cancelled",
+        "provider-job": "success",
+      },
+      "cancelled",
+    ],
+    [
+      postMergeWorkflow,
+      "post-merge-diagnostics",
+      {
+        eligibility: "<status>",
+        "post-merge-build": "provider-status",
+        "provider-job": "success",
+      },
+      "failure",
+    ],
+  ]) {
+    const { envelope, outputName, artifact } = runCleanDiagnostics(
+      workflow,
+      jobName,
+      upstream,
+    );
+    assert.deepEqual(envelope.metadata, {
+      workflow: "unknown-workflow",
+      job: "unknown-job",
+      event: "unknown-event",
+      runId: "unknown-run",
+      runAttempt: 1,
+      commitSha: "unknown-sha",
+      ref: "unknown-ref",
+      browserProject: "not-applicable",
+      apiScope: "not-applicable",
+      validationScope:
+        jobName === "ci-diagnostics"
+          ? "workflow-aggregate"
+          : "post-merge-workflow",
+    });
+    assert.equal(envelope.lifecycle.status, expectedStatus);
+    assert.equal(envelope.outcome.authoritative, "unchanged");
+    assert.equal(envelope.outcome.diagnostic, "independent");
+    assert.equal(envelope.metrics.retryCount, 0);
+    assert.equal(outputName, "artifact_name=ci-diagnostic-unknown-run");
+    assert.deepEqual(
+      Object.keys(envelope.lifecycle.upstream),
+      jobName === "ci-diagnostics"
+        ? ["test-standard", "validate-api", "production-build", "validation"]
+        : ["eligibility", "post-merge-build"],
+    );
+    assert.ok(!artifact.includes("provider-secret"));
+    assert.ok(!artifact.includes("<status>"));
+    assert.ok(!artifact.includes("provider-status"));
+  }
 });
 
 test("compact evidence contract keeps the approved fields and privacy boundary", () => {

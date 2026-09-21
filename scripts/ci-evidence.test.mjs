@@ -156,6 +156,59 @@ test("compact evidence carries explicit handoff fields and sanitizes upload meta
   assert.ok(!readFileSync(`${file}.artifact`, "utf8").includes("SECRET_VALUE"));
 });
 
+test("hostile metadata fails closed without changing authoritative validation", () => {
+  const file = join(
+    mkdtempSync(join(tmpdir(), "ci-evidence-")),
+    "evidence.json",
+  );
+  const hostile = "<script>provider-secret</script>\nrefs/heads/../../";
+  const evidence = publishEvidence({
+    env: envFor(file, {
+      CI_JOB_STATUS: "provider-status",
+      CI_LIFECYCLE_STATUS: hostile,
+      CI_UPLOAD_STATUS: "status=success\nsecret",
+      CI_ARTIFACT_NAME: hostile,
+      CI_TIER_NAME: hostile,
+      CI_COMMAND: hostile,
+      GITHUB_WORKFLOW: hostile,
+      GITHUB_EVENT_NAME: hostile,
+      GITHUB_RUN_ID: "123\nunexpected-run",
+      GITHUB_RUN_ATTEMPT: "not-an-integer",
+      GITHUB_SHA: "not-a-commit",
+      GITHUB_REF: "refs/heads/main\ninjected",
+      CI_UPSTREAM_RESULTS:
+        '{"test-standard":"<script>","provider-job":"success"}',
+    }),
+  });
+  assert.deepEqual(evidence.metadata, {
+    workflow: "unknown-workflow",
+    job: "test-standard",
+    event: "unknown-event",
+    runId: "unknown-run",
+    runAttempt: 1,
+    commitSha: "unknown-sha",
+    ref: "unknown-ref",
+    branchOrPullRequest: "unknown-ref",
+    changedFiles: "not-collected",
+    command: "not-specified",
+    browserProject: "chromium firefox-recovery mobile-recovery",
+    apiScope: "not-applicable",
+    validationScope: "primary-browser-validation",
+  });
+  assert.deepEqual(evidence.lifecycle.upstream, {
+    "test-standard": "failure",
+    "provider-job": "success",
+  });
+  assert.equal(evidence.lifecycle.status, "failure");
+  assert.equal(evidence.outcome.result, "failure");
+  assert.equal(evidence.outcome.authoritative, "unchanged");
+  assert.equal(evidence.metrics.uploadStatus, "not-run");
+  const artifact = readFileSync(`${file}.artifact`, "utf8");
+  assert.ok(!artifact.includes("provider-secret"));
+  assert.ok(!artifact.includes("unexpected-run"));
+  assert.ok(!artifact.includes("injected"));
+});
+
 test("expected skips do not become false failure evidence", () => {
   const file = join(
     mkdtempSync(join(tmpdir(), "ci-evidence-")),
