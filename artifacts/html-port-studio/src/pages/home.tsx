@@ -13,7 +13,11 @@ import {
   useCreateBundleTransfer,
   useGetBundleTransfer,
   useRevokeBundleTransfer,
-  useCompleteBundleTransfer,
+  useListSavedProjects,
+  useCreateSavedProject,
+  useGetSavedProject,
+  useUpdateSavedProject,
+  useDeleteSavedProject,
   useGetGithubRepository,
   importGithubRepository,
   importHostedUrl,
@@ -39,6 +43,8 @@ import type {
   PlaygroundImportInput,
   BundleTransferCreated,
   PoeModels,
+  SavedProject,
+  SavedProjectInput,
 } from '@workspace/api-client-react';
 import {
   SOURCE_TEXT_LIMIT_LABEL,
@@ -155,8 +161,6 @@ const SOURCE_MODE_LABELS = {
 
 type SourceChoice = keyof typeof SOURCE_MODE_LABELS;
 type PoeCapabilityId = 'generic-assistant' | 'gemini-repair' | 'claude-repair';
-type HandoffPhase = 'creation' | 'import' | 'sourceVerification' | 'runtimeVerification';
-type HandoffPhaseStatus = 'not_started' | 'in_progress' | 'verified' | 'blocked';
 
 function getPoeCapability(
   data: PoeModels | undefined,
@@ -347,6 +351,88 @@ function Header({ onReset }: { onReset: () => void }) {
         )}
       </div>
     </header>
+  );
+}
+
+function SavedProjectsPanel({
+  projects,
+  isLoading,
+  selectedProjectId,
+  projectName,
+  setProjectName,
+  onSave,
+  onOpen,
+  onDelete,
+  saving,
+  deleting,
+  feedback,
+}: {
+  projects: Array<{
+    id: string;
+    name: string;
+    sourceType: string;
+    updatedAt: string;
+    analysisStatus: string;
+  }>;
+  isLoading: boolean;
+  selectedProjectId: string | null;
+  projectName: string;
+  setProjectName: (value: string) => void;
+  onSave: () => void;
+  onOpen: (id: string) => void;
+  onDelete: (id: string) => void;
+  saving: boolean;
+  deleting: boolean;
+  feedback: string | null;
+}) {
+  return (
+    <Card className="border-primary/20 bg-primary/[0.02]" aria-label="Saved projects">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Save className="h-4 w-4 text-primary" aria-hidden="true" /> Saved projects
+        </CardTitle>
+        <CardDescription>
+          Server-saved source and analysis are separate from browser-only recovery metadata.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex flex-wrap gap-2">
+          <Input
+            aria-label="Saved project name"
+            value={projectName}
+            onChange={(event) => setProjectName(event.target.value)}
+            placeholder="Project name"
+            maxLength={120}
+            className="min-w-[220px] flex-1"
+          />
+          <Button type="button" onClick={onSave} disabled={saving || !projectName.trim()}>
+            {saving ? 'Saving…' : selectedProjectId ? 'Update saved project' : 'Save project'}
+          </Button>
+        </div>
+        {feedback && <p className="text-sm text-muted-foreground" role="status">{feedback}</p>}
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading saved projects…</p>
+        ) : projects.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No saved projects yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {projects.map((project) => (
+              <div key={project.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-card p-3">
+                <button type="button" className="min-w-0 text-left" onClick={() => onOpen(project.id)}>
+                  <span className="block truncate font-medium">{project.name}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {project.sourceType.replaceAll('_', ' ')} · {project.analysisStatus === 'ready' ? 'Analysis ready' : 'Analysis stale'} · {new Date(project.updatedAt).toLocaleString()}
+                  </span>
+                </button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => onDelete(project.id)} disabled={deleting}>
+                  Delete
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -1418,370 +1504,6 @@ function ReplitProjectHandoffPanel({
   );
 }
 
-function McpProjectHandoffPanel({
-  bundle,
-}: {
-  bundle: SourceBundle;
-}) {
-  const { isAuthenticated, isLoading: authLoading, login } = useStudioAuth();
-  const [transferId, setTransferId] = useState<string | null>(null);
-  const [projectId, setProjectId] = useState('');
-  const [projectUrl, setProjectUrl] = useState('');
-  const [localError, setLocalError] = useState<string | null>(null);
-  const [copyState, setCopyState] = useState<'idle' | 'prompt' | 'token' | 'failed'>('idle');
-  const [phaseStatus, setPhaseStatus] = useState<Record<HandoffPhase, HandoffPhaseStatus>>({
-    creation: 'not_started',
-    import: 'not_started',
-    sourceVerification: 'not_started',
-    runtimeVerification: 'not_started',
-  });
-  const queryClient = useQueryClient();
-  const createMutation = useCreateBundleTransfer();
-  const revokeMutation = useRevokeBundleTransfer();
-  const completeMutation = useCompleteBundleTransfer();
-  const transferQuery = useGetBundleTransfer(transferId ?? '', {
-    query: {
-      enabled: Boolean(transferId) && isAuthenticated,
-      queryKey: ['bundle-transfer', transferId],
-    },
-  });
-  const transfer = transferQuery.data ?? createMutation.data;
-  const oneTimeToken = createMutation.data?.transferToken;
-  const transferState =
-    transfer && new Date(transfer.expiresAt).getTime() <= Date.now()
-      ? 'expired'
-      : transfer?.state;
-  const projectName = bundle.metadata.displayName || 'HTML app';
-  const creationPrompt = useMemo(
-    () =>
-      `Use an external Replit MCP client to create a new Replit project named "${projectName}". MCP creates the project only; do not paste, inspect, or import source files through MCP. After the project exists, install the pinned "Import Source Bundle" and "Import Confirmation" skills in the destination project. The HTML Port Studio will provide the approved bundle through its secure transfer package.`,
-    [projectName],
-  );
-
-  useEffect(() => {
-    if (transferId && isAuthenticated) {
-      revokeMutation.mutate({ transferId });
-    }
-    setTransferId(null);
-    setProjectId('');
-    setProjectUrl('');
-    setLocalError(null);
-    setCopyState('idle');
-    setPhaseStatus({
-      creation: 'not_started',
-      import: 'not_started',
-      sourceVerification: 'not_started',
-      runtimeVerification: 'not_started',
-    });
-    createMutation.reset();
-  }, [bundle, createMutation.reset]);
-
-  useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      setTransferId(null);
-      setCopyState('idle');
-      createMutation.reset();
-    }
-  }, [authLoading, createMutation.reset, isAuthenticated]);
-
-  const handleCreatePackage = () => {
-    setLocalError(null);
-    setCopyState('idle');
-    if (transferState !== 'active') {
-      setTransferId(null);
-      createMutation.reset();
-    }
-    createMutation.mutate(
-      { data: { approved: true, bundle } },
-      {
-        onSuccess: (data: BundleTransferCreated) => {
-          setTransferId(data.transferId);
-        },
-        onError: (error: unknown) => {
-          setLocalError(
-            getStudioErrorMessage(
-              error,
-              'The secure transfer package could not be created. Your source is still here.',
-            ),
-          );
-        },
-      },
-    );
-  };
-
-  const copyText = async (value: string, success: 'prompt' | 'token') => {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopyState(success);
-      if (success === 'prompt') {
-        setTimeout(() => setCopyState('idle'), 2500);
-      }
-    } catch {
-      setCopyState('failed');
-    }
-  };
-
-  const handleRevoke = () => {
-    if (!transferId) return;
-    revokeMutation.mutate(
-      { transferId },
-      {
-        onSuccess: () => {
-          createMutation.reset();
-          setTransferId(null);
-          setCopyState('idle');
-        },
-        onError: (error: unknown) => {
-          setLocalError(getStudioErrorMessage(error, 'The transfer package could not be revoked.'));
-        },
-      },
-    );
-  };
-
-  const saveProjectIdentity = () => {
-    const trimmedId = projectId.trim();
-    const trimmedUrl = projectUrl.trim();
-    if (!trimmedId || !trimmedUrl) {
-      setLocalError('Enter both the returned Replit project ID and project URL.');
-      return;
-    }
-    try {
-      const parsed = new URL(trimmedUrl);
-      if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('invalid');
-    } catch {
-      setLocalError('Enter the HTTPS project URL returned by Replit.');
-      return;
-    }
-    setLocalError(null);
-    setPhaseStatus((current) => ({ ...current, creation: 'verified' }));
-  };
-
-  const setPhase = (phase: HandoffPhase, status: HandoffPhaseStatus) => {
-    setPhaseStatus((current) => ({ ...current, [phase]: status }));
-    if (phase === 'import' && status === 'verified' && transferId) {
-      completeMutation.mutate(
-        { transferId },
-        {
-          onSuccess: (data) => {
-            queryClient.setQueryData(['bundle-transfer', transferId], data);
-          },
-          onError: (error: unknown) => {
-            setLocalError(
-              getStudioErrorMessage(
-                error,
-                'The import was recorded locally, but the transfer could not be closed.',
-              ),
-            );
-          },
-        },
-      );
-    }
-  };
-
-  const phaseLabels: Array<[HandoffPhase, string, string]> = [
-    ['creation', 'Project creation', 'MCP creates the empty Replit project'],
-    ['import', 'Bundle import', 'The pinned importer retrieves the package'],
-    ['sourceVerification', 'Exact-source verification', 'Compare the manifest and file hashes'],
-    ['runtimeVerification', 'Runtime verification', 'Open Preview and test the main journey'],
-  ];
-
-  return (
-    <Card className="border-primary/30 bg-primary/[0.03] shadow-sm">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base">Guided MCP project handoff</CardTitle>
-        <CardDescription>
-          An external Replit MCP client creates the project. The pinned importer transfers
-          the exact reviewed files. Studio does not create projects or send source through MCP.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4 pt-0">
-        {!isAuthenticated ? (
-          <Alert>
-            <Info className="h-4 w-4" />
-            <AlertTitle>Sign in required</AlertTitle>
-            <AlertDescription className="space-y-3">
-              <p>Sign in to create an owner-bound transfer package. Your source remains in this tab.</p>
-              <Button type="button" onClick={login} disabled={authLoading}>
-                {authLoading ? 'Checking sign-in…' : 'Sign in to prepare handoff'}
-              </Button>
-            </AlertDescription>
-          </Alert>
-        ) : !transfer ? (
-          <div className="space-y-3">
-            <Alert>
-              <Info className="h-4 w-4" />
-              <AlertTitle>MCP is not embedded here</AlertTitle>
-              <AlertDescription>
-                Use an external MCP client to create the destination project, then return here
-                to prepare the exact-file transfer. If MCP is unavailable, use the ZIP or GitHub
-                UI fallback below.
-              </AlertDescription>
-            </Alert>
-            <Button type="button" onClick={handleCreatePackage} disabled={createMutation.isPending}>
-              {createMutation.isPending ? 'Creating secure package…' : 'Create secure transfer package'}
-            </Button>
-          </div>
-        ) : (
-          <>
-            <div className="grid gap-2 rounded-md border bg-card p-3 text-sm sm:grid-cols-3">
-              <div>
-                <span className="text-muted-foreground">Transfer ID</span>
-                <p className="break-all font-mono text-xs">{transfer.transferId}</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Manifest hash</span>
-                <p className="break-all font-mono text-xs">{transfer.manifestHash}</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Expires</span>
-                <p>{new Date(transfer.expiresAt).toLocaleString()}</p>
-              </div>
-            </div>
-            {transferState !== 'active' && (
-              <Alert variant="destructive">
-                <AlertTriangle className="h-4 w-4" />
-                <AlertTitle>Transfer package is {transferState}</AlertTitle>
-                <AlertDescription>
-                  Create a replacement package before continuing. The reviewed source remains in this tab.
-                </AlertDescription>
-              </Alert>
-            )}
-            {oneTimeToken && transferState === 'active' && (
-              <Alert className="border-amber-500/30 bg-amber-500/5">
-                <AlertTriangle className="h-4 w-4" />
-                <AlertTitle>Save the destination secret privately</AlertTitle>
-                <AlertDescription className="space-y-2">
-                  <p>
-                    Copy this one-time token directly into the destination project&apos;s Replit Secrets.
-                    Never paste it into the MCP prompt, chat, a URL, or a command line.
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <code className="min-w-0 flex-1 break-all rounded bg-muted px-2 py-1 text-xs">
-                      {oneTimeToken}
-                    </code>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      aria-label="Copy transfer token to use in Replit Secrets"
-                      onClick={() => void copyText(oneTimeToken, 'token')}
-                    >
-                      {copyState === 'token' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                      <span className="sr-only">Copy transfer token</span>
-                    </Button>
-                  </div>
-                </AlertDescription>
-              </Alert>
-            )}
-            <section className="space-y-2 rounded-md border bg-card p-3" aria-labelledby="mcp-prompt-title">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <h3 id="mcp-prompt-title" className="font-medium">MCP project-creation prompt</h3>
-                  <p className="text-xs text-muted-foreground">This prompt contains no source or transfer token.</p>
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  aria-label="Copy MCP project creation prompt"
-                  onClick={() => void copyText(creationPrompt, 'prompt')}
-                >
-                  {copyState === 'prompt' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                  <span className="ml-1">{copyState === 'prompt' ? 'Copied' : 'Copy prompt'}</span>
-                </Button>
-              </div>
-              <pre className="whitespace-pre-wrap rounded bg-muted p-3 text-xs">{creationPrompt}</pre>
-              {copyState === 'failed' && (
-                <p role="alert" className="text-xs text-destructive">Could not copy. Try again or use the destination field directly.</p>
-              )}
-            </section>
-            <section className="space-y-3 rounded-md border bg-card p-3" aria-labelledby="destination-setup-title">
-              <div>
-                <h3 id="destination-setup-title" className="font-medium">Destination setup</h3>
-                <p className="text-xs text-muted-foreground">
-                  In the new project, install the pinned <strong>Import Source Bundle</strong> and
-                  <strong> Import Confirmation</strong> skills. Add the transfer ID and one-time token
-                  as Replit Secrets, then retrieve the manifest before retrieving the bundle.
-                </p>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="space-y-1 text-sm">
-                  <span>Returned Replit project ID</span>
-                  <Input value={projectId} onChange={(event) => setProjectId(event.target.value)} placeholder="Project ID" />
-                </label>
-                <label className="space-y-1 text-sm">
-                  <span>Returned Replit project URL</span>
-                  <Input value={projectUrl} onChange={(event) => setProjectUrl(event.target.value)} placeholder="https://replit.com/@…" type="url" />
-                </label>
-              </div>
-              <Button type="button" size="sm" variant="outline" onClick={saveProjectIdentity}>
-                Save project identity
-              </Button>
-            </section>
-            <section className="space-y-2" aria-labelledby="handoff-evidence-title">
-              <h3 id="handoff-evidence-title" className="font-medium">Handoff evidence</h3>
-              {phaseLabels.map(([phase, label, description]) => (
-                <div key={phase} className="grid gap-2 rounded-md border bg-card p-3 sm:grid-cols-[1fr_180px] sm:items-center">
-                  <div>
-                    <p className="text-sm font-medium">{label}</p>
-                    <p className="text-xs text-muted-foreground">{description}</p>
-                  </div>
-                  <Select
-                    value={phaseStatus[phase]}
-                    onValueChange={(value) => setPhase(phase, value as HandoffPhaseStatus)}
-                  >
-                    <SelectTrigger aria-label={`${label} status`}><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="not_started">Not started</SelectItem>
-                      <SelectItem value="in_progress">In progress</SelectItem>
-                      <SelectItem value="verified">Verified</SelectItem>
-                      <SelectItem value="blocked">Blocked</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              ))}
-            </section>
-            {localError && (
-              <Alert variant="destructive">
-                <AlertTriangle className="h-4 w-4" />
-                <AlertTitle>Handoff needs attention</AlertTitle>
-                <AlertDescription>{localError}</AlertDescription>
-              </Alert>
-            )}
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-xs text-muted-foreground">
-                {transfer.retrievalCount}/{transfer.retrievalLimit} retrievals used · source remains local to this Studio session
-              </span>
-              <div className="flex flex-wrap gap-2">
-                {transfer.state !== 'active' && (
-                  <Button type="button" size="sm" variant="outline" onClick={handleCreatePackage} disabled={createMutation.isPending}>
-                    Create replacement package
-                  </Button>
-                )}
-                <Button type="button" size="sm" variant="outline" onClick={handleRevoke} disabled={revokeMutation.isPending || transferState !== 'active'}>
-                  {revokeMutation.isPending ? 'Revoking…' : 'Revoke package'}
-                </Button>
-              </div>
-            </div>
-          </>
-        )}
-        {localError && !transfer && (
-          <Alert variant="destructive">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>Handoff blocked</AlertTitle>
-            <AlertDescription>{localError}</AlertDescription>
-          </Alert>
-        )}
-        <div className="rounded-md border border-muted-foreground/20 bg-muted/30 p-3 text-xs text-muted-foreground">
-          <strong className="text-foreground">MCP unavailable?</strong> Download the reviewed ZIP
-          and import it through the Replit Project Editor, or use the GitHub UI import for a public
-          repository. These fallbacks do not send source or authorization to an MCP client.
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
 function BundleTransferPanel({ bundle }: { bundle: SourceBundle }) {
   const { isAuthenticated, isLoading: authLoading, login } = useStudioAuth();
   const [transferId, setTransferId] = useState<string | null>(null);
@@ -2503,7 +2225,21 @@ export default function Home() {
     file?: { path: string; content: string };
   } | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [savedProjectId, setSavedProjectId] = useState<string | null>(null);
+  const [savedProjectName, setSavedProjectName] = useState('');
+  const [savedProjectFeedback, setSavedProjectFeedback] = useState<string | null>(null);
+  const savedProjectRequestRef = useRef(0);
   const analyzeMutation = useAnalyzeHtml();
+  const { isAuthenticated, login } = useStudioAuth();
+  const savedProjectsQuery = useListSavedProjects({
+    query: { enabled: isAuthenticated, queryKey: ['saved-projects', isAuthenticated] },
+  });
+  const savedProjectQuery = useGetSavedProject(savedProjectId ?? 'missing', {
+    query: { enabled: Boolean(savedProjectId), queryKey: ['saved-project', savedProjectId] },
+  });
+  const createSavedProjectMutation = useCreateSavedProject();
+  const updateSavedProjectMutation = useUpdateSavedProject();
+  const deleteSavedProjectMutation = useDeleteSavedProject();
   const githubRepositoryQuery = useGetGithubRepository(
     { url: githubLookupUrl || 'https://github.com/example/example' },
     {
@@ -2626,7 +2362,13 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const clearOnLogout = () => clearRecovery();
+    const clearOnLogout = () => {
+      clearRecovery();
+      savedProjectRequestRef.current += 1;
+      setSavedProjectId(null);
+      setSavedProjectName('');
+      setSavedProjectFeedback(null);
+    };
     window.addEventListener('studio-auth:logout', clearOnLogout);
     return () => window.removeEventListener('studio-auth:logout', clearOnLogout);
   }, [clearRecovery]);
@@ -3090,6 +2832,10 @@ export default function Home() {
   };
 
   const handleReset = () => {
+    savedProjectRequestRef.current += 1;
+    setSavedProjectId(null);
+    setSavedProjectName('');
+    setSavedProjectFeedback(null);
     if (selectedSource === 'paste' && Boolean(htmlInput.trim())) {
       trackSourceImportOutcome('paste', 'cancelled');
     }
@@ -3463,12 +3209,129 @@ export default function Home() {
     [repairSource, sourceBundle],
   );
 
+  const savedProjectInput = (): SavedProjectInput | null => {
+    if (!sourceBundle || !analysisData) return null;
+    return {
+      name: savedProjectName.trim(),
+      bundle: currentBundle,
+      analysis: analysisData,
+      editorState: {
+        selectedSource,
+        selectedFilePath: null,
+        analyzedRevision,
+        analysisStale,
+        readinessChecklist,
+      },
+    };
+  };
+
+  const handleSaveProject = () => {
+    if (!isAuthenticated) {
+      login();
+      return;
+    }
+    const data = savedProjectInput();
+    if (!data) {
+      setSavedProjectFeedback('Analyze a source before saving it.');
+      return;
+    }
+    if (!data.name) {
+      setSavedProjectFeedback('Give this saved project a name.');
+      return;
+    }
+    setSavedProjectFeedback(null);
+    const onSuccess = (saved: SavedProject) => {
+      setSavedProjectId(saved.id);
+      setSavedProjectName(saved.name);
+      setSavedProjectFeedback(`Saved “${saved.name}”.`);
+      void savedProjectsQuery.refetch();
+    };
+    if (savedProjectId) {
+      updateSavedProjectMutation.mutate(
+        { projectId: savedProjectId, data },
+        { onSuccess },
+      );
+    } else {
+      createSavedProjectMutation.mutate({ data }, { onSuccess });
+    }
+  };
+
+  const handleOpenSavedProject = (projectId: string) => {
+    savedProjectRequestRef.current += 1;
+    importSessionRef.current += 1;
+    analyzeMutation.reset();
+    setSavedProjectFeedback('Opening saved project…');
+    setSavedProjectId(projectId);
+  };
+
+  useEffect(() => {
+    const project = savedProjectQuery.data;
+    const requestId = savedProjectRequestRef.current;
+    if (!project || project.id !== savedProjectId || requestId !== savedProjectRequestRef.current) return;
+    const sessionId = ++importSessionRef.current;
+    const bundle = project.bundle;
+    const entrypointHtml =
+      bundle.files.find((file) => file.path === bundle.entrypoint)?.content ?? '';
+    if (!entrypointHtml || sessionId !== importSessionRef.current) return;
+    setSelectedSource(project.editorState.selectedSource);
+    setSourceBundle(bundle);
+    setHtmlInput(entrypointHtml);
+    setAnalysisData(project.analysis);
+    setReadinessChecklist(project.editorState.readinessChecklist as ReadinessChecklistItem[]);
+    setAnalyzedRevision(project.editorState.analyzedRevision);
+    setAnalysisStale(project.editorState.analysisStale);
+    bumpSourceRevision();
+    setSavedProjectName(project.name);
+    setSavedProjectFeedback(`Opened “${project.name}”.`);
+    setRepairOpen(false);
+    setClaudeRepairOpen(false);
+    setRepairSource(null);
+    setLastAppliedRepair(null);
+    clearRecovery();
+  }, [savedProjectId, savedProjectQuery.data]);
+
+  useEffect(() => {
+    if (savedProjectQuery.isError && savedProjectId) {
+      setSavedProjectFeedback('That saved project could not be opened. Your current source was kept.');
+      setSavedProjectId(null);
+    }
+  }, [savedProjectId, savedProjectQuery.isError]);
+
+  const handleDeleteSavedProject = (projectId: string) => {
+    deleteSavedProjectMutation.mutate(
+      { projectId },
+      {
+        onSuccess: () => {
+          if (savedProjectId === projectId) {
+            setSavedProjectId(null);
+            setSavedProjectName('');
+            setSavedProjectFeedback('Saved project deleted. The current source remains unchanged.');
+          }
+          void savedProjectsQuery.refetch();
+        },
+      },
+    );
+  };
+
   if (!analysisData) {
     return (
       <div className="min-h-screen flex flex-col bg-background">
         <Header onReset={handleReset} />
         <main className="flex-1 flex flex-col items-center justify-center p-6">
           <div className="w-full max-w-3xl space-y-4 animate-in fade-in zoom-in-95 duration-300">
+            <SavedProjectsPanel
+              projects={savedProjectsQuery.data ?? []}
+              isLoading={isAuthenticated && savedProjectsQuery.isLoading}
+              selectedProjectId={savedProjectId}
+              projectName={savedProjectName}
+              setProjectName={setSavedProjectName}
+              onSave={handleSaveProject}
+              onOpen={handleOpenSavedProject}
+              onDelete={handleDeleteSavedProject}
+              saving={createSavedProjectMutation.isPending || updateSavedProjectMutation.isPending}
+              deleting={deleteSavedProjectMutation.isPending}
+              feedback={savedProjectFeedback}
+            />
             {recoveryNotice && (
               <Alert className="border-warning/50 bg-warning/10">
                 <Info className="h-4 w-4" />
@@ -4257,6 +4120,19 @@ export default function Home() {
           >
             <ScrollArea className="h-full">
               <div className="p-6 space-y-8">
+                <SavedProjectsPanel
+                  projects={savedProjectsQuery.data ?? []}
+                  isLoading={isAuthenticated && savedProjectsQuery.isLoading}
+                  selectedProjectId={savedProjectId}
+                  projectName={savedProjectName}
+                  setProjectName={setSavedProjectName}
+                  onSave={handleSaveProject}
+                  onOpen={handleOpenSavedProject}
+                  onDelete={handleDeleteSavedProject}
+                  saving={createSavedProjectMutation.isPending || updateSavedProjectMutation.isPending}
+                  deleting={deleteSavedProjectMutation.isPending}
+                  feedback={savedProjectFeedback}
+                />
                 
                 {/* Header Stats */}
                 <div>
@@ -4436,23 +4312,17 @@ export default function Home() {
                   </Alert>
                 )}
 
-                {currentSourceContainsCredential && (
-                  <Alert variant="destructive">
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertTitle>Handoff blocked until credentials are cleared</AlertTitle>
-                    <AlertDescription>
-                      Remove or safely replace credential-like values, then re-analyze this source
-                      before creating a transfer package. No source or token is sent to MCP.
-                    </AlertDescription>
-                  </Alert>
-                )}
-
                  {sourceBundle && (
-                  !analysisStale && !currentSourceContainsCredential ? (
-                    <McpProjectHandoffPanel
-                      bundle={sourceBundle}
-                    />
-                  ) : null
+                    <>
+                    {!analysisStale && !currentSourceContainsCredential && (
+                      <BundleTransferPanel bundle={sourceBundle} />
+                    )}
+                   <ReplitProjectHandoffPanel
+                     bundle={sourceBundle}
+                     onRecoverySaved={saveRecovery}
+                     onRecoveryCleared={clearRecovery}
+                   />
+                    </>
                  )}
 
                 {/* Steps */}

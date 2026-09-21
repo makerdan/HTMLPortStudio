@@ -11,6 +11,7 @@ import {
   handoffJobsTable,
   handoffStepsTable,
   handoffTransferPackagesTable,
+  savedProjectsTable,
   takePoeChatRateLimit as takeSharedPoeChatRateLimit,
   type HandoffJobRow,
   type HandoffStepRow,
@@ -51,6 +52,12 @@ import {
   GetBundleTransferResponse,
   GetBundleTransferManifestResponse,
   GetBundleTransferBundleResponse,
+  CreateSavedProjectBody,
+  CreateSavedProjectResponse,
+  GetSavedProjectResponse,
+  ListSavedProjectsResponse,
+  UpdateSavedProjectBody,
+  UpdateSavedProjectResponse,
 } from "@workspace/api-zod";
 import {
   canonicalSkillInstallRequest,
@@ -2102,5 +2109,204 @@ function normalizeBundle(input: { html?: string; bundle?: SourceBundle }): Sourc
     metadata: { displayName: extractTitle(input.html) },
   };
 }
+
+function savedProjectSummary(row: {
+  id: string;
+  name: string;
+  sourceType: string;
+  entrypoint: string;
+  analysis: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  return {
+    id: row.id,
+    name: row.name,
+    sourceType: row.sourceType,
+    entrypoint: row.entrypoint,
+    analysisStatus:
+      typeof row.analysis === "object" &&
+      row.analysis !== null &&
+      (row.analysis as { findings?: unknown }).findings
+        ? "ready"
+        : "stale",
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function savedProjectResponse(row: {
+  id: string;
+  name: string;
+  sourceType: string;
+  entrypoint: string;
+  sourceBundle: unknown;
+  analysis: unknown;
+  editorState: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  return GetSavedProjectResponse.parse({
+    ...savedProjectSummary(row),
+    bundle: row.sourceBundle,
+    analysis: row.analysis,
+    editorState: row.editorState,
+  });
+}
+
+function savedProjectNotFound(res: ExpressResponse): void {
+  res.status(404).json({
+    error: "That saved project is unavailable.",
+    code: "SAVED_PROJECT_NOT_FOUND",
+  });
+}
+
+function parseSavedProjectInput(body: unknown): {
+  name: string;
+  bundle: SourceBundle;
+  analysis: unknown;
+  editorState: unknown;
+} | null {
+  const parsed = CreateSavedProjectBody.safeParse(body);
+  if (!parsed.success) return null;
+  try {
+    const bundle = normalizeBundle({ bundle: parsed.data.bundle as SourceBundle });
+    return {
+      name: parsed.data.name.trim(),
+      bundle,
+      analysis: parsed.data.analysis,
+      editorState: parsed.data.editorState,
+    };
+  } catch {
+    return null;
+  }
+}
+
+router.get("/port/saved-projects", requireAuth, async (req, res): Promise<void> => {
+  const rows = await db
+    .select({
+      id: savedProjectsTable.id,
+      name: savedProjectsTable.name,
+      sourceType: savedProjectsTable.sourceType,
+      entrypoint: savedProjectsTable.entrypoint,
+      analysis: savedProjectsTable.analysis,
+      createdAt: savedProjectsTable.createdAt,
+      updatedAt: savedProjectsTable.updatedAt,
+    })
+    .from(savedProjectsTable)
+    .where(eq(savedProjectsTable.ownerId, req.dbUser!.id))
+    .orderBy(asc(savedProjectsTable.updatedAt));
+  res.json(ListSavedProjectsResponse.parse(rows.map((row) => savedProjectSummary(row))));
+});
+
+router.post(
+  "/port/saved-projects",
+  requireTrustedCookieOrigin,
+  requireAuth,
+  async (req, res): Promise<void> => {
+    const input = parseSavedProjectInput(req.body);
+    if (!input || !input.name) {
+      res.status(400).json({
+        error: "Provide a project name and one valid normalized source bundle.",
+        code: "INVALID_SAVED_PROJECT",
+      });
+      return;
+    }
+    const [row] = await db
+      .insert(savedProjectsTable)
+      .values({
+        id: randomUUID(),
+        ownerId: req.dbUser!.id,
+        name: input.name,
+        sourceType: input.bundle.sourceType,
+        entrypoint: input.bundle.entrypoint,
+        sourceBundle: input.bundle,
+        analysis: input.analysis,
+        editorState: input.editorState,
+      })
+      .returning();
+    res.status(201).json(CreateSavedProjectResponse.parse(savedProjectResponse(row)));
+  },
+);
+
+router.get("/port/saved-projects/:projectId", requireAuth, async (req, res): Promise<void> => {
+  const [row] = await db
+    .select()
+    .from(savedProjectsTable)
+    .where(
+      and(
+        eq(savedProjectsTable.id, req.params.projectId as string),
+        eq(savedProjectsTable.ownerId, req.dbUser!.id),
+      ),
+    )
+    .limit(1);
+  if (!row) {
+    savedProjectNotFound(res);
+    return;
+  }
+  res.json(GetSavedProjectResponse.parse(savedProjectResponse(row)));
+});
+
+router.patch(
+  "/port/saved-projects/:projectId",
+  requireTrustedCookieOrigin,
+  requireAuth,
+  async (req, res): Promise<void> => {
+    const parsed = UpdateSavedProjectBody.safeParse(req.body);
+    const input = parsed.success ? parseSavedProjectInput(parsed.data) : null;
+    if (!input || !input.name) {
+      res.status(400).json({
+        error: "Provide a project name and one valid normalized source bundle.",
+        code: "INVALID_SAVED_PROJECT",
+      });
+      return;
+    }
+    const [row] = await db
+      .update(savedProjectsTable)
+      .set({
+        name: input.name,
+        sourceType: input.bundle.sourceType,
+        entrypoint: input.bundle.entrypoint,
+        sourceBundle: input.bundle,
+        analysis: input.analysis,
+        editorState: input.editorState,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(savedProjectsTable.id, req.params.projectId as string),
+          eq(savedProjectsTable.ownerId, req.dbUser!.id),
+        ),
+      )
+      .returning();
+    if (!row) {
+      savedProjectNotFound(res);
+      return;
+    }
+    res.json(UpdateSavedProjectResponse.parse(savedProjectResponse(row)));
+  },
+);
+
+router.delete(
+  "/port/saved-projects/:projectId",
+  requireTrustedCookieOrigin,
+  requireAuth,
+  async (req, res): Promise<void> => {
+    const [row] = await db
+      .delete(savedProjectsTable)
+      .where(
+        and(
+          eq(savedProjectsTable.id, req.params.projectId as string),
+          eq(savedProjectsTable.ownerId, req.dbUser!.id),
+        ),
+      )
+      .returning({ id: savedProjectsTable.id });
+    if (!row) {
+      savedProjectNotFound(res);
+      return;
+    }
+    res.status(204).send();
+  },
+);
 
 export default router;

@@ -875,6 +875,536 @@ export const CreateReplitProjectResponse = zod.object({
 
 
 /**
+ * @summary List the signed-in user's saved HTML projects
+ */
+export const ListSavedProjectsResponseItem = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "sourceType": zod.enum(['pasted_html', 'single_file', 'zip_project', 'github_repository', 'hosted_page', 'playground']),
+  "entrypoint": zod.string(),
+  "analysisStatus": zod.enum(['ready', 'stale']),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListSavedProjectsResponse = zod.array(ListSavedProjectsResponseItem)
+
+
+/**
+ * @summary Save the current normalized HTML project
+ */
+export const createSavedProjectBodyNameMax = 120;
+
+export const createSavedProjectBodyBundleFilesItemPathMax = 512;
+
+export const createSavedProjectBodyBundleFilesItemContentMax = 2097152;
+
+export const createSavedProjectBodyBundleFilesMax = 200;
+
+export const createSavedProjectBodyBundleEntrypointMax = 512;
+
+export const createSavedProjectBodyBundleMetadataDisplayNameMax = 120;
+
+export const createSavedProjectBodyBundleMetadataWarningsItemMax = 500;
+
+export const createSavedProjectBodyBundleMetadataWarningsMax = 20;
+
+export const createSavedProjectBodyBundleMetadataResolvedRefMax = 256;
+
+export const createSavedProjectBodyBundleMetadataResolvedCommitShaMax = 64;
+
+export const createSavedProjectBodyBundleMetadataEntrypointCandidatesMax = 20;
+
+export const createSavedProjectBodyEditorStateSelectedFilePathMax = 512;
+
+export const createSavedProjectBodyEditorStateAnalyzedRevisionMin = 0;
+
+export const createSavedProjectBodyEditorStateReadinessChecklistItemKeyMax = 512;
+
+export const createSavedProjectBodyEditorStateReadinessChecklistItemTitleMax = 500;
+
+export const createSavedProjectBodyEditorStateReadinessChecklistItemRequiredChangeMax = 2000;
+
+export const createSavedProjectBodyEditorStateReadinessChecklistMax = 50;
+
+
+
+export const CreateSavedProjectBody = zod.object({
+  "name": zod.string().min(1).max(createSavedProjectBodyNameMax),
+  "bundle": zod.object({
+  "version": zod.literal(1),
+  "sourceType": zod.enum(['pasted_html', 'single_file', 'zip_project', 'github_repository', 'hosted_page', 'playground']),
+  "files": zod.array(zod.object({
+  "path": zod.string().min(1).max(createSavedProjectBodyBundleFilesItemPathMax),
+  "content": zod.string().max(createSavedProjectBodyBundleFilesItemContentMax)
+})).min(1).max(createSavedProjectBodyBundleFilesMax),
+  "entrypoint": zod.string().min(1).max(createSavedProjectBodyBundleEntrypointMax),
+  "metadata": zod.object({
+  "displayName": zod.string().min(1).max(createSavedProjectBodyBundleMetadataDisplayNameMax),
+  "sourceUrl": zod.string().optional(),
+  "originalUrl": zod.string().optional(),
+  "finalUrl": zod.string().optional(),
+  "warnings": zod.array(zod.string().max(createSavedProjectBodyBundleMetadataWarningsItemMax)).max(createSavedProjectBodyBundleMetadataWarningsMax).optional(),
+  "resolvedRef": zod.string().max(createSavedProjectBodyBundleMetadataResolvedRefMax).optional(),
+  "resolvedCommitSha": zod.string().max(createSavedProjectBodyBundleMetadataResolvedCommitShaMax).optional(),
+  "entrypointCandidates": zod.array(zod.string()).max(createSavedProjectBodyBundleMetadataEntrypointCandidatesMax).optional()
+})
+}),
+  "analysis": zod.object({
+  "title": zod.string(),
+  "bytes": zod.number(),
+  "scriptCount": zod.number(),
+  "externalScriptCount": zod.number(),
+  "inlineScriptCount": zod.number(),
+  "externalAssetCount": zod.number(),
+  "aiSignalCount": zod.number(),
+  "findings": zod.array(zod.object({
+  "severity": zod.enum(['info', 'warning', 'blocker']),
+  "title": zod.string(),
+  "detail": zod.string(),
+  "action": zod.string()
+})),
+  "steps": zod.array(zod.string()),
+  "sourceType": zod.enum(['pasted_html', 'single_file', 'zip_project', 'github_repository', 'hosted_page', 'playground']),
+  "entrypoint": zod.string(),
+  "fileCount": zod.number(),
+  "totalBytes": zod.number(),
+  "files": zod.array(zod.string()),
+  "localAssetReferences": zod.array(zod.string()),
+  "externalDependencies": zod.array(zod.string())
+}),
+  "editorState": zod.object({
+  "selectedSource": zod.enum(['paste', 'html', 'zip', 'github', 'hosted', 'playground']),
+  "selectedFilePath": zod.string().max(createSavedProjectBodyEditorStateSelectedFilePathMax).nullable(),
+  "analyzedRevision": zod.number().min(createSavedProjectBodyEditorStateAnalyzedRevisionMin).nullable(),
+  "analysisStale": zod.boolean(),
+  "readinessChecklist": zod.array(zod.object({
+  "key": zod.string().max(createSavedProjectBodyEditorStateReadinessChecklistItemKeyMax),
+  "title": zod.string().max(createSavedProjectBodyEditorStateReadinessChecklistItemTitleMax),
+  "requiredChange": zod.string().max(createSavedProjectBodyEditorStateReadinessChecklistItemRequiredChangeMax),
+  "completed": zod.boolean()
+})).max(createSavedProjectBodyEditorStateReadinessChecklistMax)
+})
+})
+
+export const createSavedProjectResponseTwoBundleFilesItemPathMax = 512;
+
+export const createSavedProjectResponseTwoBundleFilesItemContentMax = 2097152;
+
+export const createSavedProjectResponseTwoBundleFilesMax = 200;
+
+export const createSavedProjectResponseTwoBundleEntrypointMax = 512;
+
+export const createSavedProjectResponseTwoBundleMetadataDisplayNameMax = 120;
+
+export const createSavedProjectResponseTwoBundleMetadataWarningsItemMax = 500;
+
+export const createSavedProjectResponseTwoBundleMetadataWarningsMax = 20;
+
+export const createSavedProjectResponseTwoBundleMetadataResolvedRefMax = 256;
+
+export const createSavedProjectResponseTwoBundleMetadataResolvedCommitShaMax = 64;
+
+export const createSavedProjectResponseTwoBundleMetadataEntrypointCandidatesMax = 20;
+
+export const createSavedProjectResponseTwoEditorStateSelectedFilePathMax = 512;
+
+export const createSavedProjectResponseTwoEditorStateAnalyzedRevisionMin = 0;
+
+export const createSavedProjectResponseTwoEditorStateReadinessChecklistItemKeyMax = 512;
+
+export const createSavedProjectResponseTwoEditorStateReadinessChecklistItemTitleMax = 500;
+
+export const createSavedProjectResponseTwoEditorStateReadinessChecklistItemRequiredChangeMax = 2000;
+
+export const createSavedProjectResponseTwoEditorStateReadinessChecklistMax = 50;
+
+
+
+export const CreateSavedProjectResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "sourceType": zod.enum(['pasted_html', 'single_file', 'zip_project', 'github_repository', 'hosted_page', 'playground']),
+  "entrypoint": zod.string(),
+  "analysisStatus": zod.enum(['ready', 'stale']),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).and(zod.object({
+  "bundle": zod.object({
+  "version": zod.literal(1),
+  "sourceType": zod.enum(['pasted_html', 'single_file', 'zip_project', 'github_repository', 'hosted_page', 'playground']),
+  "files": zod.array(zod.object({
+  "path": zod.string().min(1).max(createSavedProjectResponseTwoBundleFilesItemPathMax),
+  "content": zod.string().max(createSavedProjectResponseTwoBundleFilesItemContentMax)
+})).min(1).max(createSavedProjectResponseTwoBundleFilesMax),
+  "entrypoint": zod.string().min(1).max(createSavedProjectResponseTwoBundleEntrypointMax),
+  "metadata": zod.object({
+  "displayName": zod.string().min(1).max(createSavedProjectResponseTwoBundleMetadataDisplayNameMax),
+  "sourceUrl": zod.string().optional(),
+  "originalUrl": zod.string().optional(),
+  "finalUrl": zod.string().optional(),
+  "warnings": zod.array(zod.string().max(createSavedProjectResponseTwoBundleMetadataWarningsItemMax)).max(createSavedProjectResponseTwoBundleMetadataWarningsMax).optional(),
+  "resolvedRef": zod.string().max(createSavedProjectResponseTwoBundleMetadataResolvedRefMax).optional(),
+  "resolvedCommitSha": zod.string().max(createSavedProjectResponseTwoBundleMetadataResolvedCommitShaMax).optional(),
+  "entrypointCandidates": zod.array(zod.string()).max(createSavedProjectResponseTwoBundleMetadataEntrypointCandidatesMax).optional()
+})
+}),
+  "analysis": zod.object({
+  "title": zod.string(),
+  "bytes": zod.number(),
+  "scriptCount": zod.number(),
+  "externalScriptCount": zod.number(),
+  "inlineScriptCount": zod.number(),
+  "externalAssetCount": zod.number(),
+  "aiSignalCount": zod.number(),
+  "findings": zod.array(zod.object({
+  "severity": zod.enum(['info', 'warning', 'blocker']),
+  "title": zod.string(),
+  "detail": zod.string(),
+  "action": zod.string()
+})),
+  "steps": zod.array(zod.string()),
+  "sourceType": zod.enum(['pasted_html', 'single_file', 'zip_project', 'github_repository', 'hosted_page', 'playground']),
+  "entrypoint": zod.string(),
+  "fileCount": zod.number(),
+  "totalBytes": zod.number(),
+  "files": zod.array(zod.string()),
+  "localAssetReferences": zod.array(zod.string()),
+  "externalDependencies": zod.array(zod.string())
+}),
+  "editorState": zod.object({
+  "selectedSource": zod.enum(['paste', 'html', 'zip', 'github', 'hosted', 'playground']),
+  "selectedFilePath": zod.string().max(createSavedProjectResponseTwoEditorStateSelectedFilePathMax).nullable(),
+  "analyzedRevision": zod.number().min(createSavedProjectResponseTwoEditorStateAnalyzedRevisionMin).nullable(),
+  "analysisStale": zod.boolean(),
+  "readinessChecklist": zod.array(zod.object({
+  "key": zod.string().max(createSavedProjectResponseTwoEditorStateReadinessChecklistItemKeyMax),
+  "title": zod.string().max(createSavedProjectResponseTwoEditorStateReadinessChecklistItemTitleMax),
+  "requiredChange": zod.string().max(createSavedProjectResponseTwoEditorStateReadinessChecklistItemRequiredChangeMax),
+  "completed": zod.boolean()
+})).max(createSavedProjectResponseTwoEditorStateReadinessChecklistMax)
+})
+}))
+
+
+/**
+ * @summary Open one of the signed-in user's saved projects
+ */
+export const GetSavedProjectParams = zod.object({
+  "projectId": zod.coerce.string()
+})
+
+export const getSavedProjectResponseTwoBundleFilesItemPathMax = 512;
+
+export const getSavedProjectResponseTwoBundleFilesItemContentMax = 2097152;
+
+export const getSavedProjectResponseTwoBundleFilesMax = 200;
+
+export const getSavedProjectResponseTwoBundleEntrypointMax = 512;
+
+export const getSavedProjectResponseTwoBundleMetadataDisplayNameMax = 120;
+
+export const getSavedProjectResponseTwoBundleMetadataWarningsItemMax = 500;
+
+export const getSavedProjectResponseTwoBundleMetadataWarningsMax = 20;
+
+export const getSavedProjectResponseTwoBundleMetadataResolvedRefMax = 256;
+
+export const getSavedProjectResponseTwoBundleMetadataResolvedCommitShaMax = 64;
+
+export const getSavedProjectResponseTwoBundleMetadataEntrypointCandidatesMax = 20;
+
+export const getSavedProjectResponseTwoEditorStateSelectedFilePathMax = 512;
+
+export const getSavedProjectResponseTwoEditorStateAnalyzedRevisionMin = 0;
+
+export const getSavedProjectResponseTwoEditorStateReadinessChecklistItemKeyMax = 512;
+
+export const getSavedProjectResponseTwoEditorStateReadinessChecklistItemTitleMax = 500;
+
+export const getSavedProjectResponseTwoEditorStateReadinessChecklistItemRequiredChangeMax = 2000;
+
+export const getSavedProjectResponseTwoEditorStateReadinessChecklistMax = 50;
+
+
+
+export const GetSavedProjectResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "sourceType": zod.enum(['pasted_html', 'single_file', 'zip_project', 'github_repository', 'hosted_page', 'playground']),
+  "entrypoint": zod.string(),
+  "analysisStatus": zod.enum(['ready', 'stale']),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).and(zod.object({
+  "bundle": zod.object({
+  "version": zod.literal(1),
+  "sourceType": zod.enum(['pasted_html', 'single_file', 'zip_project', 'github_repository', 'hosted_page', 'playground']),
+  "files": zod.array(zod.object({
+  "path": zod.string().min(1).max(getSavedProjectResponseTwoBundleFilesItemPathMax),
+  "content": zod.string().max(getSavedProjectResponseTwoBundleFilesItemContentMax)
+})).min(1).max(getSavedProjectResponseTwoBundleFilesMax),
+  "entrypoint": zod.string().min(1).max(getSavedProjectResponseTwoBundleEntrypointMax),
+  "metadata": zod.object({
+  "displayName": zod.string().min(1).max(getSavedProjectResponseTwoBundleMetadataDisplayNameMax),
+  "sourceUrl": zod.string().optional(),
+  "originalUrl": zod.string().optional(),
+  "finalUrl": zod.string().optional(),
+  "warnings": zod.array(zod.string().max(getSavedProjectResponseTwoBundleMetadataWarningsItemMax)).max(getSavedProjectResponseTwoBundleMetadataWarningsMax).optional(),
+  "resolvedRef": zod.string().max(getSavedProjectResponseTwoBundleMetadataResolvedRefMax).optional(),
+  "resolvedCommitSha": zod.string().max(getSavedProjectResponseTwoBundleMetadataResolvedCommitShaMax).optional(),
+  "entrypointCandidates": zod.array(zod.string()).max(getSavedProjectResponseTwoBundleMetadataEntrypointCandidatesMax).optional()
+})
+}),
+  "analysis": zod.object({
+  "title": zod.string(),
+  "bytes": zod.number(),
+  "scriptCount": zod.number(),
+  "externalScriptCount": zod.number(),
+  "inlineScriptCount": zod.number(),
+  "externalAssetCount": zod.number(),
+  "aiSignalCount": zod.number(),
+  "findings": zod.array(zod.object({
+  "severity": zod.enum(['info', 'warning', 'blocker']),
+  "title": zod.string(),
+  "detail": zod.string(),
+  "action": zod.string()
+})),
+  "steps": zod.array(zod.string()),
+  "sourceType": zod.enum(['pasted_html', 'single_file', 'zip_project', 'github_repository', 'hosted_page', 'playground']),
+  "entrypoint": zod.string(),
+  "fileCount": zod.number(),
+  "totalBytes": zod.number(),
+  "files": zod.array(zod.string()),
+  "localAssetReferences": zod.array(zod.string()),
+  "externalDependencies": zod.array(zod.string())
+}),
+  "editorState": zod.object({
+  "selectedSource": zod.enum(['paste', 'html', 'zip', 'github', 'hosted', 'playground']),
+  "selectedFilePath": zod.string().max(getSavedProjectResponseTwoEditorStateSelectedFilePathMax).nullable(),
+  "analyzedRevision": zod.number().min(getSavedProjectResponseTwoEditorStateAnalyzedRevisionMin).nullable(),
+  "analysisStale": zod.boolean(),
+  "readinessChecklist": zod.array(zod.object({
+  "key": zod.string().max(getSavedProjectResponseTwoEditorStateReadinessChecklistItemKeyMax),
+  "title": zod.string().max(getSavedProjectResponseTwoEditorStateReadinessChecklistItemTitleMax),
+  "requiredChange": zod.string().max(getSavedProjectResponseTwoEditorStateReadinessChecklistItemRequiredChangeMax),
+  "completed": zod.boolean()
+})).max(getSavedProjectResponseTwoEditorStateReadinessChecklistMax)
+})
+}))
+
+
+/**
+ * @summary Replace a saved project's current state
+ */
+export const UpdateSavedProjectParams = zod.object({
+  "projectId": zod.coerce.string()
+})
+
+export const updateSavedProjectBodyNameMax = 120;
+
+export const updateSavedProjectBodyBundleFilesItemPathMax = 512;
+
+export const updateSavedProjectBodyBundleFilesItemContentMax = 2097152;
+
+export const updateSavedProjectBodyBundleFilesMax = 200;
+
+export const updateSavedProjectBodyBundleEntrypointMax = 512;
+
+export const updateSavedProjectBodyBundleMetadataDisplayNameMax = 120;
+
+export const updateSavedProjectBodyBundleMetadataWarningsItemMax = 500;
+
+export const updateSavedProjectBodyBundleMetadataWarningsMax = 20;
+
+export const updateSavedProjectBodyBundleMetadataResolvedRefMax = 256;
+
+export const updateSavedProjectBodyBundleMetadataResolvedCommitShaMax = 64;
+
+export const updateSavedProjectBodyBundleMetadataEntrypointCandidatesMax = 20;
+
+export const updateSavedProjectBodyEditorStateSelectedFilePathMax = 512;
+
+export const updateSavedProjectBodyEditorStateAnalyzedRevisionMin = 0;
+
+export const updateSavedProjectBodyEditorStateReadinessChecklistItemKeyMax = 512;
+
+export const updateSavedProjectBodyEditorStateReadinessChecklistItemTitleMax = 500;
+
+export const updateSavedProjectBodyEditorStateReadinessChecklistItemRequiredChangeMax = 2000;
+
+export const updateSavedProjectBodyEditorStateReadinessChecklistMax = 50;
+
+
+
+export const UpdateSavedProjectBody = zod.object({
+  "name": zod.string().min(1).max(updateSavedProjectBodyNameMax),
+  "bundle": zod.object({
+  "version": zod.literal(1),
+  "sourceType": zod.enum(['pasted_html', 'single_file', 'zip_project', 'github_repository', 'hosted_page', 'playground']),
+  "files": zod.array(zod.object({
+  "path": zod.string().min(1).max(updateSavedProjectBodyBundleFilesItemPathMax),
+  "content": zod.string().max(updateSavedProjectBodyBundleFilesItemContentMax)
+})).min(1).max(updateSavedProjectBodyBundleFilesMax),
+  "entrypoint": zod.string().min(1).max(updateSavedProjectBodyBundleEntrypointMax),
+  "metadata": zod.object({
+  "displayName": zod.string().min(1).max(updateSavedProjectBodyBundleMetadataDisplayNameMax),
+  "sourceUrl": zod.string().optional(),
+  "originalUrl": zod.string().optional(),
+  "finalUrl": zod.string().optional(),
+  "warnings": zod.array(zod.string().max(updateSavedProjectBodyBundleMetadataWarningsItemMax)).max(updateSavedProjectBodyBundleMetadataWarningsMax).optional(),
+  "resolvedRef": zod.string().max(updateSavedProjectBodyBundleMetadataResolvedRefMax).optional(),
+  "resolvedCommitSha": zod.string().max(updateSavedProjectBodyBundleMetadataResolvedCommitShaMax).optional(),
+  "entrypointCandidates": zod.array(zod.string()).max(updateSavedProjectBodyBundleMetadataEntrypointCandidatesMax).optional()
+})
+}),
+  "analysis": zod.object({
+  "title": zod.string(),
+  "bytes": zod.number(),
+  "scriptCount": zod.number(),
+  "externalScriptCount": zod.number(),
+  "inlineScriptCount": zod.number(),
+  "externalAssetCount": zod.number(),
+  "aiSignalCount": zod.number(),
+  "findings": zod.array(zod.object({
+  "severity": zod.enum(['info', 'warning', 'blocker']),
+  "title": zod.string(),
+  "detail": zod.string(),
+  "action": zod.string()
+})),
+  "steps": zod.array(zod.string()),
+  "sourceType": zod.enum(['pasted_html', 'single_file', 'zip_project', 'github_repository', 'hosted_page', 'playground']),
+  "entrypoint": zod.string(),
+  "fileCount": zod.number(),
+  "totalBytes": zod.number(),
+  "files": zod.array(zod.string()),
+  "localAssetReferences": zod.array(zod.string()),
+  "externalDependencies": zod.array(zod.string())
+}),
+  "editorState": zod.object({
+  "selectedSource": zod.enum(['paste', 'html', 'zip', 'github', 'hosted', 'playground']),
+  "selectedFilePath": zod.string().max(updateSavedProjectBodyEditorStateSelectedFilePathMax).nullable(),
+  "analyzedRevision": zod.number().min(updateSavedProjectBodyEditorStateAnalyzedRevisionMin).nullable(),
+  "analysisStale": zod.boolean(),
+  "readinessChecklist": zod.array(zod.object({
+  "key": zod.string().max(updateSavedProjectBodyEditorStateReadinessChecklistItemKeyMax),
+  "title": zod.string().max(updateSavedProjectBodyEditorStateReadinessChecklistItemTitleMax),
+  "requiredChange": zod.string().max(updateSavedProjectBodyEditorStateReadinessChecklistItemRequiredChangeMax),
+  "completed": zod.boolean()
+})).max(updateSavedProjectBodyEditorStateReadinessChecklistMax)
+})
+})
+
+export const updateSavedProjectResponseTwoBundleFilesItemPathMax = 512;
+
+export const updateSavedProjectResponseTwoBundleFilesItemContentMax = 2097152;
+
+export const updateSavedProjectResponseTwoBundleFilesMax = 200;
+
+export const updateSavedProjectResponseTwoBundleEntrypointMax = 512;
+
+export const updateSavedProjectResponseTwoBundleMetadataDisplayNameMax = 120;
+
+export const updateSavedProjectResponseTwoBundleMetadataWarningsItemMax = 500;
+
+export const updateSavedProjectResponseTwoBundleMetadataWarningsMax = 20;
+
+export const updateSavedProjectResponseTwoBundleMetadataResolvedRefMax = 256;
+
+export const updateSavedProjectResponseTwoBundleMetadataResolvedCommitShaMax = 64;
+
+export const updateSavedProjectResponseTwoBundleMetadataEntrypointCandidatesMax = 20;
+
+export const updateSavedProjectResponseTwoEditorStateSelectedFilePathMax = 512;
+
+export const updateSavedProjectResponseTwoEditorStateAnalyzedRevisionMin = 0;
+
+export const updateSavedProjectResponseTwoEditorStateReadinessChecklistItemKeyMax = 512;
+
+export const updateSavedProjectResponseTwoEditorStateReadinessChecklistItemTitleMax = 500;
+
+export const updateSavedProjectResponseTwoEditorStateReadinessChecklistItemRequiredChangeMax = 2000;
+
+export const updateSavedProjectResponseTwoEditorStateReadinessChecklistMax = 50;
+
+
+
+export const UpdateSavedProjectResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "sourceType": zod.enum(['pasted_html', 'single_file', 'zip_project', 'github_repository', 'hosted_page', 'playground']),
+  "entrypoint": zod.string(),
+  "analysisStatus": zod.enum(['ready', 'stale']),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).and(zod.object({
+  "bundle": zod.object({
+  "version": zod.literal(1),
+  "sourceType": zod.enum(['pasted_html', 'single_file', 'zip_project', 'github_repository', 'hosted_page', 'playground']),
+  "files": zod.array(zod.object({
+  "path": zod.string().min(1).max(updateSavedProjectResponseTwoBundleFilesItemPathMax),
+  "content": zod.string().max(updateSavedProjectResponseTwoBundleFilesItemContentMax)
+})).min(1).max(updateSavedProjectResponseTwoBundleFilesMax),
+  "entrypoint": zod.string().min(1).max(updateSavedProjectResponseTwoBundleEntrypointMax),
+  "metadata": zod.object({
+  "displayName": zod.string().min(1).max(updateSavedProjectResponseTwoBundleMetadataDisplayNameMax),
+  "sourceUrl": zod.string().optional(),
+  "originalUrl": zod.string().optional(),
+  "finalUrl": zod.string().optional(),
+  "warnings": zod.array(zod.string().max(updateSavedProjectResponseTwoBundleMetadataWarningsItemMax)).max(updateSavedProjectResponseTwoBundleMetadataWarningsMax).optional(),
+  "resolvedRef": zod.string().max(updateSavedProjectResponseTwoBundleMetadataResolvedRefMax).optional(),
+  "resolvedCommitSha": zod.string().max(updateSavedProjectResponseTwoBundleMetadataResolvedCommitShaMax).optional(),
+  "entrypointCandidates": zod.array(zod.string()).max(updateSavedProjectResponseTwoBundleMetadataEntrypointCandidatesMax).optional()
+})
+}),
+  "analysis": zod.object({
+  "title": zod.string(),
+  "bytes": zod.number(),
+  "scriptCount": zod.number(),
+  "externalScriptCount": zod.number(),
+  "inlineScriptCount": zod.number(),
+  "externalAssetCount": zod.number(),
+  "aiSignalCount": zod.number(),
+  "findings": zod.array(zod.object({
+  "severity": zod.enum(['info', 'warning', 'blocker']),
+  "title": zod.string(),
+  "detail": zod.string(),
+  "action": zod.string()
+})),
+  "steps": zod.array(zod.string()),
+  "sourceType": zod.enum(['pasted_html', 'single_file', 'zip_project', 'github_repository', 'hosted_page', 'playground']),
+  "entrypoint": zod.string(),
+  "fileCount": zod.number(),
+  "totalBytes": zod.number(),
+  "files": zod.array(zod.string()),
+  "localAssetReferences": zod.array(zod.string()),
+  "externalDependencies": zod.array(zod.string())
+}),
+  "editorState": zod.object({
+  "selectedSource": zod.enum(['paste', 'html', 'zip', 'github', 'hosted', 'playground']),
+  "selectedFilePath": zod.string().max(updateSavedProjectResponseTwoEditorStateSelectedFilePathMax).nullable(),
+  "analyzedRevision": zod.number().min(updateSavedProjectResponseTwoEditorStateAnalyzedRevisionMin).nullable(),
+  "analysisStale": zod.boolean(),
+  "readinessChecklist": zod.array(zod.object({
+  "key": zod.string().max(updateSavedProjectResponseTwoEditorStateReadinessChecklistItemKeyMax),
+  "title": zod.string().max(updateSavedProjectResponseTwoEditorStateReadinessChecklistItemTitleMax),
+  "requiredChange": zod.string().max(updateSavedProjectResponseTwoEditorStateReadinessChecklistItemRequiredChangeMax),
+  "completed": zod.boolean()
+})).max(updateSavedProjectResponseTwoEditorStateReadinessChecklistMax)
+})
+}))
+
+
+/**
+ * @summary Delete one of the signed-in user's saved projects
+ */
+export const DeleteSavedProjectParams = zod.object({
+  "projectId": zod.coerce.string()
+})
+
+export const DeleteSavedProjectResponse = zod.void()
+
+
+/**
  * @deprecated
  * @summary Get legacy automatic project handoff status
  */

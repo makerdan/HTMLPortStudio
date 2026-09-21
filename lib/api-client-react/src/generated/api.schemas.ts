@@ -409,6 +409,80 @@ export interface GithubEntrypointChoice {
   entrypointCandidates: string[];
 }
 
+export type SavedProjectEditorStateSelectedSource = typeof SavedProjectEditorStateSelectedSource[keyof typeof SavedProjectEditorStateSelectedSource];
+
+
+export const SavedProjectEditorStateSelectedSource = {
+  paste: 'paste',
+  html: 'html',
+  zip: 'zip',
+  github: 'github',
+  hosted: 'hosted',
+  playground: 'playground',
+} as const;
+
+export type SavedProjectEditorStateReadinessChecklistItem = {
+  /** @maxLength 512 */
+  key: string;
+  /** @maxLength 500 */
+  title: string;
+  /** @maxLength 2000 */
+  requiredChange: string;
+  completed: boolean;
+};
+
+export interface SavedProjectEditorState {
+  selectedSource: SavedProjectEditorStateSelectedSource;
+  /**
+     * @maxLength 512
+     * @nullable
+     */
+  selectedFilePath: string | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  analyzedRevision: number | null;
+  analysisStale: boolean;
+  /** @maxItems 50 */
+  readinessChecklist: SavedProjectEditorStateReadinessChecklistItem[];
+}
+
+export interface SavedProjectInput {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  name: string;
+  bundle: SourceBundle;
+  analysis: HtmlAnalysis;
+  editorState: SavedProjectEditorState;
+}
+
+export type SavedProjectSummaryAnalysisStatus = typeof SavedProjectSummaryAnalysisStatus[keyof typeof SavedProjectSummaryAnalysisStatus];
+
+
+export const SavedProjectSummaryAnalysisStatus = {
+  ready: 'ready',
+  stale: 'stale',
+} as const;
+
+export interface SavedProjectSummary {
+  id: string;
+  name: string;
+  sourceType: SourceType;
+  entrypoint: string;
+  analysisStatus: SavedProjectSummaryAnalysisStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type SavedProject = SavedProjectSummary & {
+  bundle: SourceBundle;
+  analysis: HtmlAnalysis;
+  editorState: SavedProjectEditorState;
+};
+
 export interface GithubImport {
   bundle: SourceBundle;
   analysis: HtmlAnalysis;

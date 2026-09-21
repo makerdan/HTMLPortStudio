@@ -578,6 +578,152 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /port/saved-projects:
+    get:
+      operationId: listSavedProjects
+      tags: [porting]
+      summary: List the signed-in user's saved HTML projects
+      security: []
+      responses:
+        "200":
+          description: Owner-scoped saved project summaries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SavedProjectSummary"
+        "401":
+          description: Login required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createSavedProject
+      tags: [porting]
+      summary: Save the current normalized HTML project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SavedProjectInput"
+      responses:
+        "201":
+          description: Saved project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SavedProject"
+        "400":
+          description: Invalid or unsafe saved project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Login required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /port/saved-projects/{projectId}:
+    get:
+      operationId: getSavedProject
+      tags: [porting]
+      summary: Open one of the signed-in user's saved projects
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Saved project with normalized source and analysis context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SavedProject"
+        "401":
+          description: Login required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project is not owned by the caller or is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateSavedProject
+      tags: [porting]
+      summary: Replace a saved project's current state
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SavedProjectInput"
+      responses:
+        "200":
+          description: Updated saved project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SavedProject"
+        "400":
+          description: Invalid or unsafe saved project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Login required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project is not owned by the caller or is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteSavedProject
+      tags: [porting]
+      summary: Delete one of the signed-in user's saved projects
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Project deleted
+        "401":
+          description: Login required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project is not owned by the caller or is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /port/replit-projects/{jobId}:
     get:
       operationId: getReplitProjectStatus
@@ -1153,6 +1299,89 @@ components:
           items:
             type: string
       required: [error, code, entrypointCandidates]
+    SavedProjectEditorState:
+      type: object
+      additionalProperties: false
+      required: [selectedSource, selectedFilePath, analyzedRevision, analysisStale, readinessChecklist]
+      properties:
+        selectedSource:
+          type: string
+          enum: [paste, html, zip, github, hosted, playground]
+        selectedFilePath:
+          type: ["string", "null"]
+          maxLength: 512
+        analyzedRevision:
+          type: ["number", "null"]
+          minimum: 0
+        analysisStale:
+          type: boolean
+        readinessChecklist:
+          type: array
+          maxItems: 50
+          items:
+            type: object
+            additionalProperties: false
+            required: [key, title, requiredChange, completed]
+            properties:
+              key:
+                type: string
+                maxLength: 512
+              title:
+                type: string
+                maxLength: 500
+              requiredChange:
+                type: string
+                maxLength: 2000
+              completed:
+                type: boolean
+    SavedProjectInput:
+      type: object
+      additionalProperties: false
+      required: [name, bundle, analysis, editorState]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        bundle:
+          $ref: "#/components/schemas/SourceBundle"
+        analysis:
+          $ref: "#/components/schemas/HtmlAnalysis"
+        editorState:
+          $ref: "#/components/schemas/SavedProjectEditorState"
+    SavedProjectSummary:
+      type: object
+      required: [id, name, sourceType, entrypoint, analysisStatus, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        sourceType:
+          $ref: "#/components/schemas/SourceType"
+        entrypoint:
+          type: string
+        analysisStatus:
+          type: string
+          enum: [ready, stale]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    SavedProject:
+      allOf:
+        - $ref: "#/components/schemas/SavedProjectSummary"
+        - type: object
+          required: [bundle, analysis, editorState]
+          properties:
+            bundle:
+              $ref: "#/components/schemas/SourceBundle"
+            analysis:
+              $ref: "#/components/schemas/HtmlAnalysis"
+            editorState:
+              $ref: "#/components/schemas/SavedProjectEditorState"
     GithubImport:
       type: object
       properties:

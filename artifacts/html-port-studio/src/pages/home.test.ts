@@ -1399,3 +1399,36 @@ test("keeps the editor stale when analysis fails", async () => {
   assert.match(submitSource, /onError: \(\) => \{\s*if \(sessionId !== importSessionRef\.current \|\| requestRevision !== sourceRevisionRef\.current\) return;\s*\/\/ A failed retry must never make the current revision look analyzed\.\s*\/\/ Keep the existing report and editor feedback available for another attempt\.\s*setAnalysisStale\(true\);/s);
   assert.doesNotMatch(submitSource, /onError:[\s\S]*setAnalysisData\(null\)/);
 });
+
+test("covers the authenticated saved-project lifecycle without mixing browser recovery state", async () => {
+  const home = await readFile(new URL("./home.tsx", import.meta.url), "utf8");
+  const routes = await readFile(
+    new URL("../../../api-server/src/routes/port.ts", import.meta.url),
+    "utf8",
+  );
+  const schema = await readFile(
+    new URL("../../../../lib/api-spec/openapi.yaml", import.meta.url),
+    "utf8",
+  );
+
+  for (const hook of [
+    "useListSavedProjects",
+    "useCreateSavedProject",
+    "useGetSavedProject",
+    "useUpdateSavedProject",
+    "useDeleteSavedProject",
+  ]) {
+    assert.match(home, new RegExp(hook));
+  }
+  assert.match(home, /Server-saved source and analysis are separate from browser-only recovery metadata/);
+  assert.match(home, /savedProjectRequestRef\.current \+= 1/);
+  assert.match(home, /Your current source was kept/);
+  assert.match(home, /setSavedProjectId\(null\)/);
+  assert.match(routes, /eq\(savedProjectsTable\.ownerId, req\.dbUser!\.id\)/);
+  assert.match(routes, /router\.delete\(\s*[\s\S]*saved-projects\/:projectId/);
+  assert.match(routes, /normalizeBundle\(\{ bundle: parsed\.data\.bundle as SourceBundle \}\)/);
+  assert.match(schema, /operationId: listSavedProjects/);
+  assert.match(schema, /operationId: createSavedProject/);
+  assert.match(schema, /operationId: updateSavedProject/);
+  assert.match(schema, /operationId: deleteSavedProject/);
+});

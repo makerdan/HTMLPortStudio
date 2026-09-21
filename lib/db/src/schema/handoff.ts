@@ -96,6 +96,30 @@ export const handoffTransferPackagesTable = pgTable(
   ],
 );
 
+export const savedProjectsTable = pgTable(
+  "saved_projects",
+  {
+    id: uuid("id").primaryKey(),
+    ownerId: varchar("owner_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 120 }).notNull(),
+    sourceType: varchar("source_type", { length: 32 }).notNull(),
+    entrypoint: varchar("entrypoint", { length: 512 }).notNull(),
+    sourceBundle: jsonb("source_bundle").notNull(),
+    analysis: jsonb("analysis").notNull(),
+    editorState: jsonb("editor_state").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index("saved_projects_owner_updated_idx").on(table.ownerId, table.updatedAt),
+  ],
+);
+
 export const handoffJobsRelations = relations(handoffJobsTable, ({ many, one }) => ({
   owner: one(usersTable, {
     fields: [handoffJobsTable.ownerId],
@@ -126,6 +150,14 @@ export const handoffTransferPackagesRelations = relations(
   }),
 );
 
+export const savedProjectsRelations = relations(savedProjectsTable, ({ one }) => ({
+  owner: one(usersTable, {
+    fields: [savedProjectsTable.ownerId],
+    references: [usersTable.id],
+  }),
+}));
+
 export type HandoffJobRow = typeof handoffJobsTable.$inferSelect;
 export type HandoffStepRow = typeof handoffStepsTable.$inferSelect;
 export type HandoffTransferPackageRow = typeof handoffTransferPackagesTable.$inferSelect;
+export type SavedProjectRow = typeof savedProjectsTable.$inferSelect;

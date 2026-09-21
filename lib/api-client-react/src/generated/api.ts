@@ -46,7 +46,10 @@ import type {
   ReplitProjectConnectionSetup,
   ReplitProjectConnectionStatus,
   ReplitProjectHandoff,
-  ReplitProjectInput
+  ReplitProjectInput,
+  SavedProject,
+  SavedProjectInput,
+  SavedProjectSummary
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -1358,6 +1361,374 @@ export const useCreateReplitProject = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getCreateReplitProjectMutationOptions(options));
+    }
+
+export const getListSavedProjectsUrl = () => {
+
+
+
+
+  return `/api/port/saved-projects`
+}
+
+/**
+ * @summary List the signed-in user's saved HTML projects
+ */
+export const listSavedProjects = async ( options?: Parameters<typeof customFetch>[1]): Promise<SavedProjectSummary[]> => {
+
+  return customFetch<SavedProjectSummary[]>(getListSavedProjectsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSavedProjectsQueryKey = () => {
+    return [
+    `/api/port/saved-projects`
+    ] as const;
+    }
+
+
+export const getListSavedProjectsQueryOptions = <TData = Awaited<ReturnType<typeof listSavedProjects>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSavedProjects>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSavedProjectsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSavedProjects>>> = ({ signal }) => listSavedProjects({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSavedProjects>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSavedProjectsQueryResult = NonNullable<Awaited<ReturnType<typeof listSavedProjects>>>
+export type ListSavedProjectsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List the signed-in user's saved HTML projects
+ */
+
+export function useListSavedProjects<TData = Awaited<ReturnType<typeof listSavedProjects>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSavedProjects>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSavedProjectsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateSavedProjectUrl = () => {
+
+
+
+
+  return `/api/port/saved-projects`
+}
+
+/**
+ * @summary Save the current normalized HTML project
+ */
+export const createSavedProject = async (savedProjectInput: SavedProjectInput, options?: Parameters<typeof customFetch>[1]): Promise<SavedProject> => {
+
+  return customFetch<SavedProject>(getCreateSavedProjectUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(savedProjectInput)
+  }
+);}
+
+
+
+
+
+export const getCreateSavedProjectMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSavedProject>>, TError,{data: BodyType<SavedProjectInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createSavedProject>>, TError,{data: BodyType<SavedProjectInput>}, TContext> => {
+
+const mutationKey = ['createSavedProject'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSavedProject>>, {data: BodyType<SavedProjectInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createSavedProject(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateSavedProjectMutationResult = NonNullable<Awaited<ReturnType<typeof createSavedProject>>>
+    export type CreateSavedProjectMutationBody = BodyType<SavedProjectInput>
+    export type CreateSavedProjectMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Save the current normalized HTML project
+ */
+export const useCreateSavedProject = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSavedProject>>, TError,{data: BodyType<SavedProjectInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createSavedProject>>,
+        TError,
+        {data: BodyType<SavedProjectInput>},
+        TContext
+      > => {
+      return useMutation(getCreateSavedProjectMutationOptions(options));
+    }
+
+export const getGetSavedProjectUrl = (projectId: string,) => {
+
+
+
+
+  return `/api/port/saved-projects/${projectId}`
+}
+
+/**
+ * @summary Open one of the signed-in user's saved projects
+ */
+export const getSavedProject = async (projectId: string, options?: Parameters<typeof customFetch>[1]): Promise<SavedProject> => {
+
+  return customFetch<SavedProject>(getGetSavedProjectUrl(projectId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSavedProjectQueryKey = (projectId: string,) => {
+    return [
+    `/api/port/saved-projects/${projectId}`
+    ] as const;
+    }
+
+
+export const getGetSavedProjectQueryOptions = <TData = Awaited<ReturnType<typeof getSavedProject>>, TError = ErrorType<ErrorResponse>>(projectId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSavedProject>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSavedProjectQueryKey(projectId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSavedProject>>> = ({ signal }) => getSavedProject(projectId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: projectId !== null && projectId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSavedProject>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSavedProjectQueryResult = NonNullable<Awaited<ReturnType<typeof getSavedProject>>>
+export type GetSavedProjectQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Open one of the signed-in user's saved projects
+ */
+
+export function useGetSavedProject<TData = Awaited<ReturnType<typeof getSavedProject>>, TError = ErrorType<ErrorResponse>>(
+ projectId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSavedProject>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSavedProjectQueryOptions(projectId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateSavedProjectUrl = (projectId: string,) => {
+
+
+
+
+  return `/api/port/saved-projects/${projectId}`
+}
+
+/**
+ * @summary Replace a saved project's current state
+ */
+export const updateSavedProject = async (projectId: string,
+    savedProjectInput: SavedProjectInput, options?: Parameters<typeof customFetch>[1]): Promise<SavedProject> => {
+
+  return customFetch<SavedProject>(getUpdateSavedProjectUrl(projectId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(savedProjectInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateSavedProjectMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSavedProject>>, TError,{projectId: string;data: BodyType<SavedProjectInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateSavedProject>>, TError,{projectId: string;data: BodyType<SavedProjectInput>}, TContext> => {
+
+const mutationKey = ['updateSavedProject'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateSavedProject>>, {projectId: string;data: BodyType<SavedProjectInput>}> = (props) => {
+          const {projectId,data} = props ?? {};
+
+          return  updateSavedProject(projectId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateSavedProjectMutationResult = NonNullable<Awaited<ReturnType<typeof updateSavedProject>>>
+    export type UpdateSavedProjectMutationBody = BodyType<SavedProjectInput>
+    export type UpdateSavedProjectMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Replace a saved project's current state
+ */
+export const useUpdateSavedProject = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSavedProject>>, TError,{projectId: string;data: BodyType<SavedProjectInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateSavedProject>>,
+        TError,
+        {projectId: string;data: BodyType<SavedProjectInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateSavedProjectMutationOptions(options));
+    }
+
+export const getDeleteSavedProjectUrl = (projectId: string,) => {
+
+
+
+
+  return `/api/port/saved-projects/${projectId}`
+}
+
+/**
+ * @summary Delete one of the signed-in user's saved projects
+ */
+export const deleteSavedProject = async (projectId: string, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getDeleteSavedProjectUrl(projectId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteSavedProjectMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSavedProject>>, TError,{projectId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteSavedProject>>, TError,{projectId: string}, TContext> => {
+
+const mutationKey = ['deleteSavedProject'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteSavedProject>>, {projectId: string}> = (props) => {
+          const {projectId} = props ?? {};
+
+          return  deleteSavedProject(projectId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteSavedProjectMutationResult = NonNullable<Awaited<ReturnType<typeof deleteSavedProject>>>
+
+    export type DeleteSavedProjectMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete one of the signed-in user's saved projects
+ */
+export const useDeleteSavedProject = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSavedProject>>, TError,{projectId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteSavedProject>>,
+        TError,
+        {projectId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteSavedProjectMutationOptions(options));
     }
 
 export const getGetReplitProjectStatusUrl = (jobId: string,) => {
