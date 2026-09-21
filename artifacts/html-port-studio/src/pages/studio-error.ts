@@ -34,7 +34,9 @@ export const STUDIO_ERROR_MESSAGES = {
   POE_AUTHENTICATION_FAILED:
     'The assistant connection could not be authorized. Try again later or ask an administrator to check the server setup.',
   POE_CAPABILITY_UNAVAILABLE:
-    'That assistant capability is not available. Refresh model availability, then try again.',
+    'That assistant capability is not available in the approved server registry. Try again.',
+  POE_CAPABILITY_UNSUPPORTED:
+    'The selected model is not approved for that assistant capability.',
   POE_COMPLETION_INVALID:
     'The assistant returned an invalid response. Your request is ready to retry.',
   CSRF_ORIGIN_REJECTED: 'Refresh the Studio and try the request again.',
@@ -42,6 +44,8 @@ export const STUDIO_ERROR_MESSAGES = {
     'This assistant request is too large. Shorten the source or prompt, then try again.',
   POE_MODEL_UNAVAILABLE:
     'The requested Poe model is no longer available. Refresh model availability, then try again.',
+  POE_MODEL_UNREGISTERED:
+    'The requested Poe model is not approved by the server registry.',
   POE_NOT_CONFIGURED:
     'The assistant is not configured on this server yet. Ask an administrator to configure it, then try again.',
   POE_PROVIDER_UNAVAILABLE:

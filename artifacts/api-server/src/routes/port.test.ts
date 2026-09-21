@@ -286,27 +286,19 @@ test("covers the analysis boundary matrix and origin routing", async () => {
   }
 });
 
-test("requires an exact live Poe model confirmation before chat forwarding", async () => {
+test("requires an exact server registry model before chat forwarding", async () => {
   const source = await readFile(new URL("./port.ts", import.meta.url), "utf8");
   const chatStart = source.indexOf('router.post("/port/poe/chat"');
   const chatEnd = source.indexOf('router.get("/port/replit-project-connection"', chatStart);
   const chatSource = source.slice(chatStart, chatEnd);
-  const catalogueIndex = chatSource.indexOf("await loadPoeModelCatalogue()");
-  const completionIndex = chatSource.indexOf('poeRequest("/chat/completions"');
 
   assert.notEqual(chatStart, -1);
   assert.notEqual(chatEnd, -1);
   assert.match(source, /router\.get\("\/port\/poe\/models", requireAuth/);
   assert.match(chatSource, /router\.post\("\/port\/poe\/chat", requireAuth/);
-  assert.ok(catalogueIndex >= 0);
-  assert.ok(completionIndex > catalogueIndex);
-  assert.match(chatSource, /isPoeModelConfirmed\(catalogue\.models, parsed\.data\.model\)/);
-  assert.match(source, /models\.some\(\(model\) => model === requestedModel\)/);
-  assert.match(chatSource, /sendPoeError\([\s\S]*?"POE_MODEL_UNAVAILABLE"/);
-  assert.match(
-    chatSource,
-    /The requested Poe model is not currently available\. Refresh model availability and try again\./,
-  );
+  assert.match(chatSource, /getPoeModel\(parsed\.data\.model, capability\)/);
+  assert.doesNotMatch(source, /loadPoeModelCatalogue|\/v1\/models/);
+  assert.match(source, /POE_MODELS/);
   assert.match(source, /model: parsed\.data\.model/);
   assert.doesNotMatch(chatSource, /toLowerCase|toUpperCase|PascalCase/);
 });
@@ -430,7 +422,7 @@ test("forwards confirmed Claude repairs unchanged and hides Poe failure details"
 
     const catalogue = await jsonRequest(`${baseUrl}/port/poe/models`);
     assert.equal(catalogue.status, 200);
-    assert.deepEqual(catalogue.body.models, [confirmedModel]);
+    assert.ok((catalogue.body.models as string[]).includes(confirmedModel));
 
     const successfulChat = await jsonRequest(`${baseUrl}/port/poe/chat`, {
       method: "POST",
@@ -594,7 +586,7 @@ test("bounds public Poe traffic before provider forwarding and caches models", a
     assert.equal(secondCatalogue.status, 200);
     assert.ok((firstCatalogue.body.models as string[]).includes(confirmedModel));
     assert.deepEqual(secondCatalogue.body.models, firstCatalogue.body.models);
-    assert.equal(modelRequests, 1);
+    assert.equal(modelRequests, 0);
 
     const oversized = await jsonRequest(`${baseUrl}/port/poe/chat`, {
       method: "POST",

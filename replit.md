@@ -49,7 +49,7 @@ Import pasted, single-file, or public GitHub HTML apps as normalized source bund
 - Imported source bundles stay in the browser session until a signed-in user starts a handoff. Handoff source and setup state are then stored in the database, scoped to that user, so an interrupted setup can safely resume after a restart.
 - Browser reload recovery stores only a validated job ID, owner ID, tab-scoped browser-session ID, and timestamp in `sessionStorage`. Raw HTML, analysis, credentials, and source-derived content are never stored there; reloads recover status only after authenticated server reconciliation, and reset, source replacement, logout, completion, or failed ownership checks clear the record.
 - Poe requests run only on the API server so `POE_API_KEY2` never reaches a browser or imported page.
-- Poe model discovery and chat require the authenticated Clerk Studio session before catalogue, quota, or provider work. The route accepts only the exact, case-sensitive model ID returned by the live catalogue and never substitutes a fallback model.
+- Poe status and chat require the authenticated Clerk Studio session before quota or provider work. The route accepts only exact, case-sensitive IDs from the server-owned registry and never requests Poe's catalogue.
 - The public Poe contract exposes the server-owned text-only capability registry: `generic-assistant` uses ordinary user content, while `gemini-repair` and `claude-repair` require the client’s redacted-source repair flow. Vision, tool calling, structured output, and streaming are explicitly unavailable; capability fallback metadata is descriptive only and does not trigger automatic model substitution.
 - Poe route failures use the generated `PoeErrorResponse` union. Studio allowlists the stable code and message, while bounded `retryAfterSeconds`/`Retry-After` metadata is used only for retryable rate-limit, timeout, and provider-unavailable states. Provider bodies, request IDs, credentials, full prompts, and server diagnostics are never returned or rendered.
 - Previewed documents run in a sandbox without same-origin access to the Studio itself.
@@ -77,8 +77,8 @@ Import pasted, single-file, or public GitHub HTML apps as normalized source bund
 
 - Run `pnpm --filter @workspace/db run migrate` against the target database before every API deployment. Migrations are intentionally controlled and are never run automatically at API startup.
 - After changing `lib/api-spec/openapi.yaml`, run `pnpm --filter @workspace/api-spec run codegen` before using generated client or Zod types.
-- Poe model IDs are case-sensitive. Use the exact identifier returned by Poe's live model catalogue.
-- Do not call Poe from browser code or imported HTML, add a provider SDK, log raw provider responses, or silently fall back to another model. Update `lib/api-spec/openapi.yaml` first and run `pnpm --filter @workspace/api-spec run codegen` whenever the Poe request, model metadata, response, or error union changes.
+- Poe model IDs are case-sensitive. Use only IDs in the server-owned registry; availability is established by bounded administrator probes, not provider-wide discovery.
+- Do not call Poe from browser code or imported HTML, add a provider SDK, log raw provider responses, or silently fall back to another model. Update `lib/api-spec/openapi.yaml` first and run `pnpm --filter @workspace/api-spec run codegen` whenever the Poe request, model metadata, response, or error union changes. Poe routing must never request `/v1/models`.
 - Set `POE_API_KEY2` through Replit Secrets and restart the API server after changing it.
 - The landing header provides **Sign in** before import. The handoff panel keeps **Log in to create** for users who defer sign-in; both open the same Clerk `/sign-in` flow without clearing the in-memory import, analysis, or preview.
 - Configure the Clerk instance’s allowed origins with the Studio’s development and published HTTPS origins. Configure redirect URLs for the Studio base path plus `/sign-in/*` and `/sign-up/*`; the app uses `/sign-in` and `/sign-up` as its browser routes. The production server-side Clerk proxy is available at `/api/__clerk`.
@@ -192,7 +192,7 @@ current-task validation, which remains scoped to `TASK_PLAN_FILE`.
 Regression Guard is an additive plan contract enforced by `scripts/check-regression-guard.mjs`.
 When a task fixes or materially changes existing behavior, the plan must classify the change and name the concrete recurrence test, or use one of the documented N/A reasons.
 The guard section follows the plan's baseline and validation sections and does not change the selected validation tier. The validation entry point scopes both guards to `TASK_PLAN_FILE`, remediates missing stubs, then runs both strict checks.
-The permitted exceptions are: a race condition requiring real timing, an unmockable external API behavior, a visual regression with no screenshot infrastructure, or a fix that removes the feature entirely.
+The permitted exceptions have drifted: a race condition requiring real timing, an unmockable external API behavior, a visual regression with no screenshot infrastructure, or a fix that removes the feature entirely.
 A guard-writing task may instead declare `**Self-satisfying**` and identify its guard or test deliverable.
 Placeholder, vague, wrong-layer, and misplaced declarations fail strict validation. Regression Guard never replaces Failure Gate or raises the plan's validation ceiling.
 <!-- END GENERATED REGRESSION GUARD POLICY -->

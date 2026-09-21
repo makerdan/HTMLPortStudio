@@ -606,6 +606,10 @@ export interface PoeModels {
   capabilities: PoeCapability[];
 }
 
+export interface PoeFallbackInput {
+  /** @maxItems 8 */
+  fallbackModelIds: string[];
+}
 export type PoeMessageRole = typeof PoeMessageRole[keyof typeof PoeMessageRole];
 
 
@@ -754,3 +758,14 @@ export type GetGithubRepositoryParams = {
 url: string;
 };
 
+
+export type PoeFallbackConfiguration = PoeFallbackInput & {
+  registry: PoeFallbackConfigurationRegistryItem[];
+};
+
+export type PoeFallbackConfigurationRegistryItem = {
+  id: string;
+  provider: string;
+  capabilities: string[];
+  fallbackEligible: boolean;
+};

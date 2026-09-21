@@ -12,6 +12,7 @@ import {
   handoffStepsTable,
   handoffTransferPackagesTable,
   savedProjectsTable,
+  poeRoutingConfigTable,
   takePoeChatRateLimit as takeSharedPoeChatRateLimit,
   type HandoffJobRow,
   type HandoffStepRow,
@@ -19,16 +20,17 @@ import {
 } from "@workspace/db";
 import { and, asc, eq, gt, lt, or } from "drizzle-orm";
 import { requireTrustedCookieOrigin } from "../middlewares/csrfMiddleware";
-import { requireAuth } from "../middlewares/clerkAuthMiddleware";
+import { isAdministrator, requireAuth } from "../middlewares/clerkAuthMiddleware";
 import { fetchHostedUrl, HostedUrlError } from "./hosted-url";
 import { importPlayground, PlaygroundError } from "./playground";
 import {
   POE_CAPABILITIES,
+  POE_MODELS,
+  getApprovedPoeModels,
+  getPoeModel,
   parseCompletion,
   poeRequest,
   PoeProviderError,
-  validateCatalogue,
-  type PoeCatalogue,
 } from "../lib/poe-provider";
 import {
   AnalyzeHtmlBody,
@@ -240,24 +242,13 @@ export function analyzeBundle(bundle: SourceBundle) {
     steps,
   };
 }
-type PoeModelCatalogue = PoeCatalogue;
-
 export const POE_CHAT_REQUEST_MAX_BYTES = 512 * 1024;
 export const POE_CHAT_MAX_COMPLETION_TOKENS = 4_096;
 const POE_CHAT_RATE_LIMIT_WINDOW_MS = 60_000;
 const POE_CHAT_RATE_LIMIT_MAX_REQUESTS = 6;
-const POE_MODEL_CATALOGUE_CACHE_TTL_MS = 30_000;
-const POE_MODEL_CATALOGUE_FAILURE_CACHE_TTL_MS = 5_000;
 const POE_RETRY_AFTER_MAX_SECONDS = 60;
 const POE_RETRY_AFTER_DEFAULT_SECONDS = 5;
 
-type PoeModelCatalogueCache = {
-  value: PoeModelCatalogue;
-  expiresAt: number;
-};
-
-let poeModelCatalogueCache: PoeModelCatalogueCache | null = null;
-let poeModelCatalogueInFlight: Promise<PoeModelCatalogue> | null = null;
 
 function poeClientKey(req: Request): string {
   return req.ip || req.socket.remoteAddress || "unknown";
@@ -278,78 +269,6 @@ async function takePoeChatRateLimit(req: Request): Promise<{
     return {
       allowed: false,
       storageUnavailable: true,
-    };
-  }
-}
-
-async function loadPoeModelCatalogue(): Promise<PoeModelCatalogue> {
-  const now = Date.now();
-  if (poeModelCatalogueCache && poeModelCatalogueCache.expiresAt > now) {
-    return poeModelCatalogueCache.value;
-  }
-  if (poeModelCatalogueInFlight) {
-    return poeModelCatalogueInFlight;
-  }
-
-  poeModelCatalogueInFlight = loadPoeModelCatalogueFromPoe();
-  try {
-    const catalogue = await poeModelCatalogueInFlight;
-    poeModelCatalogueCache = {
-      value: catalogue,
-      expiresAt:
-        Date.now() +
-        (catalogue.failed
-          ? POE_MODEL_CATALOGUE_FAILURE_CACHE_TTL_MS
-          : POE_MODEL_CATALOGUE_CACHE_TTL_MS),
-    };
-    return catalogue;
-  } finally {
-    poeModelCatalogueInFlight = null;
-  }
-}
-
-async function loadPoeModelCatalogueFromPoe(): Promise<PoeModelCatalogue> {
-  if (!process.env.POE_API_KEY2) {
-    return {
-      configured: false,
-      models: [],
-      message: "Add POE_API_KEY2 in Replit Secrets to enable Poe.",
-      available: false,
-      failed: false,
-    };
-  }
-
-  try {
-    const response = await poeRequest("/models");
-    if (!response.ok) {
-      return {
-        configured: true,
-        models: [],
-        message: "Poe model availability could not be loaded. Retry the request.",
-        available: false,
-        failed: true,
-      };
-    }
-
-    const body: unknown = await response.json();
-    const models = validateCatalogue(body);
-
-    return {
-      configured: true,
-      models,
-      message: models.length
-        ? "Live models loaded from Poe."
-        : "Poe is configured, but returned no models.",
-      available: models.length > 0,
-      failed: false,
-    };
-  } catch {
-    return {
-      configured: true,
-      models: [],
-      message: "Poe could not be reached. Your key was not changed.",
-      available: false,
-      failed: true,
     };
   }
 }
@@ -1323,23 +1242,14 @@ router.post("/port/playground/import", async (req, res): Promise<void> => {
 });
 
 router.get("/port/poe/models", requireAuth, async (_req, res): Promise<void> => {
-    const catalogue = await loadPoeModelCatalogue();
-  if (catalogue.failed) {
-    sendPoeError(
-      res,
-      503,
-      "POE_MODEL_UNAVAILABLE",
-      "Poe model availability could not be loaded. Retry model loading.",
-    );
-    return;
-  }
+  const models = getApprovedPoeModels();
   res.set("Cache-Control", "private, max-age=30");
   res.json(
     ListPoeModelsResponse.parse({
-      configured: catalogue.configured,
-      available: catalogue.available,
-      models: catalogue.models,
-      message: catalogue.message,
+      configured: Boolean(process.env.POE_API_KEY2),
+      available: models.length > 0,
+      models: models.map((model) => model.id),
+      message: "Approved Poe models are defined by the server registry. Availability is confirmed by explicit probes.",
       capabilities: Object.values(POE_CAPABILITIES),
     }),
   );
@@ -1450,24 +1360,7 @@ router.post("/port/poe/chat", requireAuth, async (req, res): Promise<void> => {
   }
 
   try {
-    const catalogue = await loadPoeModelCatalogue();
-    if (
-      !catalogue.configured ||
-      !catalogue.available ||
-      !isPoeModelConfirmed(catalogue.models, parsed.data.model)
-    ) {
-      req.log.warn(
-        { configured: catalogue.configured, available: catalogue.available },
-        "Poe model was not confirmed by the live catalogue",
-      );
-      sendPoeError(
-        res,
-        503,
-        "POE_MODEL_UNAVAILABLE",
-        "The requested Poe model is not currently available. Refresh model availability and try again.",
-      );
-      return;
-    }
+    getPoeModel(parsed.data.model, capability);
 
     const providerAbortController = new AbortController();
     const abortProviderRequest = () => providerAbortController.abort();

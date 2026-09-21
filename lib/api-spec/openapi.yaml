@@ -241,8 +241,8 @@ paths:
     get:
       operationId: listPoeModels
       tags: [porting]
-      summary: List Poe models available to the configured server key
-      description: Requires an authenticated Studio session. Model identifiers are exact, case-sensitive values from the live Poe catalogue; provider credentials never reach the browser.
+      summary: List approved Poe models and static capability metadata
+      description: Requires an authenticated Studio session. Model identifiers are exact, case-sensitive values from the server-owned registry; this endpoint never reads the Poe catalogue.
       responses:
         "200":
           description: Available Poe models and configuration status
@@ -267,7 +267,7 @@ paths:
       operationId: chatWithPoe
       tags: [porting]
       summary: Send an OpenAI-compatible chat request through Poe
-      description: Requires an authenticated Studio session and proxies a text-only chat completion through Poe so the API key never reaches the browser. The selected model and capability must be confirmed by the live catalogue and server registry.
+      description: Requires an authenticated Studio session and proxies a text-only chat completion through Poe so the API key never reaches the browser. The selected model and capability must be registered by the server.
       requestBody:
         required: true
         content:
@@ -311,6 +311,53 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PoeErrorResponse"
+  /port/poe/admin/fallbacks:
+    get:
+      operationId: getPoeFallbacks
+      tags: [porting]
+      summary: Read administrator Poe fallback configuration
+      responses:
+        "200":
+          description: Ordered approved fallback configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PoeFallbackConfiguration"
+        "403":
+          description: Administrator access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: updatePoeFallbacks
+      tags: [porting]
+      summary: Replace administrator Poe fallback configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PoeFallbackInput"
+      responses:
+        "200":
+          description: Sanitized ordered fallback configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PoeFallbackInput"
+  /port/poe/admin/fallbacks/reset:
+    post:
+      operationId: resetPoeFallbacks
+      tags: [porting]
+      summary: Reset administrator Poe fallbacks to safe defaults
+      responses:
+        "200":
+          description: Default fallback configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PoeFallbackInput"
   /port/replit-project-connection:
     get:
       operationId: getReplitProjectConnection
@@ -1422,6 +1469,37 @@ components:
           items:
             $ref: "#/components/schemas/PoeCapability"
       required: [configured, available, models, message, capabilities]
+    PoeFallbackInput:
+      type: object
+      properties:
+        fallbackModelIds:
+          type: array
+          maxItems: 8
+          items:
+            type: string
+      required: [fallbackModelIds]
+    PoeFallbackConfiguration:
+      allOf:
+        - $ref: "#/components/schemas/PoeFallbackInput"
+        - type: object
+          properties:
+            registry:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  provider:
+                    type: string
+                  capabilities:
+                    type: array
+                    items:
+                      type: string
+                  fallbackEligible:
+                    type: boolean
+                required: [id, provider, capabilities, fallbackEligible]
+          required: [registry]
     PoeCapability:
       type: object
       properties:

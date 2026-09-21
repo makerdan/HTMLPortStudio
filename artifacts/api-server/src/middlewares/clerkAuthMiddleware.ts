@@ -85,6 +85,16 @@ export async function requireAuth(
   );
 }
 
+/** Administrator access is explicit; ordinary authenticated Studio users never inherit it. */
+export function isAdministrator(req: Request): boolean {
+  const testAdmin = process.env.NODE_ENV === "test" && req.headers["x-test-admin"] === "true";
+  const configured = (process.env.ADMIN_USER_IDS ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  return testAdmin || Boolean(req.dbUser?.id && configured.includes(req.dbUser.id));
+}
+
 async function provisionLocalUser(
   req: Request,
   res: Response,

@@ -1,6 +1,6 @@
 /**
  * The only server-side boundary for Poe. Do not expose this module to clients:
- * it owns the secret, provider origin, catalogue verification, and transport
+ * it owns the secret, provider origin, approved-model verification, and transport
  * failure policy.
  */
 
@@ -33,6 +33,54 @@ export type PoeCapability = {
   };
 };
 
+export type PoeModel = {
+  id: string;
+  provider: "poe";
+  capabilities: PoeCapabilityId[];
+  fallbackEligible: boolean;
+  primary: boolean;
+  privacyClasses: Array<"user-content" | "redacted-source">;
+};
+
+/**
+ * This is intentionally the complete allowlist. Do not replace it with a
+ * provider catalogue: model selection is a server-owned policy decision.
+ */
+export const POE_MODELS: Readonly<Record<string, PoeModel>> = {
+  "Claude-Sonnet-4.6": {
+    id: "Claude-Sonnet-4.6",
+    provider: "poe",
+    capabilities: ["claude-repair", "generic-assistant"],
+    fallbackEligible: true,
+    primary: false,
+    privacyClasses: ["user-content", "redacted-source"],
+  },
+  "Gemini-2.5-Pro": {
+    id: "Gemini-2.5-Pro",
+    provider: "poe",
+    capabilities: ["gemini-repair", "generic-assistant"],
+    fallbackEligible: true,
+    primary: true,
+    privacyClasses: ["user-content", "redacted-source"],
+  },
+  "Assistant": {
+    id: "Assistant",
+    provider: "poe",
+    capabilities: ["generic-assistant"],
+    fallbackEligible: true,
+    primary: false,
+    privacyClasses: ["user-content"],
+  },
+};
+
+export const REPLIT_AI_FALLBACK = {
+  id: "gpt-5.6-terra",
+  provider: "replit-ai-integrations",
+  capability: "generic-assistant" as const,
+  privacyClass: "user-content" as const,
+  fallbackEligible: true,
+};
+
 export const POE_CAPABILITIES: Readonly<Record<PoeCapabilityId, PoeCapability>> = {
   "generic-assistant": {
     version: 1,
@@ -43,7 +91,7 @@ export const POE_CAPABILITIES: Readonly<Record<PoeCapabilityId, PoeCapability>> 
     privacyClass: "user-content",
     fallback: "none",
     owner: "api-server",
-    reviewEvidence: "Poe live catalogue plus server boundary review",
+    reviewEvidence: "Reviewed server-owned allowlist and text-only boundary",
     capabilities: { toolCalling: "unavailable", vision: "unavailable", structuredOutput: "unavailable", streaming: "unavailable" },
   },
   "gemini-repair": {
@@ -55,7 +103,7 @@ export const POE_CAPABILITIES: Readonly<Record<PoeCapabilityId, PoeCapability>> 
     privacyClass: "redacted-source",
     fallback: "generic-assistant",
     owner: "api-server",
-    reviewEvidence: "Poe live catalogue plus redacted-source repair review",
+    reviewEvidence: "Reviewed server-owned allowlist and redacted-source repair boundary",
     capabilities: { toolCalling: "unavailable", vision: "unavailable", structuredOutput: "unavailable", streaming: "unavailable" },
   },
   "claude-repair": {
@@ -67,17 +115,9 @@ export const POE_CAPABILITIES: Readonly<Record<PoeCapabilityId, PoeCapability>> 
     privacyClass: "redacted-source",
     fallback: "generic-assistant",
     owner: "api-server",
-    reviewEvidence: "Poe live catalogue plus redacted-source repair review",
+    reviewEvidence: "Reviewed server-owned allowlist and redacted-source repair boundary",
     capabilities: { toolCalling: "unavailable", vision: "unavailable", structuredOutput: "unavailable", streaming: "unavailable" },
   },
-};
-
-export type PoeCatalogue = {
-  configured: boolean;
-  models: string[];
-  message: string;
-  available: boolean;
-  failed: boolean;
 };
 
 export type PoeErrorCode =
@@ -85,6 +125,8 @@ export type PoeErrorCode =
   | "POE_TIMEOUT"
   | "POE_ABORTED"
   | "POE_REDIRECT_REJECTED"
+  | "POE_MODEL_UNREGISTERED"
+  | "POE_CAPABILITY_UNSUPPORTED"
   | "POE_CATALOGUE_INVALID"
   | "POE_PROVIDER_UNAVAILABLE"
   | "POE_COMPLETION_INVALID";
@@ -171,6 +213,22 @@ export async function poeRequest(path: string, init: RequestInit = {}): Promise<
   throw new PoeProviderError("POE_PROVIDER_UNAVAILABLE");
 }
 
+export function getPoeModel(modelId: string, capability: PoeCapabilityId): PoeModel {
+  const model = POE_MODELS[modelId];
+  if (!model) throw new PoeProviderError("POE_MODEL_UNREGISTERED");
+  if (!model.capabilities.includes(capability)) {
+    throw new PoeProviderError("POE_CAPABILITY_UNSUPPORTED");
+  }
+  return model;
+}
+
+export function getApprovedPoeModels(capability?: PoeCapabilityId): PoeModel[] {
+  return Object.values(POE_MODELS).filter((model) =>
+    capability ? model.capabilities.includes(capability) : true,
+  );
+}
+
+/** Compatibility helpers for older callers; routing never calls Poe catalogue APIs. */
 export function isPoeModelConfirmed(models: readonly string[], requestedModel: string): boolean {
   return models.some((model) => model === requestedModel);
 }

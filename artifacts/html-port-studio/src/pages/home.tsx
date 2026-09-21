@@ -602,8 +602,8 @@ function PoeAssistantPanel({ html, findings }: { html: string, findings: PortFin
     return (
       <div className="flex h-full flex-col items-center justify-center p-6 text-center">
         <AlertTriangle className="mb-4 h-8 w-8 text-warning" />
-        <p className="mb-2 font-medium">No Poe models available</p>
-        <p className="mb-4 text-sm text-muted-foreground">The Poe API returned no models for this assistant.</p>
+        <p className="mb-2 font-medium">No approved Poe models available</p>
+        <p className="mb-4 text-sm text-muted-foreground">The server registry has no compatible models for this assistant.</p>
         <Button type="button" variant="outline" onClick={() => void refetchModels()}>
           Retry loading models
         </Button>
@@ -2078,7 +2078,7 @@ function ClaudeRepairPanel({
           <span className="text-muted-foreground">·</span>
           <span>{EDITOR_LIMITS.maxRepairCompletionTokens.toLocaleString()} completion-token ceiling</span>
         </div>
-        {modelsLoading && <p className="text-sm text-muted-foreground" role="status">Confirming the exact Claude model in Poe&apos;s live catalogue…</p>}
+        {modelsLoading && <p className="text-sm text-muted-foreground" role="status">Loading the approved Claude model…</p>}
         {modelsError && (
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
@@ -2101,8 +2101,8 @@ function ClaudeRepairPanel({
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>Exact Claude model unavailable</AlertTitle>
             <AlertDescription>
-              Poe&apos;s live catalogue did not return an exact repair model. No source was sent.
-              <Button type="button" size="sm" variant="outline" className="mt-2" onClick={() => void refetchModels()}>Refresh model catalogue</Button>
+              The server registry does not contain a compatible repair model. No source was sent.
+              <Button type="button" size="sm" variant="outline" className="mt-2" onClick={() => void refetchModels()}>Refresh approved models</Button>
             </AlertDescription>
           </Alert>
         )}
@@ -4882,7 +4882,7 @@ function PoeRepairPanel({
             {modelsLoading && (
               <div className="flex items-center text-sm text-muted-foreground">
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Confirming Claude availability from Poe&apos;s live catalogue…
+                Loading the approved Claude model…
               </div>
             )}
             {modelsError && (
@@ -4915,7 +4915,7 @@ function PoeRepairPanel({
                   <AlertTriangle className="h-4 w-4" />
                   <AlertTitle>No exact live repair model is available</AlertTitle>
                   <AlertDescription>
-                    Poe&apos;s live catalogue did not confirm the required exact model identifier.
+                    The server registry did not confirm a compatible model identifier.
                     No source was sent and the original remains untouched.
                     <br />
                     <Button type="button" size="sm" variant="outline" className="mt-3" onClick={() => void refetchModels()}>
@@ -5110,7 +5110,7 @@ function PoeRepairPanel({
           <Info className="h-4 w-4" />
           <AlertTitle>Source-sharing notice</AlertTitle>
           <AlertDescription>
-            The complete HTML snapshot is sent to the exact live model returned by Poe&apos;s server-only catalogue.
+            The complete HTML snapshot is sent only to the exact approved model in the server registry.
             The original source remains in the editor. Documents containing credentials are blocked before sending.
           </AlertDescription>
         </Alert>
