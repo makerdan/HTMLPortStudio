@@ -1,0 +1,33 @@
+# Restrict Poe to hardcoded models
+
+## What & Why
+
+Replace live Poe model-catalogue discovery with a code-owned global allowlist and static capability registry. The API must never call Poe's full `GET /v1/models` catalogue; only exact model IDs declared in source may be probed or used for completions. Preserve administrator-editable fallback ordering, but reject any fallback that is not in the static registry or lacks the selected feature's required capabilities.
+
+## Done looks like
+
+- API startup performs no Poe model-list/discovery request.
+- No production code calls `getPoeClient().models.list()` or otherwise requests Poe's full model registry.
+- The approved hardcoded Poe models and their capability metadata are defined in one auditable registry and are used consistently for primaries, fallbacks, probing, and completion authorization.
+- Admins can still add, remove, reorder, and reset fallback models, but only models in the global hardcoded registry that satisfy the feature's capability requirements are offered or accepted.
+- Persisted fallback overrides containing removed, unknown, or incompatible models are filtered or rejected before they can reach the Poe transport.
+- Existing catalogue-refresh controls are removed or retired with a clear non-success response that never contacts Poe; the admin status surface reports configured registry data separately from explicit probe results.
+- Explicit model probing remains administrator-triggered and bounded, and cannot expand beyond the static allowlist.
+- Poe completion requests fail closed before transport if given an unregistered model ID; normal provider error normalization and fallback behavior remain intact.
+
+## Out of scope
+
+- Adding new Poe models, changing Poe credentials, subscription, billing, or quota.
+- Moving the Gemini-backed Reference assistant to a different provider.
+- Replacing code-owned primary models with administrator-selected primaries.
+- Redesigning unrelated AI workflows or admin screens beyond the catalogue/fallback controls affected by this change.
+- Removing bounded explicit probing of approved models.
+
+## Steps
+
+1. **Create the static model registry** -- Centralize every currently hardcoded Poe model ID, including the declared catalog fallback, with the capability metadata needed for global fallback validation and route authorization. Make route construction and persisted override loading derive only from this registry.
+2. **Remove live catalogue discovery** -- Delete the runtime `models.list()` path and startup refresh invocation. Replace live-catalogue freshness assumptions with configured-registry status so normal routing does not require a provider-wide catalogue response.
+3. **Enforce the transport boundary** -- Validate exact model IDs against the static registry before completions and explicit probes. Keep model probing limited to registry-approved active route models while preserving existing count, concurrency, timeout, cancellation, and aggregate-deadline safeguards.
+4. **Update admin API and client behavior** -- Retire the catalogue-refresh operations without contacting Poe, update the API specification and generated client contract, and adjust the admin status/fallback UI to show static registry choices and probe results without a live refresh action.
+5. **Harden persisted fallback handling** -- Revalidate stored overrides and reject or remove unknown or capability-incompatible entries while preserving valid ordering and safe defaults. Keep normalized provider errors and fallback dispatch behavior unchanged for approved models.
+6. **Add regression coverage** -- Extend server startup, routing, admin-status, and provider-boundary tests to prove that the full registry is never requested, only allowlisted models are probed or dispatched, retired refresh calls are safe, and fallback validation remains capability-aware.
