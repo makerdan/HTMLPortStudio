@@ -237,10 +237,14 @@ Diagnostic uploads are best-effort and use the pinned artifact action. They
 run only after a failure, cancellation, or unexpected skip, tolerate an empty
 file, retain only the bounded JSON envelope for three days, and use
 `continue-on-error: true`. They execute on a clean runner, independently of
-the mandatory jobs, and can never change the authoritative result. A final
-status-only summary line records the upload step outcome without rewriting the
-already selected artifact. Successful jobs and intentional post-merge skips
-publish summaries without uploading an artifact.
+the mandatory jobs, and can never change the authoritative result. Artifact
+names use only fixed workflow and diagnostics-job identifiers plus the numeric
+workflow run ID (for example,
+`ci-diagnostic-github-validation-ci-diagnostics-<run-id>`); they never include
+source content, refs, command output, or secrets. A final status-only summary
+line records the upload step outcome without rewriting the already selected
+artifact. Successful jobs and intentional post-merge skips publish summaries
+without uploading an artifact.
 
 The envelope reports bounded setup, dependency-install, browser-install,
 eligibility, command, upload, retry, cancellation, lifecycle, and artifact-size

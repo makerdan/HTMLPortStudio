@@ -343,9 +343,31 @@ test("the stable validation aggregate publishes its upstream status handoff", ()
   assert.match(aggregate, /Publish compact validation aggregate summary/);
   assert.match(aggregate, /GITHUB_STEP_SUMMARY/);
   assert.match(aggregate, /Changed files:.*not-collected/);
-  assert.match(aggregate, /Retained artifact IDs:.*ci-diagnostic-workflow-/);
+  assert.match(
+    aggregate,
+    /Retained artifact IDs:.*ci-diagnostic-github-validation-ci-diagnostics-/,
+  );
   assert.match(aggregate, /Local comparison status:.*not-compared/);
   assert.match(aggregate, /continue-on-error: true/);
+});
+
+test("diagnostic artifact names identify their workflow, job, and run", () => {
+  assert.match(
+    pullRequestWorkflow,
+    /ci-diagnostic-github-validation-ci-diagnostics-\$\{\{ github\.run_id \}\}/,
+  );
+  assert.match(
+    postMergeWorkflow,
+    /ci-diagnostic-post-merge-production-build-post-merge-diagnostics-\$\{\{ github\.run_id \}\}/,
+  );
+  assert.doesNotMatch(
+    pullRequestWorkflow,
+    /name:\s+ci-diagnostic-workflow-\$\{\{ github\.run_id \}\}/,
+  );
+  assert.doesNotMatch(
+    postMergeWorkflow,
+    /name:\s+ci-diagnostic-post-merge-workflow-\$\{\{ github\.run_id \}\}/,
+  );
 });
 
 test("diagnostics documentation requires bounded evidence before escalation or optimization", () => {

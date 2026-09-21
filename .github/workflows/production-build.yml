@@ -201,7 +201,7 @@ jobs:
           EVIDENCE_RUN_ATTEMPT: ${{ github.run_attempt }}
           EVIDENCE_SHA: ${{ github.sha }}
           EVIDENCE_REF: ${{ github.ref }}
-          EVIDENCE_ARTIFACT_NAME: ci-diagnostic-post-merge-workflow-${{ github.run_id }}
+          EVIDENCE_ARTIFACT_NAME: ci-diagnostic-post-merge-production-build-post-merge-diagnostics-${{ github.run_id }}
           EVIDENCE_TIER: post-merge-workflow
           EVIDENCE_EXPECTED_SKIPS: ${{ needs.eligibility.result == 'success' && needs.eligibility.outputs.run-build != 'true' && 'post-merge-build' || '' }}
           EVIDENCE_UPSTREAM: >-
@@ -301,7 +301,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ci-diagnostic-post-merge-workflow-${{ github.run_id }}
+          name: ci-diagnostic-post-merge-production-build-post-merge-diagnostics-${{ github.run_id }}
           path: ${{ runner.temp }}/ci-evidence-workflow.artifact.json
           if-no-files-found: ignore
           retention-days: 3
