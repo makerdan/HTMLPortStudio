@@ -19,6 +19,10 @@ function envFor(file, overrides = {}) {
     CI_ARTIFACT_NAME: "ci-diagnostic-123",
     CI_TIER_NAME: "test-standard",
     CI_COMMAND: "pnpm run test-standard",
+    CI_JOB_DURATION_MS: "1234",
+    CI_BROWSER_PROJECT: "chromium firefox-recovery mobile-recovery",
+    CI_API_SCOPE: "not-applicable",
+    CI_VALIDATION_SCOPE: "primary-browser-validation",
     GITHUB_WORKFLOW: "GitHub Validation",
     GITHUB_EVENT_NAME: "pull_request",
     GITHUB_RUN_ID: "123",
@@ -45,11 +49,83 @@ test("CI evidence is bounded and records safe phase measurements", () => {
   assert.equal(evidence.lifecycle.status, "failure");
   assert.equal(evidence.outcome.authoritative, "unchanged");
   assert.equal(evidence.metrics.phases[0].durationMs, 15 * 60 * 1000);
+  assert.equal(evidence.metrics.jobDurationMs, 1234);
+  assert.equal(evidence.metrics.commandDurationMs, 15 * 60 * 1000);
+  assert.ok(evidence.metrics.artifactSizeBytes > 0);
+  assert.equal(
+    evidence.metadata.browserProject,
+    "chromium firefox-recovery mobile-recovery",
+  );
+  assert.equal(evidence.metadata.apiScope, "not-applicable");
+  assert.equal(evidence.metadata.validationScope, "primary-browser-validation");
   assert.ok(
     Buffer.byteLength(readFileSync(`${file}.artifact`)) <= MAX_EVIDENCE_BYTES,
   );
   assert.ok(
     !readFileSync(`${file}.artifact`, "utf8").includes("CI_JOB_STATUS"),
+  );
+});
+
+test("CI evidence separates install, browser, command, and upload cost signals", () => {
+  const file = join(
+    mkdtempSync(join(tmpdir(), "ci-evidence-")),
+    "evidence.json",
+  );
+  const env = envFor(file, {
+    CI_JOB_DURATION_MS: "999999999",
+    CI_UPLOAD_DURATION_MS: "42",
+  });
+  recordPhase({
+    env,
+    phase: "setup",
+    durationMs: 10,
+    status: "success",
+    exitCode: 0,
+  });
+  recordPhase({
+    env,
+    phase: "dependency-install",
+    durationMs: 20,
+    status: "success",
+    exitCode: 0,
+  });
+  recordPhase({
+    env,
+    phase: "browser-install",
+    durationMs: 30,
+    status: "success",
+    exitCode: 0,
+  });
+  recordPhase({
+    env,
+    phase: "command",
+    durationMs: 40,
+    status: "success",
+    exitCode: 0,
+  });
+  const evidence = publishEvidence({ env });
+  assert.equal(evidence.metrics.jobDurationMs, 60 * 60 * 1000);
+  assert.equal(evidence.metrics.setupDurationMs, 10);
+  assert.equal(evidence.metrics.dependencyInstallDurationMs, 20);
+  assert.equal(evidence.metrics.browserInstallDurationMs, 30);
+  assert.equal(evidence.metrics.commandDurationMs, 40);
+  assert.equal(evidence.metrics.uploadDurationMs, 42);
+});
+
+test("CI summaries expose scope, durations, and retained artifact bytes", () => {
+  const directory = mkdtempSync(join(tmpdir(), "ci-evidence-"));
+  const file = join(directory, "evidence.json");
+  const summary = join(directory, "summary.md");
+  const evidence = publishEvidence({
+    env: envFor(file, { GITHUB_STEP_SUMMARY: summary }),
+  });
+  const summaryText = readFileSync(summary, "utf8");
+  assert.match(summaryText, /Scope: validation `primary-browser-validation`/);
+  assert.match(summaryText, /Duration: job=1234ms/);
+  assert.ok(
+    summaryText.includes(
+      `size \`${evidence.metrics.artifactSizeBytes} bytes\``,
+    ),
   );
 });
 

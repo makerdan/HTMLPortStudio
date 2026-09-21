@@ -14,6 +14,7 @@ export const EVIDENCE_VERSION = 1;
 export const MAX_EVIDENCE_BYTES = 16 * 1024;
 export const MAX_PHASES = 32;
 export const MAX_PHASE_DURATION_MS = 15 * 60 * 1000;
+export const MAX_JOB_DURATION_MS = 60 * 60 * 1000;
 
 const PHASES = new Set([
   "setup",
@@ -50,14 +51,20 @@ const CHILD_REDACTED_ENV = [
   "CI_EVIDENCE_FILE",
   "CI_EVIDENCE_ARTIFACT_FILE",
   "CI_JOB_NAME",
+  "CI_JOB_STARTED_AT_MS",
+  "CI_JOB_DURATION_MS",
   "CI_JOB_STATUS",
   "CI_ARTIFACT_NAME",
+  "CI_BROWSER_PROJECT",
+  "CI_API_SCOPE",
+  "CI_VALIDATION_SCOPE",
   "CI_TIER_NAME",
   "CI_UPSTREAM_RESULTS",
   "CI_EXPECTED_SKIPS",
   "CI_LOCAL_COMPARISON_STATUS",
   "CI_LIFECYCLE_STATUS",
   "CI_RETRY_COUNT",
+  "CI_UPLOAD_DURATION_MS",
   "CI_UPLOAD_STATUS",
   "CI_SKIP_SUMMARY",
   "CI_COMMAND",
@@ -122,7 +129,20 @@ function numberOr(value, fallback = 0) {
   return Number.isSafeInteger(number) && number >= 0 ? number : fallback;
 }
 
+function boundedDuration(value, maximum = MAX_PHASE_DURATION_MS) {
+  return Math.min(numberOr(value), maximum);
+}
+
+function phaseDuration(phases, name) {
+  return boundedDuration(
+    phases
+      .filter((phase) => phase.name === name)
+      .reduce((total, phase) => total + phase.durationMs, 0),
+  );
+}
+
 function baseState(env) {
+  const now = Date.now();
   return {
     version: EVIDENCE_VERSION,
     metadata: {
@@ -138,9 +158,13 @@ function baseState(env) {
       branchOrPullRequest: safeRef(env.GITHUB_REF),
       changedFiles: "not-collected",
       command: safeCommand(env.CI_COMMAND),
+      browserProject: safeLabel(env.CI_BROWSER_PROJECT, "not-applicable"),
+      apiScope: safeLabel(env.CI_API_SCOPE, "not-applicable"),
+      validationScope: safeLabel(env.CI_VALIDATION_SCOPE, "not-specified"),
     },
     phases: [],
     retryCount: numberOr(env.CI_RETRY_COUNT),
+    jobStartedAtMs: numberOr(env.CI_JOB_STARTED_AT_MS, now),
   };
 }
 
@@ -168,6 +192,10 @@ function loadState(path, env) {
           exitCode: phase.exitCode,
         }));
       state.retryCount = Math.min(numberOr(parsed.retryCount), 10);
+      state.jobStartedAtMs = numberOr(
+        parsed.jobStartedAtMs,
+        state.jobStartedAtMs,
+      );
     }
   } catch {
     // A missing or interrupted phase file is represented by a fresh envelope.
@@ -340,9 +368,11 @@ function summaryLines(envelope, uploadStatus) {
     "",
     `- Lifecycle: \`${envelope.lifecycle.status}\` (job status \`${envelope.lifecycle.jobStatus}\`)`,
     `- Diagnostic result: \`${envelope.outcome.diagnostic}\`; authoritative validation is unchanged`,
+    `- Scope: validation \`${envelope.metadata.validationScope}\`; browser project \`${envelope.metadata.browserProject}\`; API scope \`${envelope.metadata.apiScope}\``,
+    `- Duration: job=${envelope.metrics.jobDurationMs}ms, setup=${envelope.metrics.setupDurationMs}ms, dependency-install=${envelope.metrics.dependencyInstallDurationMs}ms, browser-install=${envelope.metrics.browserInstallDurationMs}ms, eligibility=${envelope.metrics.eligibilityDurationMs}ms, command=${envelope.metrics.commandDurationMs}ms, upload=${envelope.metrics.uploadDurationMs}ms`,
     `- Phases: ${phaseText}`,
     `- Retry count: \`${envelope.metrics.retryCount}\`; cancellation: \`${envelope.metrics.cancelled}\``,
-    `- Artifact: \`${uploadStatus || "not-uploaded"}\` (bounded at ${MAX_EVIDENCE_BYTES} bytes; failure/cancellation only)`,
+    `- Artifact: \`${uploadStatus || "not-uploaded"}\`; size \`${envelope.metrics.artifactSizeBytes} bytes\` (bounded at ${MAX_EVIDENCE_BYTES} bytes; failure/cancellation only)`,
   ];
   if (nonSuccess.length > 0) {
     lines.push(
@@ -375,6 +405,10 @@ export function publishEvidence({ env = process.env } = {}) {
         ? "timed_out"
         : diagnosticStatus(env.CI_JOB_STATUS, upstream, expected);
   const phases = state.phases.slice(0, MAX_PHASES);
+  const jobDurationMs = boundedDuration(
+    env.CI_JOB_DURATION_MS || Math.max(0, Date.now() - state.jobStartedAtMs),
+    MAX_JOB_DURATION_MS,
+  );
   const artifactName = safeName(
     env.CI_ARTIFACT_NAME,
     `ci-diagnostic-${state.metadata.runId}`,
@@ -410,6 +444,13 @@ export function publishEvidence({ env = process.env } = {}) {
     },
     metrics: {
       phases,
+      jobDurationMs,
+      setupDurationMs: phaseDuration(phases, "setup"),
+      dependencyInstallDurationMs: phaseDuration(phases, "dependency-install"),
+      browserInstallDurationMs: phaseDuration(phases, "browser-install"),
+      eligibilityDurationMs: phaseDuration(phases, "eligibility"),
+      commandDurationMs: phaseDuration(phases, "command"),
+      uploadDurationMs: boundedDuration(env.CI_UPLOAD_DURATION_MS),
       retryCount: Math.min(numberOr(env.CI_RETRY_COUNT, state.retryCount), 10),
       cancelled: status === "cancelled",
       timeout:

@@ -212,6 +212,16 @@ test("compact evidence contract keeps the approved fields and privacy boundary",
     "timeout",
     "retainedArtifactIds",
     "localComparisonStatus",
+    "browserProject",
+    "apiScope",
+    "validationScope",
+    "jobDurationMs",
+    "setupDurationMs",
+    "dependencyInstallDurationMs",
+    "browserInstallDurationMs",
+    "commandDurationMs",
+    "uploadDurationMs",
+    "artifactSizeBytes",
   ]) {
     assert.match(
       githubActionsDocumentation,
@@ -336,6 +346,57 @@ test("instrumented jobs provide their canonical command to the evidence envelope
       );
     }
   }
+});
+
+test("instrumented jobs expose bounded cost timers and scope labels", () => {
+  for (const [workflow, entries] of [
+    [
+      pullRequestWorkflow,
+      [
+        [
+          "test-standard",
+          "chromium firefox-recovery mobile-recovery",
+          "not-applicable",
+        ],
+        ["validate-api", "not-applicable", "generated-source-and-declarations"],
+        ["production-build", "not-applicable", "not-applicable"],
+      ],
+    ],
+    [
+      postMergeWorkflow,
+      [
+        ["eligibility", "not-applicable", "not-applicable"],
+        ["post-merge-build", "not-applicable", "not-applicable"],
+      ],
+    ],
+  ]) {
+    for (const [job, browserProject, apiScope] of entries) {
+      const block = jobBlock(workflow, job);
+      assert.match(block, /Start CI cost timer/);
+      assert.match(block, /CI_JOB_STARTED_AT_MS=\$\(date \+%s%3N\)/);
+      assert.match(block, new RegExp(`CI_BROWSER_PROJECT: ${browserProject}`));
+      assert.match(block, new RegExp(`CI_API_SCOPE: ${apiScope}`));
+      assert.match(block, /CI_VALIDATION_SCOPE:/);
+    }
+  }
+  for (const metric of [
+    "jobDurationMs",
+    "setupDurationMs",
+    "dependencyInstallDurationMs",
+    "browserInstallDurationMs",
+    "commandDurationMs",
+    "uploadDurationMs",
+  ]) {
+    assert.match(ciEvidenceSource, new RegExp(metric));
+  }
+  for (const workflow of [pullRequestWorkflow, postMergeWorkflow]) {
+    assert.match(workflow, /Start diagnostic upload timer/);
+    assert.match(workflow, /Upload duration:/);
+  }
+  assert.match(
+    postMergeWorkflow,
+    /scripts\/ci-evidence\.mjs run --phase eligibility/,
+  );
 });
 
 test("the stable validation aggregate publishes its upstream status handoff", () => {

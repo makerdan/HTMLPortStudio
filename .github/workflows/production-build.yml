@@ -24,10 +24,16 @@ jobs:
       CI_EVIDENCE_FILE: ${{ runner.temp }}/ci-evidence-eligibility.json
       CI_EVIDENCE_ARTIFACT_FILE: ${{ runner.temp }}/ci-evidence-eligibility.artifact.json
       CI_JOB_NAME: post-merge-eligibility
+      CI_BROWSER_PROJECT: not-applicable
+      CI_API_SCOPE: not-applicable
+      CI_VALIDATION_SCOPE: post-merge-eligibility-policy
     outputs:
       run-build: ${{ steps.policy.outputs.run-build }}
       reason: ${{ steps.policy.outputs.reason }}
     steps:
+      - name: Start CI cost timer
+        run: echo "CI_JOB_STARTED_AT_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
+
       - name: Check out default branch history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -95,8 +101,9 @@ jobs:
           else
             commits_since_success="$(git rev-list --count "$GITHUB_SHA")"
           fi
-          decision="$(
-            node scripts/post-merge-build-policy.mjs <<JSON
+          policy_input="${RUNNER_TEMP}/post-merge-policy-input.json"
+          policy_output="${RUNNER_TEMP}/post-merge-policy-output.json"
+          cat > "$policy_input" <<JSON
           {
             "currentSha": "$GITHUB_SHA",
             "currentVerified": $CURRENT_VERIFIED,
@@ -105,7 +112,10 @@ jobs:
             "commitsSinceLastSuccess": $commits_since_success
           }
           JSON
-          )"
+          node scripts/ci-evidence.mjs run --phase eligibility -- \
+            bash -euc 'node scripts/post-merge-build-policy.mjs < "$1" > "$2"' \
+            bash "$policy_input" "$policy_output"
+          decision="$(cat "$policy_output")"
           echo "$decision"
           node -e 'const decision = JSON.parse(process.argv[1]); if (!decision.run) process.exit(1)' "$decision" \
             && run_build="true" || run_build="false"
@@ -138,7 +148,13 @@ jobs:
       CI_EVIDENCE_FILE: ${{ runner.temp }}/ci-evidence-post-merge-build.json
       CI_EVIDENCE_ARTIFACT_FILE: ${{ runner.temp }}/ci-evidence-post-merge-build.artifact.json
       CI_JOB_NAME: post-merge-build
+      CI_BROWSER_PROJECT: not-applicable
+      CI_API_SCOPE: not-applicable
+      CI_VALIDATION_SCOPE: post-merge-production-build
     steps:
+      - name: Start CI cost timer
+        run: echo "CI_JOB_STARTED_AT_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
+
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -183,10 +199,17 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
+      - name: Start CI cost timer
+        run: echo "CI_JOB_STARTED_AT_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
+
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
+
+      - name: Start diagnostic upload timer
+        if: ${{ always() }}
+        run: echo "CI_UPLOAD_STARTED_AT_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
 
       - name: Prepare bounded workflow diagnostics
         id: prepare
@@ -241,6 +264,9 @@ jobs:
               runAttempt: Number(process.env.EVIDENCE_RUN_ATTEMPT),
               commitSha: process.env.EVIDENCE_SHA,
               ref: process.env.EVIDENCE_REF.slice(0, 160),
+              browserProject: "not-applicable",
+              apiScope: "not-applicable",
+              validationScope: "post-merge-workflow",
             },
             lifecycle: {
               status,
@@ -252,6 +278,20 @@ jobs:
             outcome: { diagnostic: "independent", authoritative: "unchanged" },
             metrics: {
               phases: [],
+              jobDurationMs: Math.min(
+                Math.max(
+                  0,
+                  Date.now() -
+                    Number(process.env.CI_JOB_STARTED_AT_MS || Date.now()),
+                ),
+                60 * 60 * 1000,
+              ),
+              setupDurationMs: 0,
+              dependencyInstallDurationMs: 0,
+              browserInstallDurationMs: 0,
+              eligibilityDurationMs: 0,
+              commandDurationMs: 0,
+              uploadDurationMs: 0,
               retryCount: Math.max(0, Number(process.env.EVIDENCE_RUN_ATTEMPT) - 1),
               cancelled: status === "cancelled",
               uploadStatus: "pending",
@@ -291,7 +331,7 @@ jobs:
           fs.writeFileSync(process.env.EVIDENCE_OUTPUT, body, { flag: "wx" });
           fs.appendFileSync(
             process.env.GITHUB_STEP_SUMMARY,
-            `## CI diagnostic summary\n\n- Lifecycle: \`${status}\`\n- Upstream: ${envelope.excerpts[0]}\n- Artifact: bounded status-only evidence; authoritative validation is unchanged\n`,
+            `## CI diagnostic summary\n\n- Lifecycle: \`${status}\`\n- Scope: validation \`${envelope.metadata.validationScope}\`; browser project \`${envelope.metadata.browserProject}\`; API scope \`${envelope.metadata.apiScope}\`\n- Duration: job=\`${envelope.metrics.jobDurationMs}ms\`; setup=\`${envelope.metrics.setupDurationMs}ms\`; dependency-install=\`${envelope.metrics.dependencyInstallDurationMs}ms\`; browser-install=\`${envelope.metrics.browserInstallDurationMs}ms\`; eligibility=\`${envelope.metrics.eligibilityDurationMs}ms\`; command=\`${envelope.metrics.commandDurationMs}ms\`\n- Upstream: ${envelope.excerpts[0]}\n- Artifact: size \`${envelope.metrics.artifactSizeBytes} bytes\`; bounded status-only evidence; authoritative validation is unchanged\n`,
           );
           NODE
 
@@ -311,4 +351,19 @@ jobs:
         continue-on-error: true
         env:
           EVIDENCE_UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
-        run: printf '%s\n' "- Upload outcome: \`${EVIDENCE_UPLOAD_OUTCOME:-not-run}\`" >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          set -eu
+          upload_duration_ms=0
+          case "${EVIDENCE_UPLOAD_OUTCOME:-not-run}" in
+            success|failure|cancelled)
+              now_ms="$(date +%s%3N)"
+              started_ms="${CI_UPLOAD_STARTED_AT_MS:-$now_ms}"
+              upload_duration_ms="$((now_ms - started_ms))"
+              [ "$upload_duration_ms" -ge 0 ] || upload_duration_ms=0
+              [ "$upload_duration_ms" -le 900000 ] || upload_duration_ms=900000
+              ;;
+          esac
+          {
+            printf '%s\n' "- Upload outcome: \`${EVIDENCE_UPLOAD_OUTCOME:-not-run}\`"
+            printf '%s\n' "- Upload duration: \`${upload_duration_ms} ms\`"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -26,7 +26,13 @@ jobs:
       CI_EVIDENCE_FILE: ${{ runner.temp }}/ci-evidence-test-standard.json
       CI_EVIDENCE_ARTIFACT_FILE: ${{ runner.temp }}/ci-evidence-test-standard.artifact.json
       CI_JOB_NAME: test-standard
+      CI_BROWSER_PROJECT: chromium firefox-recovery mobile-recovery
+      CI_API_SCOPE: not-applicable
+      CI_VALIDATION_SCOPE: primary-browser-validation
     steps:
+      - name: Start CI cost timer
+        run: echo "CI_JOB_STARTED_AT_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
+
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -73,7 +79,13 @@ jobs:
       CI_EVIDENCE_FILE: ${{ runner.temp }}/ci-evidence-validate-api.json
       CI_EVIDENCE_ARTIFACT_FILE: ${{ runner.temp }}/ci-evidence-validate-api.artifact.json
       CI_JOB_NAME: validate-api
+      CI_BROWSER_PROJECT: not-applicable
+      CI_API_SCOPE: generated-source-and-declarations
+      CI_VALIDATION_SCOPE: generated-api-validation
     steps:
+      - name: Start CI cost timer
+        run: echo "CI_JOB_STARTED_AT_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
+
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -181,7 +193,13 @@ jobs:
       CI_EVIDENCE_FILE: ${{ runner.temp }}/ci-evidence-production-build.json
       CI_EVIDENCE_ARTIFACT_FILE: ${{ runner.temp }}/ci-evidence-production-build.artifact.json
       CI_JOB_NAME: production-build
+      CI_BROWSER_PROJECT: not-applicable
+      CI_API_SCOPE: not-applicable
+      CI_VALIDATION_SCOPE: complete-workspace-production-build
     steps:
+      - name: Start CI cost timer
+        run: echo "CI_JOB_STARTED_AT_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
+
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -228,10 +246,17 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
+      - name: Start CI cost timer
+        run: echo "CI_JOB_STARTED_AT_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
+
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
+
+      - name: Start diagnostic upload timer
+        if: ${{ always() }}
+        run: echo "CI_UPLOAD_STARTED_AT_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
 
       - name: Prepare bounded workflow diagnostics
         id: prepare
@@ -280,6 +305,9 @@ jobs:
               runAttempt: Number(process.env.EVIDENCE_RUN_ATTEMPT),
               commitSha: process.env.EVIDENCE_SHA,
               ref: process.env.EVIDENCE_REF.slice(0, 160),
+              browserProject: "not-applicable",
+              apiScope: "not-applicable",
+              validationScope: "workflow-aggregate",
             },
             lifecycle: {
               status,
@@ -291,6 +319,20 @@ jobs:
             outcome: { diagnostic: "independent", authoritative: "unchanged" },
             metrics: {
               phases: [],
+              jobDurationMs: Math.min(
+                Math.max(
+                  0,
+                  Date.now() -
+                    Number(process.env.CI_JOB_STARTED_AT_MS || Date.now()),
+                ),
+                60 * 60 * 1000,
+              ),
+              setupDurationMs: 0,
+              dependencyInstallDurationMs: 0,
+              browserInstallDurationMs: 0,
+              eligibilityDurationMs: 0,
+              commandDurationMs: 0,
+              uploadDurationMs: 0,
               retryCount: Math.max(0, Number(process.env.EVIDENCE_RUN_ATTEMPT) - 1),
               cancelled: status === "cancelled",
               uploadStatus: "pending",
@@ -330,7 +372,7 @@ jobs:
           fs.writeFileSync(process.env.EVIDENCE_OUTPUT, body, { flag: "wx" });
           fs.appendFileSync(
             process.env.GITHUB_STEP_SUMMARY,
-            `## CI diagnostic summary\n\n- Lifecycle: \`${status}\`\n- Upstream: ${envelope.excerpts[0]}\n- Artifact: bounded status-only evidence; authoritative validation is unchanged\n`,
+            `## CI diagnostic summary\n\n- Lifecycle: \`${status}\`\n- Scope: validation \`${envelope.metadata.validationScope}\`; browser project \`${envelope.metadata.browserProject}\`; API scope \`${envelope.metadata.apiScope}\`\n- Duration: job=\`${envelope.metrics.jobDurationMs}ms\`; setup=\`${envelope.metrics.setupDurationMs}ms\`; dependency-install=\`${envelope.metrics.dependencyInstallDurationMs}ms\`; browser-install=\`${envelope.metrics.browserInstallDurationMs}ms\`; command=\`${envelope.metrics.commandDurationMs}ms\`\n- Upstream: ${envelope.excerpts[0]}\n- Artifact: size \`${envelope.metrics.artifactSizeBytes} bytes\`; bounded status-only evidence; authoritative validation is unchanged\n`,
           );
           NODE
 
@@ -350,4 +392,19 @@ jobs:
         continue-on-error: true
         env:
           EVIDENCE_UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
-        run: printf '%s\n' "- Upload outcome: \`${EVIDENCE_UPLOAD_OUTCOME:-not-run}\`" >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          set -eu
+          upload_duration_ms=0
+          case "${EVIDENCE_UPLOAD_OUTCOME:-not-run}" in
+            success|failure|cancelled)
+              now_ms="$(date +%s%3N)"
+              started_ms="${CI_UPLOAD_STARTED_AT_MS:-$now_ms}"
+              upload_duration_ms="$((now_ms - started_ms))"
+              [ "$upload_duration_ms" -ge 0 ] || upload_duration_ms=0
+              [ "$upload_duration_ms" -le 900000 ] || upload_duration_ms=900000
+              ;;
+          esac
+          {
+            printf '%s\n' "- Upload outcome: \`${EVIDENCE_UPLOAD_OUTCOME:-not-run}\`"
+            printf '%s\n' "- Upload duration: \`${upload_duration_ms} ms\`"
+          } >> "$GITHUB_STEP_SUMMARY"

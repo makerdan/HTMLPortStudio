@@ -179,12 +179,20 @@ The authoritative validation remains unchanged.
 | `changedFiles` | `metadata.changedFiles` is `not-collected`; source enumeration is outside this contract |
 | `workflow` / `job` | `metadata.workflow` and the stable `metadata.job` name |
 | `command` | `metadata.command`, the canonical local command named by the owning job, never shell arguments or command output |
+| `browserProject` / `apiScope` | Bounded `metadata.browserProject` and `metadata.apiScope` labels; one is `not-applicable` when the other identifies the validation surface |
+| `validationScope` | Bounded `metadata.validationScope`, such as `primary-browser-validation`, `generated-api-validation`, or `complete-workspace-production-build` |
 | `result` | `lifecycle.status` and `outcome.result`; diagnostic results are independent and `authoritative` is always `unchanged` |
 | `exitCode` | `outcome.exitCode`, copied from the last allowlisted phase record, or `null` when GitHub ended the job before a phase reported one |
 | `failureExcerpt` | `failureExcerpt` and `excerpts`: bounded, status-only text describing the failing phase or upstream result; never raw output |
 | `cancellation` / `retry` | `metrics.cancelled` and bounded `metrics.retryCount` |
 | `skip` | `lifecycle.expectedSkips` and the allowlisted `lifecycle.upstream` statuses |
 | `timeout` | `timed_out` lifecycle or phase status, including command exit `124`; platform timeouts remain only as precise as GitHub's result |
+| `jobDurationMs` | Bounded elapsed job duration measured from the runner timer |
+| `setupDurationMs` | Bounded toolchain/setup phase duration |
+| `dependencyInstallDurationMs` | Bounded frozen dependency-install phase duration |
+| `browserInstallDurationMs` | Bounded Playwright browser and Linux dependency-install phase duration, or zero when not applicable |
+| `commandDurationMs` | Bounded canonical test, API, policy, or build command duration |
+| `uploadDurationMs` | Bounded diagnostic upload duration in the run summary; zero in retained JSON when no validation job performs an upload |
 | `retainedArtifactIds` | Opaque `retainedArtifactIds` and `artifacts[].name` values with kind, condition, retention, and byte limit |
 | `localComparisonStatus` | `localComparison.status`: `match`, `mismatch`, `not-compared`, or `not-applicable`, plus the local tier |
 
@@ -248,14 +256,19 @@ without uploading an artifact.
 
 The envelope reports bounded setup, dependency-install, browser-install,
 eligibility, command, upload, retry, cancellation, lifecycle, and artifact-size
-signals. These are measurements for diagnosis only. A single run, a passing
-retry, or a small artifact is insufficient evidence for removing a validation
-step, changing a timeout, adding a cache, or otherwise optimizing CI. Gather
-an evidence window covering multiple successful and unsuccessful runs, compare
-the same job and event classes, and obtain a separately reviewed smallest
-change before proposing an optimization. Cost observations never authorize a
-weaker validation contract; they must not weaken validation or become
-permission to weaken validation.
+signals. These are measurements for diagnosis only. The evidence window must
+cover multiple comparable runs. Before proposing any cache,
+matrix, path-filter, timeout, or required-check change, collect at least 10
+comparable runs across at least two event classes where those classes exist,
+including at least five successful runs and at least two naturally occurring
+non-success, cancellation, or timeout outcomes. Do not manufacture failures or
+retries to meet the threshold. Compare the same job, validation scope, browser
+project or API scope, and runner class; report median and high-percentile phase
+durations and artifact-size bounds. The proposal must state a specific cost
+hypothesis and identify a separately reviewed smallest change. A missing field,
+one slow run, or a passing retry never meets this threshold. Cost observations
+never authorize a weaker validation contract; they must not weaken validation
+or become permission to weaken validation.
 
 ## Checkpoint operating procedure
 
