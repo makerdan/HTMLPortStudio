@@ -888,17 +888,6 @@ function RecoveredHandoffPanel({
     );
   };
 
-  if (!handoff && !statusQuery.isError) {
-    return (
-      <Card className="border-primary/20 bg-primary/[0.03] shadow-sm">
-        <CardContent className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Checking the private handoff status for this browser session…
-        </CardContent>
-      </Card>
-    );
-  }
-
   return (
     <Card className="border-primary/20 bg-primary/[0.03] shadow-sm">
       <CardHeader className="pb-3">
@@ -908,6 +897,12 @@ function RecoveredHandoffPanel({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 pt-0">
+        {!handoff && !statusQuery.isError && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Checking the private handoff status for this browser session…
+          </div>
+        )}
         {authError && (
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />

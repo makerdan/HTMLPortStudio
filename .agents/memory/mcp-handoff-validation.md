@@ -9,6 +9,12 @@ External-MCP handoff browser tests should treat Radix status controls as `combob
 
 **How to apply:** Use accessible combobox labels for phase status, select the option by role, press Escape, and only then assert or click controls outside the status section.
 
+When a handoff UI is replaced by a different route or product flow, migrate browser fixtures to the current recovery contract before diagnosing the old route's assertions as a runtime regression.
+
+**Why:** The embedded Replit creation panel was replaced by the external MCP handoff, but legacy tests still tried to click its button and obscured the independent reload-recovery behavior.
+
+**How to apply:** Seed a valid owner/session-bound recovery record when testing recovery directly, and keep assertions on the current user-visible handoff surface.
+
 The locked validation runner can be blocked before application checks when the repository baseline catalog contains malformed or duplicate records; keep that infrastructure failure separate from feature-test evidence and do not repair it in an unrelated handoff task.
 
 **Why:** Failure Gate validates the whole catalog before it resolves the selected tier, so unrelated catalog drift prevents `test-standard` from starting.

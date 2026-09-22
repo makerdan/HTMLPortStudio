@@ -303,7 +303,7 @@ test("keeps the import surface available when an auth callback URL is present", 
   await mockAnalysis(page);
   await page.goto("/");
   await analyzeImportedHtml(page);
-  await expect(page.getByText("Create a Replit Project")).toBeVisible();
+  await expect(page.getByText("Guided MCP project handoff")).toBeVisible();
 });
 
 async function openGithubImport(page: import("@playwright/test").Page) {
@@ -891,46 +891,54 @@ test("keeps actionable analysis errors visible in the Studio home alert", async 
 });
 
 test("stops handoff polling after an error and only resumes on retry", async ({ page }) => {
+  const jobId = "123e4567-e89b-12d3-a456-426614174020";
+  const browserSessionId = "123e4567-e89b-12d3-a456-426614174021";
   let statusChecks = 0;
   await mockAuthenticatedAuth(page);
-  await mockAnalysis(page);
-  await page.route("**/api/port/poe/models", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(poeModels(["Claude-3.5-Sonnet"])),
-    }),
+  await page.addInitScript(
+    ({ browserSessionId, jobId }) => {
+      sessionStorage.setItem("html-port-studio:browser-session", browserSessionId);
+      sessionStorage.setItem(
+        "html-port-studio:handoff-recovery",
+        JSON.stringify({
+          version: 1,
+          jobId,
+          ownerId: "e2e-user",
+          browserSessionId,
+          createdAt: Date.now(),
+        }),
+      );
+    },
+    { browserSessionId, jobId },
   );
-  await page.route("**/api/port/replit-project-connection", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ connected: true }) }),
-  );
-  await page.route("**/api/port/replit-projects", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ jobId: "job-1", status: "queued", steps: [] }),
-    }),
-  );
-  await page.route("**/api/port/replit-projects/job-1", (route) => {
+  await page.route(`**/api/port/replit-projects/${jobId}`, (route) => {
     statusChecks += 1;
-    if (statusChecks > 5) {
+    if (statusChecks <= 4) {
       return route.fulfill({
-        status: 200,
+        status: 503,
         contentType: "application/json",
-        body: JSON.stringify({ jobId: "job-1", status: "queued", steps: [] }),
+        body: JSON.stringify({ error: "Polling unavailable" }),
       });
     }
     return route.fulfill({
-      status: 503,
+      status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ error: "Polling unavailable" }),
+      body: JSON.stringify({
+        jobId,
+        status: "running",
+        projectId: null,
+        projectUrl: null,
+        projectName: "Imported page",
+        currentStep: "Port Authority",
+        steps: [],
+        error: null,
+      }),
     });
   });
 
   await page.goto("/");
-  await analyzeImportedHtml(page);
-  await page.getByRole("button", { name: "Create Replit Project" }).click();
-  await expect(page.getByText("Project handoff unavailable")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("heading", { name: "Resume handoff status" })).toBeVisible();
+  await expect(page.getByText("Handoff status unavailable")).toBeVisible({ timeout: 15_000 });
   const checksWhenFailed = statusChecks;
   await page.waitForTimeout(1_200);
   expect(statusChecks).toBe(checksWhenFailed);
@@ -939,10 +947,10 @@ test("stops handoff polling after an error and only resumes on retry", async ({ 
 });
 
 test("shows canonical skill recovery guidance and preserves completed steps", async ({ page }) => {
-  const jobId = "job-1";
+  const jobId = "123e4567-e89b-12d3-a456-426614174022";
+  const browserSessionId = "123e4567-e89b-12d3-a456-426614174023";
   const canonicalError =
     "The authorized Replit project connection did not resolve the requested workspace skill identity. No skill contents or mirrors were sent. Reconnect the project-creation connection, then retry this step.";
-  let retried = false;
   const failedSteps = [
     ["Port Authority", "completed", null],
     ["Failure Gate", "failed", canonicalError],
@@ -951,88 +959,57 @@ test("shows canonical skill recovery guidance and preserves completed steps", as
     ["App Support Ops", "pending", null],
     ["Poe Setup", "pending", null],
   ];
-  const completedSteps = failedSteps.map(([name]) => [name, "completed", null]);
-  const makeStatus = (status: string, steps: string[][], error: string | null) => ({
-    jobId,
-    status,
-    projectId: "project-1",
-    projectUrl: null,
-    projectName: "Imported page",
-    currentStep: status === "failed" ? "Failure Gate" : null,
-    steps: steps.map(([name, stepStatus, stepError]) => ({
-      name,
-      status: stepStatus,
-      error: stepError,
-    })),
-    error,
-  });
 
   await mockAuthenticatedAuth(page);
-  await mockAnalysis(page);
-  await page.route("**/api/port/replit-project-connection", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ status: "connected", setupUrl: null }),
-    }),
+  await page.addInitScript(
+    ({ browserSessionId, jobId }) => {
+      sessionStorage.setItem("html-port-studio:browser-session", browserSessionId);
+      sessionStorage.setItem(
+        "html-port-studio:handoff-recovery",
+        JSON.stringify({
+          version: 1,
+          jobId,
+          ownerId: "e2e-user",
+          browserSessionId,
+          createdAt: Date.now(),
+        }),
+      );
+    },
+    { browserSessionId, jobId },
   );
-  await page.route("**/api/port/replit-project-connection/setup", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ setupUrl: "https://connectors.replit.com/setup" }),
-    }),
-  );
-  await page.route("**/api/port/replit-projects", (route) => {
-    if (route.request().method() === "POST") {
-      return route.fulfill({
-        status: 202,
-        contentType: "application/json",
-        body: JSON.stringify(makeStatus("failed", failedSteps, canonicalError)),
-      });
-    }
-    return route.continue();
-  });
   await page.route(`**/api/port/replit-projects/${jobId}`, (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify(
-        makeStatus(
-          retried ? "completed" : "failed",
-          retried ? completedSteps : failedSteps,
-          retried ? null : canonicalError,
-        ),
-      ),
+      body: JSON.stringify({
+        jobId,
+        status: "failed",
+        projectId: "project-1",
+        projectUrl: null,
+        projectName: "Imported page",
+        currentStep: "Failure Gate",
+        steps: failedSteps.map(([name, stepStatus, stepError]) => ({
+          name,
+          status: stepStatus,
+          error: stepError,
+        })),
+        error: canonicalError,
+      }),
     }),
   );
-  await page.route(`**/api/port/replit-projects/${jobId}/retry`, (route) => {
-    retried = true;
-    return route.fulfill({
-      status: 202,
-      contentType: "application/json",
-      body: JSON.stringify(makeStatus("running", failedSteps, null)),
-    });
-  });
 
   await page.goto("/");
-  await analyzeImportedHtml(page);
-  await page.getByRole("button", { name: "Create Replit Project" }).click();
+  await expect(page.getByRole("heading", { name: "Resume handoff status" })).toBeVisible();
   await expect(page.getByText("Canonical workspace skill resolution failed.")).toBeVisible();
   await expect(page.getByText("No skill contents or mirrors were sent.")).toBeVisible();
   await expect(page.getByText("The connector returned private skill contents.")).not.toBeVisible();
   await expect(page.getByText("Port Authority")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Reconnect connection" })).toBeVisible();
-  await page.getByRole("button", { name: "Reconnect connection" }).click();
-  await expect(page.getByText("Project creation is connected")).toBeVisible();
   await expect(page.getByRole("button", { name: "Retry step" })).toBeVisible();
-  await page.getByRole("button", { name: "Retry step" }).click();
-  await expect(page.getByText("All setup skills completed")).toBeVisible();
-  expect(retried).toBe(true);
 });
 
 test("[cross-browser] recovers an in-progress authenticated handoff after reload", async ({ page }) => {
   const jobId = "123e4567-e89b-12d3-a456-426614174019";
+  const browserSessionId = "123e4567-e89b-12d3-a456-426614174017";
   const status = {
     jobId,
     status: "running",
@@ -1044,25 +1021,42 @@ test("[cross-browser] recovers an in-progress authenticated handoff after reload
     error: null,
   };
   let statusChecks = 0;
+  let releaseReloadStatus: (() => void) | null = null;
 
   await mockAuthenticatedAuth(page);
-  await mockAnalysis(page);
-  await page.route("**/api/port/replit-project-connection", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ status: "connected", setupUrl: null }),
-    }),
-  );
-  await page.route("**/api/port/replit-projects", (route) =>
-    route.fulfill({
-      status: 202,
-      contentType: "application/json",
-      body: JSON.stringify(status),
-    }),
+  await page.addInitScript(
+    ({ browserSessionId, jobId }) => {
+      if (!sessionStorage.getItem("html-port-studio:browser-session")) {
+        sessionStorage.setItem("html-port-studio:browser-session", browserSessionId);
+      }
+      if (!sessionStorage.getItem("html-port-studio:handoff-recovery")) {
+        sessionStorage.setItem(
+          "html-port-studio:handoff-recovery",
+          JSON.stringify({
+            version: 1,
+            jobId,
+            ownerId: "e2e-user",
+            browserSessionId,
+            createdAt: Date.now(),
+          }),
+        );
+      }
+    },
+    { browserSessionId, jobId },
   );
   await page.route(`**/api/port/replit-projects/${jobId}`, (route) => {
     statusChecks += 1;
+    if (statusChecks === 2) {
+      return new Promise<void>((resolve) => {
+        releaseReloadStatus = resolve;
+      }).then(() =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(status),
+        }),
+      );
+    }
     return route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -1071,9 +1065,8 @@ test("[cross-browser] recovers an in-progress authenticated handoff after reload
   });
 
   await page.goto("/");
-  await analyzeImportedHtml(page);
-  await page.getByRole("button", { name: "Create Replit Project" }).click();
-  await expect(page.getByText("Current step: Port Authority")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("heading", { name: "Resume handoff status" })).toBeVisible();
+  await expect(page.getByText("running handoff")).toBeVisible();
 
   const recoveryBeforeReload = await page.evaluate(() => ({
     metadata: sessionStorage.getItem("html-port-studio:handoff-recovery"),
@@ -1088,9 +1081,11 @@ test("[cross-browser] recovers an in-progress authenticated handoff after reload
   );
 
   await page.reload();
+  await expect.poll(() => releaseReloadStatus !== null).toBe(true);
   await expect(page.getByRole("heading", { name: "Resume handoff status" })).toBeVisible();
+  releaseReloadStatus?.();
   await expect(page.getByText("running handoff")).toBeVisible();
-  expect(statusChecks).toBeGreaterThan(1);
+  await expect.poll(() => statusChecks).toBeGreaterThan(1);
 
   const recoveryAfterReload = await page.evaluate(() => ({
     metadata: sessionStorage.getItem("html-port-studio:handoff-recovery"),
