@@ -1802,6 +1802,46 @@ router.post(
         }
       }
       if (!attempt) throw new Error("HANDOFF_ATTEMPT_CREATE_FAILED");
+
+      const [lockedAttempt] = await tx
+        .select()
+        .from(handoffJobsTable)
+        .where(
+          and(
+            eq(handoffJobsTable.ownerId, req.dbUser!.id),
+            eq(handoffJobsTable.attemptId, requestedAttemptId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      attempt = lockedAttempt;
+      if (!attempt) throw new Error("HANDOFF_ATTEMPT_CREATE_FAILED");
+      if (
+        attempt.sourceRevision !== sourceRevision ||
+        attempt.projectName !== projectName ||
+        stableJson(attempt.sourceBundle) !== stableJson(bundle)
+      ) {
+        return { kind: "source_mismatch" as const };
+      }
+
+      const [existingTransfer] = await tx
+        .select()
+        .from(handoffTransferPackagesTable)
+        .where(eq(handoffTransferPackagesTable.handoffJobId, attempt.id))
+        .orderBy(desc(handoffTransferPackagesTable.createdAt))
+        .for("update")
+        .limit(1);
+      if (existingTransfer && transferState(existingTransfer) === "active") {
+        if (existingTransfer.manifestHash !== manifestHash(manifest)) {
+          return { kind: "source_mismatch" as const };
+        }
+        return {
+          kind: "reused" as const,
+          attempt,
+          transfer: existingTransfer,
+        };
+      }
+
       const [transfer] = await tx
         .insert(handoffTransferPackagesTable)
         .values({
@@ -1820,11 +1860,24 @@ router.post(
         .update(handoffJobsTable)
         .set({ attemptState: "transfer_active", updatedAt: new Date() })
         .where(eq(handoffJobsTable.id, attempt.id));
-      return { attempt, transfer };
+      return { kind: "created" as const, attempt, transfer };
     });
 
-    res.status(201).json(
-      CreateBundleTransferResponse.parse(publicTransfer(created.transfer, rawToken, created.attempt)),
+    if (created.kind === "source_mismatch") {
+      res.status(409).json({
+        error: "This handoff attempt belongs to a different source revision.",
+        code: "HANDOFF_ATTEMPT_SOURCE_MISMATCH",
+      });
+      return;
+    }
+    res.status(created.kind === "reused" ? 200 : 201).json(
+      CreateBundleTransferResponse.parse(
+        publicTransfer(
+          created.transfer,
+          created.kind === "created" ? rawToken : null,
+          created.attempt,
+        ),
+      ),
     );
   },
 );

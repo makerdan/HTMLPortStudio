@@ -1198,6 +1198,50 @@ test("delivers approved bundles through opaque, owner-bound transfer grants", as
     assert.equal(repeatedCreate.body.transferId, transferId);
     assert.equal(repeatedCreate.body.transferToken, null);
 
+    const concurrentAttemptId = randomUUID();
+    const concurrentTransferBody = {
+      ...transferBody,
+      attemptId: concurrentAttemptId,
+    };
+    const concurrentCreates = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        jsonRequest(`${baseUrl}/port/bundle-transfers`, {
+          method: "POST",
+          headers: { ...ownerHeaders, Origin: origin, "Content-Type": "application/json" },
+          body: JSON.stringify(concurrentTransferBody),
+        }),
+      ),
+    );
+    assert.equal(
+      concurrentCreates.filter((response) => response.status === 201).length,
+      1,
+    );
+    assert.equal(
+      concurrentCreates.filter((response) => response.status === 200).length,
+      7,
+    );
+    assert.equal(
+      new Set(concurrentCreates.map((response) => response.body.transferId)).size,
+      1,
+    );
+    assert.equal(
+      concurrentCreates.filter((response) => response.body.transferToken).length,
+      1,
+    );
+    const concurrentActiveCount = await pool.query(
+      `SELECT COUNT(*)::int AS count
+         FROM handoff_transfer_packages AS transfer
+         JOIN handoff_jobs AS attempt ON attempt.id = transfer.handoff_job_id
+        WHERE attempt.owner_id = $1
+          AND attempt.attempt_id = $2
+          AND transfer.revoked_at IS NULL
+          AND transfer.completed_at IS NULL
+          AND transfer.expires_at > NOW()
+          AND transfer.retrieval_count < transfer.retrieval_limit`,
+      [ownerId, concurrentAttemptId],
+    );
+    assert.equal(concurrentActiveCount.rows[0]?.count, 1);
+
     const staleRevision = await jsonRequest(`${baseUrl}/port/bundle-transfers`, {
       method: "POST",
       headers: { ...ownerHeaders, Origin: origin, "Content-Type": "application/json" },
@@ -1421,15 +1465,16 @@ test("delivers approved bundles through opaque, owner-bound transfer grants", as
     );
     assert.equal(tamperedBundle.status, 404);
 
-    const revokedAttemptId = randomUUID();
+    const replacementAttemptId = randomUUID();
+    const replacementTransferBody = {
+      ...transferBody,
+      attemptId: replacementAttemptId,
+      sourceRevision: "revision-transfer-revoked",
+    };
     const revokedCreated = await jsonRequest(`${baseUrl}/port/bundle-transfers`, {
       method: "POST",
       headers: { ...ownerHeaders, Origin: origin, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...transferBody,
-        attemptId: revokedAttemptId,
-        sourceRevision: "revision-transfer-revoked",
-      }),
+      body: JSON.stringify(replacementTransferBody),
     });
     assert.equal(revokedCreated.status, 201);
     const revokedId = String(revokedCreated.body.transferId);
@@ -1445,6 +1490,89 @@ test("delivers approved bundles through opaque, owner-bound transfer grants", as
       { headers: { Authorization: `Bearer ${revokedToken}` } },
     );
     assert.equal(revokedFetch.status, 404);
+
+    const concurrentReplacement = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        jsonRequest(`${baseUrl}/port/bundle-transfers`, {
+          method: "POST",
+          headers: { ...ownerHeaders, Origin: origin, "Content-Type": "application/json" },
+          body: JSON.stringify(replacementTransferBody),
+        }),
+      ),
+    );
+    assert.equal(
+      concurrentReplacement.filter((response) => response.status === 201).length,
+      1,
+    );
+    assert.equal(
+      concurrentReplacement.filter((response) => response.status === 200).length,
+      7,
+    );
+    assert.equal(
+      new Set(concurrentReplacement.map((response) => response.body.transferId)).size,
+      1,
+    );
+    const replacementActiveCount = await pool.query(
+      `SELECT COUNT(*)::int AS count
+         FROM handoff_transfer_packages AS transfer
+         JOIN handoff_jobs AS attempt ON attempt.id = transfer.handoff_job_id
+        WHERE attempt.owner_id = $1
+          AND attempt.attempt_id = $2
+          AND transfer.revoked_at IS NULL
+          AND transfer.completed_at IS NULL
+          AND transfer.expires_at > NOW()
+          AND transfer.retrieval_count < transfer.retrieval_limit`,
+      [ownerId, replacementAttemptId],
+    );
+    assert.equal(replacementActiveCount.rows[0]?.count, 1);
+
+    const expiredAttemptId = randomUUID();
+    const expiredCreated = await jsonRequest(`${baseUrl}/port/bundle-transfers`, {
+      method: "POST",
+      headers: { ...ownerHeaders, Origin: origin, "Content-Type": "application/json" },
+      body: JSON.stringify({ approved: true, bundle, attemptId: expiredAttemptId }),
+    });
+    assert.equal(expiredCreated.status, 201);
+    await pool.query(
+      `UPDATE handoff_transfer_packages
+          SET expires_at = NOW() - INTERVAL '1 second'
+        WHERE id = $1`,
+      [expiredCreated.body.transferId],
+    );
+    const concurrentExpiredReplacement = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        jsonRequest(`${baseUrl}/port/bundle-transfers`, {
+          method: "POST",
+          headers: { ...ownerHeaders, Origin: origin, "Content-Type": "application/json" },
+          body: JSON.stringify({ approved: true, bundle, attemptId: expiredAttemptId }),
+        }),
+      ),
+    );
+    assert.equal(
+      concurrentExpiredReplacement.filter((response) => response.status === 201).length,
+      1,
+    );
+    assert.equal(
+      concurrentExpiredReplacement.filter((response) => response.status === 200).length,
+      7,
+    );
+    assert.equal(
+      new Set(concurrentExpiredReplacement.map((response) => response.body.transferId)).size,
+      1,
+    );
+    const expiredReplacementActiveCount = await pool.query(
+      `SELECT COUNT(*)::int AS count
+         FROM handoff_transfer_packages AS transfer
+         JOIN handoff_jobs AS attempt ON attempt.id = transfer.handoff_job_id
+        WHERE attempt.owner_id = $1
+          AND attempt.attempt_id = $2
+          AND transfer.revoked_at IS NULL
+          AND transfer.completed_at IS NULL
+          AND transfer.expires_at > NOW()
+          AND transfer.retrieval_count < transfer.retrieval_limit`,
+      [ownerId, expiredAttemptId],
+    );
+    assert.equal(expiredReplacementActiveCount.rows[0]?.count, 1);
   } finally {
     if (!api.killed) {
       api.kill("SIGTERM");
