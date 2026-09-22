@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
-import { ROOT, loadTierRegistry } from "./lib/tier-lock-check.mjs";
+import {
+  ROOT,
+  TIER_REGISTRY_LABEL,
+  loadTierRegistry,
+} from "./lib/tier-lock-check.mjs";
 import { validatePlanText } from "./lib/failure-gate.mjs";
 import { validateRegressionGuardText } from "./lib/regression-guard.mjs";
 import {
@@ -12,7 +16,15 @@ import {
 const args = process.argv.slice(2);
 
 function planHelp() {
-  const tierNames = [...loadTierRegistry().keys()];
+  let tierNames;
+  try {
+    tierNames = [...loadTierRegistry().keys()];
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Unable to load validation-tier help because the validation-tier catalog is invalid or unreadable. ${reason} Check ${TIER_REGISTRY_LABEL} and repair the registered tiers.`,
+    );
+  }
   return `Usage:
   node scripts/new-plan.mjs --title "<title>" --why "<why>" <guard decision> [non-guard options]
 
@@ -58,8 +70,14 @@ Use --help or -h to print this guidance.`;
 }
 
 if (args.includes("--help") || args.includes("-h")) {
-  console.log(planHelp());
-  process.exit(0);
+  try {
+    console.log(planHelp());
+    process.exit(0);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error(`[PLAN-SCAFFOLD] ${reason}`);
+    process.exit(1);
+  }
 }
 
 function option(name, fallback = undefined) {

@@ -476,6 +476,43 @@ test("plan creation help lists exactly the registered validation tiers", () => {
   );
 });
 
+test("plan creation help reports a broken validation-tier catalog", () => {
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "broken-validation-tier-help-"),
+  );
+  const registry = path.join(directory, "validation-tiers.json");
+  fs.writeFileSync(
+    registry,
+    JSON.stringify({ version: 1, tiers: { broken: true } }),
+  );
+  try {
+    const result = spawnSync(process.execPath, [planner, "--help"], {
+      cwd: root,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        VALIDATION_TIER_REGISTRY_FILE: registry,
+      },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(
+      result.stderr,
+      /Unable to load validation-tier help because the validation-tier catalog is invalid or unreadable/,
+    );
+    assert.match(
+      result.stderr,
+      /Validation-tier registry .*malformed tier data/,
+    );
+    assert.match(
+      result.stderr,
+      /docs[\\/]validation[\\/]validation-tiers\.json/,
+    );
+    assert.doesNotMatch(result.stderr, /at loadTierRegistry/);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("keeps guard examples synchronized across the planner and canonical guidance", () => {
   const help = spawnSync(process.execPath, [planner, "--help"], {
     cwd: root,
