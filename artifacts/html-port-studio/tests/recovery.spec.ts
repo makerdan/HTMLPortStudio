@@ -6,11 +6,13 @@ import {
 } from "../scripts/prepare-browsers.mjs";
 import {
   createHandoffRecovery,
-  createMcpHandoffRecovery,
   MCP_HANDOFF_RECOVERY_STORAGE_KEY,
   type HandoffRecoveryMetadata,
-  type McpHandoffRecoveryMetadata,
 } from "../src/session-recovery";
+import {
+  createMcpHandoffStatus,
+  createMcpRecoveryFixture,
+} from "./mcp-fixtures";
 
 const html = "<!doctype html><html><body><main>Imported page</main></body></html>";
 const githubUrl = "https://github.com/acme/demo";
@@ -221,53 +223,6 @@ function recoveryMetadata(
     browserSessionId,
     overrides.createdAt ?? Date.now(),
   );
-}
-
-function mcpRecoveryMetadata(
-  overrides: Partial<McpHandoffRecoveryMetadata> = {},
-): McpHandoffRecoveryMetadata {
-  return createMcpHandoffRecovery(
-    overrides.attemptId ?? "123e4567-e89b-12d3-a456-426614174024",
-    overrides.ownerId ?? recoveryOwnerId,
-    overrides.browserSessionId ?? "123e4567-e89b-12d3-a456-426614174025",
-    overrides.sourceRevision ?? "4",
-    overrides.projectName ?? "Poe Port - Imported page",
-    overrides.transferId ?? "123e4567-e89b-12d3-a456-426614174026",
-    overrides.destinationProjectId ?? null,
-    overrides.destinationProjectUrl ?? null,
-    overrides.createdAt ?? Date.now(),
-  );
-}
-
-function handoffStatus(
-  jobId: string,
-  overrides: Partial<{
-    status: "queued" | "running" | "completed" | "failed";
-    projectId: string | null;
-    projectUrl: string | null;
-    projectName: string;
-    currentStep: string | null;
-    steps: Array<{
-      name: string;
-      status: "pending" | "running" | "completed" | "failed";
-      error: string | null;
-    }>;
-    error: string | null;
-  }> = {},
-) {
-  return {
-    jobId,
-    status: "running" as const,
-    projectId: null,
-    projectUrl: null,
-    projectName: "Imported page",
-    currentStep: "Port Authority",
-    steps: [
-      { name: "Port Authority", status: "running" as const, error: null },
-    ],
-    error: null,
-    ...overrides,
-  };
 }
 
 async function seedRecovery(
@@ -1023,7 +978,7 @@ test("stops handoff polling after an error and only resumes on retry", async ({ 
     return route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify(handoffStatus(jobId)),
+      body: JSON.stringify(createMcpHandoffStatus(jobId)),
     });
   });
 
@@ -1057,7 +1012,7 @@ test("shows canonical skill recovery guidance and preserves completed steps", as
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify(handoffStatus(jobId, {
+      body: JSON.stringify(createMcpHandoffStatus(jobId, {
         status: "failed",
         projectId: "project-1",
         currentStep: "Failure Gate",
@@ -1083,7 +1038,7 @@ test("shows canonical skill recovery guidance and preserves completed steps", as
 test("[cross-browser] restores the active MCP recovery record after reload without exposing a token", async ({
   page,
 }) => {
-  const metadata = mcpRecoveryMetadata();
+  const metadata = createMcpRecoveryFixture();
   await mockAuth(page);
   await seedMcpRecovery(page, metadata);
 
@@ -1106,7 +1061,7 @@ test("[cross-browser] restores the active MCP recovery record after reload witho
 test("[cross-browser] recovers an in-progress authenticated handoff after reload", async ({ page }) => {
   const jobId = "123e4567-e89b-12d3-a456-426614174019";
   const browserSessionId = "123e4567-e89b-12d3-a456-426614174017";
-  const status = handoffStatus(jobId);
+  const status = createMcpHandoffStatus(jobId);
   let statusChecks = 0;
   let releaseReloadStatus: (() => void) | null = null;
 
@@ -1202,7 +1157,7 @@ test("[cross-browser] clears or surfaces completed, failed, stale, and foreign h
     return route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify(handoffStatus(jobId, {
+      body: JSON.stringify(createMcpHandoffStatus(jobId, {
         status,
         projectId: status === "completed" ? "project-1" : null,
         currentStep: status === "failed" ? "Port Authority" : null,

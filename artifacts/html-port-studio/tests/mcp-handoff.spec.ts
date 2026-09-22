@@ -1,40 +1,13 @@
 import { expect, test } from "@playwright/test";
+import {
+  createMcpTransferConfirmationFixture,
+  createMcpTransferCreatedFixture,
+  createMcpTransferFixture,
+  mcpFixtureSource,
+} from "./mcp-fixtures";
 
-const source = "<!doctype html><html><head><title>Demo app</title></head><body><main>Imported page</main></body></html>";
-const bundle = {
-  version: 1,
-  sourceType: "pasted_html",
-  files: [{ path: "index.html", content: source }],
-  entrypoint: "index.html",
-  metadata: { displayName: "Demo app" },
-};
-const manifest = {
-  version: 1,
-  sourceType: "pasted_html",
-  entrypoint: "index.html",
-  fileCount: 1,
-  totalBytes: new TextEncoder().encode(source).length,
-  files: [{ path: "index.html", bytes: new TextEncoder().encode(source).length, sha256: "a".repeat(64) }],
-  bundleSha256: "b".repeat(64),
-};
-const transfer = {
-  transferId: "123e4567-e89b-12d3-a456-426614174000",
-  manifestHash: "c".repeat(64),
-  manifest,
-  expiresAt: "2099-01-01T00:00:00.000Z",
-  retrievalLimit: 1,
-  retrievalCount: 0,
-  state: "active",
-  revokedAt: null,
-  completedAt: null,
-  createdAt: "2026-09-21T00:00:00.000Z",
-  attemptId: "123e4567-e89b-12d3-a456-426614174001",
-  sourceRevision: "0",
-  projectName: "Poe Port - Demo app",
-  attemptState: "transfer_active",
-  destinationProjectId: null,
-  destinationProjectUrl: null,
-};
+const source = mcpFixtureSource;
+const transfer = createMcpTransferFixture();
 
 test("guides an authenticated owner through MCP creation and exact-file transfer", async ({ page }) => {
   let confirmationBody: Record<string, unknown> | null = null;
@@ -67,7 +40,7 @@ test("guides an authenticated owner through MCP creation and exact-file transfer
     route.fulfill({
       status: 201,
       contentType: "application/json",
-      body: JSON.stringify({ ...transfer, transferToken: "destination-secret-token" }),
+      body: JSON.stringify(createMcpTransferCreatedFixture()),
     }),
   );
   await page.route("**/api/port/bundle-transfers/*", (route) => {
@@ -85,12 +58,7 @@ test("guides an authenticated owner through MCP creation and exact-file transfer
     return route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({
-        ...transfer,
-        attemptState: "destination_confirmed",
-        destinationProjectId: "project-123",
-        destinationProjectUrl: "https://replit.com/@owner/demo",
-      }),
+      body: JSON.stringify(createMcpTransferConfirmationFixture()),
     });
   });
 
