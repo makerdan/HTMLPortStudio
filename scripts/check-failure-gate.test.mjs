@@ -304,6 +304,32 @@ test("concurrent child checks keep their temporary catalogs isolated", async () 
   }
 });
 
+test("concurrent in-process checks keep explicit temporary catalogs isolated", async () => {
+  const directories = [0, 1].map(() => fs.mkdtempSync(path.join(os.tmpdir(), "failure-gate-in-process-")));
+  try {
+    const catalogs = [
+      { version: 1, records: [baselineRecord("BASE-IN-PROCESS-A")] },
+      { version: 1, records: [{ id: "BASE-IN-PROCESS-B", status: "invalid" }] },
+    ];
+    const plans = directories.map((directory, index) => {
+      const catalog = path.join(directory, "failure-baseline.json");
+      fs.writeFileSync(catalog, JSON.stringify(catalogs[index]));
+      return {
+        catalog,
+        plan: planWithReference("Ignored baseline", index === 0 ? "BASE-IN-PROCESS-A" : "BASE-IN-PROCESS-B"),
+      };
+    });
+
+    const results = await Promise.all(plans.map(({ catalog, plan }) =>
+      Promise.resolve().then(() => validatePlanText(plan, "in-process plan", { baselineFile: catalog }))));
+
+    assert.deepEqual(results[0], []);
+    assert.ok(results[1].some((error) => error.includes("BASE-IN-PROCESS-B") && error.includes("invalid status")));
+  } finally {
+    for (const directory of directories) fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("TASK_PLAN_FILE selects exactly one plan", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "failure-gate-"));
   const file = path.join(directory, "plan.md");

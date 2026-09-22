@@ -21,8 +21,10 @@ export const VALIDATION_STUB = `## Validation
 **Do not escalate:** Run exactly this command. Pre-existing failures are not a reason to run a heavier tier.
 `;
 
-function baselineFile() {
-  return process.env.FAILURE_BASELINE_FILE
+function baselineFile(override) {
+  return override
+    ? path.resolve(override)
+    : process.env.FAILURE_BASELINE_FILE
     ? path.resolve(process.env.FAILURE_BASELINE_FILE)
     : path.join(ROOT, "docs/validation/failure-baseline.json");
 }
@@ -31,8 +33,8 @@ function sectionExists(text, heading) {
   return extractSectionBody(text, heading) !== null;
 }
 
-export function loadBaselineCatalog() {
-  const catalogFile = baselineFile();
+export function loadBaselineCatalog(options = {}) {
+  const catalogFile = baselineFile(options.baselineFile);
   try {
     const catalog = JSON.parse(fs.readFileSync(catalogFile, "utf8"));
     if (!catalog || typeof catalog !== "object" || Array.isArray(catalog)) {
@@ -96,11 +98,11 @@ function repairAction(id) {
   return `declare **Owned baseline repair:** \`${id}\` and repair the recorded failure`;
 }
 
-function checkBaselineReferences(text, errors) {
+function checkBaselineReferences(text, errors, options) {
   const baseline = extractSectionBody(text, REQUIRED_SECTIONS[0]) || "";
   const references = [...baseline.matchAll(/^\s*-\s*\*\*(Ignored baseline|Owned baseline repair):\*\*\s*`([^`]+)`/gm)];
   const ownershipById = new Map();
-  const { records: catalog, errors: catalogErrors } = loadBaselineCatalog();
+  const { records: catalog, errors: catalogErrors } = loadBaselineCatalog(options);
   errors.push(...catalogErrors);
   for (const [, ownership, id] of references) {
     if (ownershipById.has(id)) {
@@ -122,7 +124,7 @@ function checkBaselineReferences(text, errors) {
   }
 }
 
-export function validatePlanText(text, planFile = "task plan") {
+export function validatePlanText(text, planFile = "task plan", options = {}) {
   const errors = [];
   if (!text.trim()) errors.push(`${planFile} is empty.`);
   for (const heading of REQUIRED_SECTIONS) {
@@ -152,7 +154,7 @@ export function validatePlanText(text, planFile = "task plan") {
       }
     }
   }
-  if (sectionExists(text, REQUIRED_SECTIONS[0])) checkBaselineReferences(text, errors);
+  if (sectionExists(text, REQUIRED_SECTIONS[0])) checkBaselineReferences(text, errors, options);
   return errors;
 }
 
@@ -165,7 +167,7 @@ export function addMissingStubs(text) {
   return { text: result, changed: additions.length > 0 };
 }
 
-export function inspectPlanFile(planFile) {
+export function inspectPlanFile(planFile, options = {}) {
   const resolved = validatePlanPath(planFile);
   let text;
   try {
@@ -173,5 +175,5 @@ export function inspectPlanFile(planFile) {
   } catch (error) {
     throw new Error(`Cannot read task plan ${path.relative(ROOT, resolved)}: ${error.message}`);
   }
-  return { file: resolved, text, errors: validatePlanText(text, path.relative(ROOT, resolved)) };
+  return { file: resolved, text, errors: validatePlanText(text, path.relative(ROOT, resolved), options) };
 }
