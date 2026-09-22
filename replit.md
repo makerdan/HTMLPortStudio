@@ -92,6 +92,7 @@ Import pasted, single-file, or public GitHub HTML apps as normalized source bund
 ## Pointers
 
 - See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- See `docs/validation/mcp-import-handoff-acceptance.md` for the bounded MCP handoff acceptance report and live-provider evidence boundary
 
 ## Agent rules
 

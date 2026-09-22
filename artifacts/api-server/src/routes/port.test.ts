@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { spawn, type ChildProcess } from "node:child_process";
 import http, { type IncomingMessage } from "node:http";
 import { createRequire } from "node:module";
-import { readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { once } from "node:events";
 import {
@@ -1096,6 +1098,7 @@ test("delivers approved bundles through opaque, owner-bound transfer grants", as
   );
 
   const apiPort = await unusedPort();
+  const logChunks: string[] = [];
   const api = spawn(process.execPath, ["--enable-source-maps", "dist/index.mjs"], {
     cwd: new URL("../../", import.meta.url).pathname,
     env: {
@@ -1106,8 +1109,10 @@ test("delivers approved bundles through opaque, owner-bound transfer grants", as
       REPL_IDENTITY: "test-repl-identity",
       NODE_ENV: "test",
     },
-    stdio: "ignore",
+    stdio: ["ignore", "pipe", "pipe"],
   });
+  api.stdout?.on("data", (chunk: Buffer) => logChunks.push(chunk.toString("utf8")));
+  api.stderr?.on("data", (chunk: Buffer) => logChunks.push(chunk.toString("utf8")));
 
   const bundle = {
     version: 1 as const,
@@ -1133,7 +1138,20 @@ test("delivers approved bundles through opaque, owner-bound transfer grants", as
     sourceRevision,
     projectName,
   };
-
+  const stableJson = (value: unknown): string => {
+    if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+    if (value && typeof value === "object") {
+      return `{${Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => `${JSON.stringify(key)}:${stableJson(entry)}`)
+        .join(",")}}`;
+    }
+    return JSON.stringify(value);
+  };
+  const sha256 = (value: string): string =>
+    createHash("sha256").update(value, "utf8").digest("hex");
+  let runtimeServer: http.Server | null = null;
+  let runtimeRoot: string | null = null;
   try {
     await waitFor(async () => {
       try {
@@ -1258,8 +1276,18 @@ test("delivers approved bundles through opaque, owner-bound transfer grants", as
     const manifest = manifestBody.manifest as Json;
     const manifestFiles = manifest.files as Json[];
     assert.equal(manifestFiles[0].bytes, bundle.files[0].content.length);
+    assert.equal(manifestBody.manifestHash, created.body.manifestHash);
+    assert.equal(manifestFiles[0].sha256, sha256(bundle.files[0].content));
+    assert.equal(manifest.bundleSha256, sha256(stableJson(bundle)));
     assert.equal(manifestBody.bundle, undefined);
     assert.equal(manifestFiles[0].content, undefined);
+
+    const repeatedManifestResponse = await fetch(
+      `${baseUrl}/port/bundle-transfers/${transferId}/manifest`,
+      { headers: { Authorization: `Bearer ${transferToken}` } },
+    );
+    assert.equal(repeatedManifestResponse.status, 200);
+    assert.deepEqual((await repeatedManifestResponse.json()) as Json, manifestBody);
 
     const bundleResponse = await fetch(
       `${baseUrl}/port/bundle-transfers/${transferId}/bundle`,
@@ -1268,6 +1296,51 @@ test("delivers approved bundles through opaque, owner-bound transfer grants", as
     assert.equal(bundleResponse.status, 200);
     const bundleBody = (await bundleResponse.json()) as Json;
     assert.deepEqual(bundleBody.bundle, bundle);
+    const importedBundle = bundleBody.bundle as typeof bundle;
+    assert.equal(
+      sha256(stableJson(importedBundle)),
+      String(manifest.bundleSha256),
+      "retrieved bundle must match the reviewed bundle hash before runtime verification",
+    );
+
+    runtimeRoot = await mkdtemp(join(tmpdir(), "mcp-handoff-runtime-"));
+    await Promise.all(
+      importedBundle.files.map(async (file) => {
+        const filePath = join(runtimeRoot!, file.path);
+        await mkdir(join(filePath, ".."), { recursive: true });
+        await writeFile(filePath, file.content, "utf8");
+      }),
+    );
+    runtimeServer = http.createServer(async (request, response) => {
+      const requestedPath = new URL(request.url ?? "/", "http://127.0.0.1").pathname.slice(1);
+      const file = importedBundle.files.find((candidate) => candidate.path === requestedPath);
+      if (!file) {
+        response.writeHead(404);
+        response.end();
+        return;
+      }
+      response.writeHead(200, { "Content-Type": requestedPath.endsWith(".html") ? "text/html" : "text/plain" });
+      response.end(await readFile(join(runtimeRoot!, file.path), "utf8"));
+    });
+    const runtimePort = await listen(runtimeServer);
+    const previewResponse = await fetch(`http://127.0.0.1:${runtimePort}/${importedBundle.entrypoint}`);
+    assert.equal(previewResponse.status, 200);
+    assert.match(await previewResponse.text(), /exact bytes/);
+    const postRuntimeBundle = {
+      ...importedBundle,
+      files: await Promise.all(
+        importedBundle.files.map(async (file) => ({
+          ...file,
+          content: await readFile(join(runtimeRoot!, file.path), "utf8"),
+        })),
+      ),
+    };
+    assert.deepEqual(postRuntimeBundle, bundle);
+    assert.equal(
+      sha256(stableJson(postRuntimeBundle)),
+      String(manifest.bundleSha256),
+      "post-runtime preview files must preserve the reviewed bundle hash",
+    );
 
     const replayResponse = await fetch(
       `${baseUrl}/port/bundle-transfers/${transferId}/bundle`,
@@ -1287,11 +1360,78 @@ test("delivers approved bundles through opaque, owner-bound transfer grants", as
     );
     assert.equal(repeatedCompletion.status, 200);
 
+    const expiryAttemptId = randomUUID();
+    const expiryCreated = await jsonRequest(`${baseUrl}/port/bundle-transfers`, {
+      method: "POST",
+      headers: { ...ownerHeaders, Origin: origin, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...transferBody,
+        attemptId: expiryAttemptId,
+        sourceRevision: "revision-transfer-expiry",
+      }),
+    });
+    assert.equal(expiryCreated.status, 201);
+    const expiryId = String(expiryCreated.body.transferId);
+    const expiryToken = String(expiryCreated.body.transferToken);
+    await pool.query(
+      `UPDATE handoff_transfer_packages SET expires_at = NOW() - INTERVAL '1 second' WHERE id = $1`,
+      [expiryId],
+    );
+    const expiredStatus = await jsonRequest(
+      `${baseUrl}/port/bundle-transfers/${expiryId}`,
+      { headers: ownerHeaders },
+    );
+    assert.equal(expiredStatus.status, 200);
+    assert.equal(expiredStatus.body.state, "expired");
+    assert.equal(expiredStatus.body.attemptState, "expired");
+    const expiredManifest = await fetch(
+      `${baseUrl}/port/bundle-transfers/${expiryId}/manifest`,
+      { headers: { Authorization: `Bearer ${expiryToken}` } },
+    );
+    assert.equal(expiredManifest.status, 404);
+    const expiredBundle = await fetch(
+      `${baseUrl}/port/bundle-transfers/${expiryId}/bundle`,
+      { headers: { Authorization: `Bearer ${expiryToken}` } },
+    );
+    assert.equal(expiredBundle.status, 404);
+
+    const tamperAttemptId = randomUUID();
+    const tamperCreated = await jsonRequest(`${baseUrl}/port/bundle-transfers`, {
+      method: "POST",
+      headers: { ...ownerHeaders, Origin: origin, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...transferBody,
+        attemptId: tamperAttemptId,
+        sourceRevision: "revision-transfer-tamper",
+      }),
+    });
+    assert.equal(tamperCreated.status, 201);
+    const tamperId = String(tamperCreated.body.transferId);
+    const tamperToken = String(tamperCreated.body.transferToken);
+    await pool.query(
+      `UPDATE handoff_transfer_packages SET source_bundle = $1::jsonb WHERE id = $2`,
+      [JSON.stringify({
+        ...bundle,
+        files: [{ ...bundle.files[0], content: "<main>tampered</main>" }],
+      }), tamperId],
+    );
+    const tamperedBundle = await fetch(
+      `${baseUrl}/port/bundle-transfers/${tamperId}/bundle`,
+      { headers: { Authorization: `Bearer ${tamperToken}` } },
+    );
+    assert.equal(tamperedBundle.status, 404);
+
+    const revokedAttemptId = randomUUID();
     const revokedCreated = await jsonRequest(`${baseUrl}/port/bundle-transfers`, {
       method: "POST",
       headers: { ...ownerHeaders, Origin: origin, "Content-Type": "application/json" },
-      body: JSON.stringify({ approved: true, bundle }),
+      body: JSON.stringify({
+        ...transferBody,
+        attemptId: revokedAttemptId,
+        sourceRevision: "revision-transfer-revoked",
+      }),
     });
+    assert.equal(revokedCreated.status, 201);
     const revokedId = String(revokedCreated.body.transferId);
     const revokedToken = String(revokedCreated.body.transferToken);
     const revoked = await jsonRequest(
@@ -1310,6 +1450,10 @@ test("delivers approved bundles through opaque, owner-bound transfer grants", as
       api.kill("SIGTERM");
       await once(api, "exit").catch(() => undefined);
     }
+    if (runtimeServer) {
+      await new Promise<void>((resolve) => runtimeServer!.close(() => resolve()));
+    }
+    if (runtimeRoot) await rm(runtimeRoot, { recursive: true, force: true });
     await pool.query(
       `DELETE FROM handoff_transfer_packages WHERE owner_id = ANY($1::varchar[])`,
       [[ownerId, otherOwnerId]],
@@ -1318,5 +1462,8 @@ test("delivers approved bundles through opaque, owner-bound transfer grants", as
       [ownerId, otherOwnerId],
     ]);
     await pool.end();
+    const logs = logChunks.join("");
+    assert.doesNotMatch(logs, /exact bytes|console\.log\('exact'\)|Poe Port - Transfer fixture/);
+    assert.doesNotMatch(logs, /Bearer|transferToken|authorization/i);
   }
 });
