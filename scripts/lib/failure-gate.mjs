@@ -33,6 +33,14 @@ function sectionExists(text, heading) {
   return extractSectionBody(text, heading) !== null;
 }
 
+function shellQuote(value) {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function repairInstruction(planFile) {
+  return `Repair: run \`node scripts/check-failure-gate.mjs --fix-stub --plan ${shellQuote(planFile)}\`, then replace any generated placeholder values before strict validation.`;
+}
+
 export function loadBaselineCatalog(options = {}) {
   const catalogFile = baselineFile(options.baselineFile);
   try {
@@ -129,9 +137,9 @@ export function validatePlanText(text, planFile = "task plan", options = {}) {
   if (!text.trim()) errors.push(`${planFile} is empty.`);
   for (const heading of REQUIRED_SECTIONS) {
     if (!sectionExists(text, heading)) {
-      errors.push(`${planFile} is missing "## ${heading}".`);
+      errors.push(`${planFile} is missing "## ${heading}". ${repairInstruction(planFile, heading)}`);
     } else if (!extractSectionBody(text, heading)) {
-      errors.push(`${planFile} has an empty "## ${heading}" section.`);
+      errors.push(`${planFile} has an empty "## ${heading}" section. ${repairInstruction(planFile, heading)}`);
     }
   }
   const validation = extractSectionBody(text, "Validation") || "";

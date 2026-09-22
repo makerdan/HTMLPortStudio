@@ -132,8 +132,12 @@ test("resolves every registered tier from a valid plan to its exact command", ()
 
 test("rejects a plan missing required sections", () => {
   const result = validatePlanText("# Missing", "missing plan");
-  assert.ok(result.some((error) => error.includes("Pre-existing failures")));
-  assert.ok(result.some((error) => error.includes("Validation")));
+  const baselineError = result.find((error) => error.includes("Pre-existing failures"));
+  const validationError = result.find((error) => error.includes("Validation"));
+  assert.ok(baselineError);
+  assert.ok(validationError);
+  assert.match(baselineError, /Repair: run `node scripts\/check-failure-gate\.mjs --fix-stub --plan 'missing plan'`/);
+  assert.match(validationError, /replace any generated placeholder values before strict validation/);
 });
 
 test("rejects an invalid tier", () => {

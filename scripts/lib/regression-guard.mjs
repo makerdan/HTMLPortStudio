@@ -38,6 +38,11 @@ export const REGRESSION_GUARD_ARCHIVE_CATEGORIES = [
   "malformed",
 ];
 
+function repairInstruction(planFile) {
+  const quotedPlan = `'${planFile.replaceAll("'", "'\\''")}'`;
+  return `Repair: run \`node scripts/check-regression-guard.mjs --fix-stub --plan ${quotedPlan}\`, then replace the stub with exactly one concrete, N/A, or self-satisfying decision from \`node scripts/new-plan.mjs --help\`.`;
+}
+
 function sectionHeadings(text) {
   return [...text.matchAll(/^##\s+(.+?)\s*$/gm)].map((match) => ({
     name: match[1].trim(),
@@ -163,7 +168,7 @@ export function validateRegressionGuardText(text, planFile = "task plan", { requ
   const errors = [];
   const body = extractSectionBody(text, GUARD_SECTION);
   if (body === null) {
-    if (requireSection) errors.push(`${planFile} is missing "## ${GUARD_SECTION}".`);
+    if (requireSection) errors.push(`${planFile} is missing "## ${GUARD_SECTION}". ${repairInstruction(planFile)}`);
     return errors;
   }
 

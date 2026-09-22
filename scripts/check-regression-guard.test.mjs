@@ -140,6 +140,18 @@ test("rejects a missing guard section", () => {
       error.includes('missing "## Regression Guard"'),
     ),
   );
+  assert.match(
+    validateRegressionGuardText(baseline, "missing plan").find((error) =>
+      error.includes('missing "## Regression Guard"'),
+    ),
+    /Repair: run `node scripts\/check-regression-guard\.mjs --fix-stub --plan 'missing plan'`/,
+  );
+  assert.match(
+    validateRegressionGuardText(baseline, "missing plan").find((error) =>
+      error.includes('missing "## Regression Guard"'),
+    ),
+    /exactly one concrete, N\/A, or self-satisfying decision/,
+  );
 });
 
 test("rejects placeholders, vague fields, and malformed declarations", () => {
