@@ -4,6 +4,13 @@ import {
   classifyBrowserSetupError,
   setupDiagnostic,
 } from "../scripts/prepare-browsers.mjs";
+import {
+  createHandoffRecovery,
+  createMcpHandoffRecovery,
+  MCP_HANDOFF_RECOVERY_STORAGE_KEY,
+  type HandoffRecoveryMetadata,
+  type McpHandoffRecoveryMetadata,
+} from "../src/session-recovery";
 
 const html = "<!doctype html><html><body><main>Imported page</main></body></html>";
 const githubUrl = "https://github.com/acme/demo";
@@ -197,6 +204,114 @@ async function mockAuth(page: import("@playwright/test").Page) {
 
 async function mockAuthenticatedAuth(page: import("@playwright/test").Page) {
   await mockAuth(page);
+}
+
+const recoveryOwnerId = "e2e-user";
+
+function recoveryMetadata(
+  jobId: string,
+  browserSessionId: string,
+  overrides: Partial<
+    Pick<HandoffRecoveryMetadata, "ownerId" | "createdAt">
+  > = {},
+): HandoffRecoveryMetadata {
+  return createHandoffRecovery(
+    jobId,
+    overrides.ownerId ?? recoveryOwnerId,
+    browserSessionId,
+    overrides.createdAt ?? Date.now(),
+  );
+}
+
+function mcpRecoveryMetadata(
+  overrides: Partial<McpHandoffRecoveryMetadata> = {},
+): McpHandoffRecoveryMetadata {
+  return createMcpHandoffRecovery(
+    overrides.attemptId ?? "123e4567-e89b-12d3-a456-426614174024",
+    overrides.ownerId ?? recoveryOwnerId,
+    overrides.browserSessionId ?? "123e4567-e89b-12d3-a456-426614174025",
+    overrides.sourceRevision ?? "4",
+    overrides.projectName ?? "Poe Port - Imported page",
+    overrides.transferId ?? "123e4567-e89b-12d3-a456-426614174026",
+    overrides.destinationProjectId ?? null,
+    overrides.destinationProjectUrl ?? null,
+    overrides.createdAt ?? Date.now(),
+  );
+}
+
+function handoffStatus(
+  jobId: string,
+  overrides: Partial<{
+    status: "queued" | "running" | "completed" | "failed";
+    projectId: string | null;
+    projectUrl: string | null;
+    projectName: string;
+    currentStep: string | null;
+    steps: Array<{
+      name: string;
+      status: "pending" | "running" | "completed" | "failed";
+      error: string | null;
+    }>;
+    error: string | null;
+  }> = {},
+) {
+  return {
+    jobId,
+    status: "running" as const,
+    projectId: null,
+    projectUrl: null,
+    projectName: "Imported page",
+    currentStep: "Port Authority",
+    steps: [
+      { name: "Port Authority", status: "running" as const, error: null },
+    ],
+    error: null,
+    ...overrides,
+  };
+}
+
+async function seedRecovery(
+  page: import("@playwright/test").Page,
+  metadata: HandoffRecoveryMetadata,
+) {
+  await page.addInitScript((recovery) => {
+    sessionStorage.setItem(
+      "html-port-studio:browser-session",
+      recovery.browserSessionId,
+    );
+    sessionStorage.setItem(
+      "html-port-studio:handoff-recovery",
+      JSON.stringify(recovery),
+    );
+  }, metadata);
+}
+
+async function writeRecovery(
+  page: import("@playwright/test").Page,
+  metadata: HandoffRecoveryMetadata,
+) {
+  await page.evaluate((recovery) => {
+    sessionStorage.setItem(
+      "html-port-studio:browser-session",
+      recovery.browserSessionId,
+    );
+    sessionStorage.setItem(
+      "html-port-studio:handoff-recovery",
+      JSON.stringify(recovery),
+    );
+  }, metadata);
+}
+
+async function seedMcpRecovery(
+  page: import("@playwright/test").Page,
+  metadata: McpHandoffRecoveryMetadata,
+) {
+  await page.addInitScript(
+    ({ recovery, storageKey }) => {
+      sessionStorage.setItem(storageKey, JSON.stringify(recovery));
+    },
+    { recovery: metadata, storageKey: MCP_HANDOFF_RECOVERY_STORAGE_KEY },
+  );
 }
 
 async function mockAnalysis(
@@ -895,22 +1010,7 @@ test("stops handoff polling after an error and only resumes on retry", async ({ 
   const browserSessionId = "123e4567-e89b-12d3-a456-426614174021";
   let statusChecks = 0;
   await mockAuthenticatedAuth(page);
-  await page.addInitScript(
-    ({ browserSessionId, jobId }) => {
-      sessionStorage.setItem("html-port-studio:browser-session", browserSessionId);
-      sessionStorage.setItem(
-        "html-port-studio:handoff-recovery",
-        JSON.stringify({
-          version: 1,
-          jobId,
-          ownerId: "e2e-user",
-          browserSessionId,
-          createdAt: Date.now(),
-        }),
-      );
-    },
-    { browserSessionId, jobId },
-  );
+  await seedRecovery(page, recoveryMetadata(jobId, browserSessionId));
   await page.route(`**/api/port/replit-projects/${jobId}`, (route) => {
     statusChecks += 1;
     if (statusChecks <= 4) {
@@ -923,16 +1023,7 @@ test("stops handoff polling after an error and only resumes on retry", async ({ 
     return route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({
-        jobId,
-        status: "running",
-        projectId: null,
-        projectUrl: null,
-        projectName: "Imported page",
-        currentStep: "Port Authority",
-        steps: [],
-        error: null,
-      }),
+      body: JSON.stringify(handoffStatus(jobId)),
     });
   });
 
@@ -961,40 +1052,22 @@ test("shows canonical skill recovery guidance and preserves completed steps", as
   ];
 
   await mockAuthenticatedAuth(page);
-  await page.addInitScript(
-    ({ browserSessionId, jobId }) => {
-      sessionStorage.setItem("html-port-studio:browser-session", browserSessionId);
-      sessionStorage.setItem(
-        "html-port-studio:handoff-recovery",
-        JSON.stringify({
-          version: 1,
-          jobId,
-          ownerId: "e2e-user",
-          browserSessionId,
-          createdAt: Date.now(),
-        }),
-      );
-    },
-    { browserSessionId, jobId },
-  );
+  await seedRecovery(page, recoveryMetadata(jobId, browserSessionId));
   await page.route(`**/api/port/replit-projects/${jobId}`, (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({
-        jobId,
+      body: JSON.stringify(handoffStatus(jobId, {
         status: "failed",
         projectId: "project-1",
-        projectUrl: null,
-        projectName: "Imported page",
         currentStep: "Failure Gate",
         steps: failedSteps.map(([name, stepStatus, stepError]) => ({
           name,
-          status: stepStatus,
+          status: stepStatus as "pending" | "running" | "completed" | "failed",
           error: stepError,
         })),
         error: canonicalError,
-      }),
+      })),
     }),
   );
 
@@ -1007,43 +1080,38 @@ test("shows canonical skill recovery guidance and preserves completed steps", as
   await expect(page.getByRole("button", { name: "Retry step" })).toBeVisible();
 });
 
+test("[cross-browser] restores the active MCP recovery record after reload without exposing a token", async ({
+  page,
+}) => {
+  const metadata = mcpRecoveryMetadata();
+  await mockAuth(page);
+  await seedMcpRecovery(page, metadata);
+
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Resume MCP handoff reconciliation" })).toBeVisible();
+  await expect(page.getByText(metadata.projectName, { exact: true })).toBeVisible();
+  await expect(page.getByText(`source revision ${metadata.sourceRevision}`, { exact: false })).toBeVisible();
+  await expect(page.getByText("destination-secret-token")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Start with a new source" }).click();
+  await expect(page.getByRole("heading", { name: "Resume MCP handoff reconciliation" })).not.toBeVisible();
+  await expect(page.getByPlaceholder(/paste your html/i)).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate((storageKey) => sessionStorage.getItem(storageKey), MCP_HANDOFF_RECOVERY_STORAGE_KEY),
+    )
+    .toBeNull();
+});
+
 test("[cross-browser] recovers an in-progress authenticated handoff after reload", async ({ page }) => {
   const jobId = "123e4567-e89b-12d3-a456-426614174019";
   const browserSessionId = "123e4567-e89b-12d3-a456-426614174017";
-  const status = {
-    jobId,
-    status: "running",
-    projectId: null,
-    projectUrl: null,
-    projectName: "Imported page",
-    currentStep: "Port Authority",
-    steps: [],
-    error: null,
-  };
+  const status = handoffStatus(jobId);
   let statusChecks = 0;
   let releaseReloadStatus: (() => void) | null = null;
 
   await mockAuthenticatedAuth(page);
-  await page.addInitScript(
-    ({ browserSessionId, jobId }) => {
-      if (!sessionStorage.getItem("html-port-studio:browser-session")) {
-        sessionStorage.setItem("html-port-studio:browser-session", browserSessionId);
-      }
-      if (!sessionStorage.getItem("html-port-studio:handoff-recovery")) {
-        sessionStorage.setItem(
-          "html-port-studio:handoff-recovery",
-          JSON.stringify({
-            version: 1,
-            jobId,
-            ownerId: "e2e-user",
-            browserSessionId,
-            createdAt: Date.now(),
-          }),
-        );
-      }
-    },
-    { browserSessionId, jobId },
-  );
+  await seedRecovery(page, recoveryMetadata(jobId, browserSessionId));
   await page.route(`**/api/port/replit-projects/${jobId}`, (route) => {
     statusChecks += 1;
     if (statusChecks === 2) {
@@ -1106,7 +1174,7 @@ test("[cross-browser] clears or surfaces completed, failed, stale, and foreign h
     foreignOwner: "123e4567-e89b-12d3-a456-426614174016",
     expired: "123e4567-e89b-12d3-a456-426614174018",
   };
-  const statuses = new Map([
+  const statuses = new Map<string, "completed" | "failed" | "running">([
     [records.completed, "completed"],
     [records.failed, "failed"],
     [records.stale, "running"],
@@ -1134,23 +1202,22 @@ test("[cross-browser] clears or surfaces completed, failed, stale, and foreign h
     return route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({
-        jobId,
+      body: JSON.stringify(handoffStatus(jobId, {
         status,
         projectId: status === "completed" ? "project-1" : null,
-        projectUrl: null,
-        projectName: "Imported page",
         currentStep: status === "failed" ? "Port Authority" : null,
-        steps: [],
+        steps: status === "failed"
+          ? [{ name: "Port Authority", status: "failed", error: "The setup step failed." }]
+          : [],
         error: status === "failed" ? "The setup step failed." : null,
-      }),
+      })),
     });
   });
 
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Import HTML App" })).toBeVisible();
 
-  const seedRecovery = async (
+  const reloadWithRecovery = async (
     jobId: string,
     overrides: Partial<{
       ownerId: string;
@@ -1158,30 +1225,21 @@ test("[cross-browser] clears or surfaces completed, failed, stale, and foreign h
       createdAt: number;
     }> = {},
   ) => {
-    await page.evaluate(
-      ({ jobId, browserSessionId, ownerId, createdAt }) => {
-        sessionStorage.setItem(
-          "html-port-studio:handoff-recovery",
-          JSON.stringify({
-            version: 1,
-            jobId,
-            ownerId,
-            browserSessionId,
-            createdAt,
-          }),
-        );
-      },
-      {
+    await writeRecovery(
+      page,
+      recoveryMetadata(
         jobId,
-        browserSessionId: overrides.browserSessionId ?? browserSessionId,
-        ownerId: overrides.ownerId ?? "e2e-user",
-        createdAt: overrides.createdAt ?? Date.now(),
-      },
+        overrides.browserSessionId ?? browserSessionId,
+        {
+          ownerId: overrides.ownerId,
+          createdAt: overrides.createdAt,
+        },
+      ),
     );
     await page.reload();
   };
 
-  await seedRecovery(records.completed);
+  await reloadWithRecovery(records.completed);
   await expect(page.getByRole("heading", { name: "Import HTML App" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Resume handoff status" })).not.toBeVisible();
   await expect
@@ -1191,7 +1249,7 @@ test("[cross-browser] clears or surfaces completed, failed, stale, and foreign h
     )
     .toBeNull();
 
-  await seedRecovery(records.failed);
+  await reloadWithRecovery(records.failed);
   await expect(page.getByRole("heading", { name: "Resume handoff status" })).toBeVisible();
   await expect(page.getByText("failed handoff")).toBeVisible();
   await expect(page.getByRole("button", { name: "Retry step" })).toBeVisible();
@@ -1199,7 +1257,7 @@ test("[cross-browser] clears or surfaces completed, failed, stale, and foreign h
     .poll(() => page.evaluate(() => sessionStorage.getItem("html-port-studio:handoff-recovery")))
     .not.toBeNull();
 
-  await seedRecovery(records.stale, {
+  await reloadWithRecovery(records.stale, {
     createdAt: Date.now() - 8 * 24 * 60 * 60 * 1000,
   });
   await expect(page.getByRole("heading", { name: "Import HTML App" })).toBeVisible();
@@ -1208,7 +1266,7 @@ test("[cross-browser] clears or surfaces completed, failed, stale, and foreign h
     .poll(() => page.evaluate(() => sessionStorage.getItem("html-port-studio:handoff-recovery")))
     .toBeNull();
 
-  await seedRecovery(records.expired);
+  await reloadWithRecovery(records.expired);
   await expect(page.getByRole("heading", { name: "Import HTML App" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Resume handoff status" })).not.toBeVisible();
   await expect(page.getByRole("heading", { name: "Project setup status unavailable" })).toBeVisible();
@@ -1223,21 +1281,7 @@ test("[cross-browser] clears or surfaces completed, failed, stale, and foreign h
       { timeout: 15_000 },
     )
     .toBeNull();
-  await page.evaluate(
-    ({ jobId, browserSessionId }) => {
-      sessionStorage.setItem(
-        "html-port-studio:handoff-recovery",
-        JSON.stringify({
-          version: 1,
-          jobId,
-          ownerId: "e2e-user",
-          browserSessionId,
-          createdAt: Date.now(),
-        }),
-      );
-    },
-    { jobId: records.expired, browserSessionId },
-  );
+  await writeRecovery(page, recoveryMetadata(records.expired, browserSessionId));
   await page.getByRole("button", { name: "Start with a new source" }).click();
   await expect(page.getByRole("heading", { name: "Project setup status unavailable" })).not.toBeVisible();
   await expect(page.getByRole("tab", { name: "Paste HTML" })).toHaveAttribute("aria-selected", "true");
@@ -1245,7 +1289,7 @@ test("[cross-browser] clears or surfaces completed, failed, stale, and foreign h
     .poll(() => page.evaluate(() => sessionStorage.getItem("html-port-studio:handoff-recovery")))
     .toBeNull();
 
-  await seedRecovery(records.expired);
+  await reloadWithRecovery(records.expired);
   await expect(page.getByRole("heading", { name: "Project setup status unavailable" })).toBeVisible();
   await page.getByRole("tab", { name: "Upload HTML" }).click();
   await expect(page.getByRole("heading", { name: "Project setup status unavailable" })).not.toBeVisible();
@@ -1253,7 +1297,7 @@ test("[cross-browser] clears or surfaces completed, failed, stale, and foreign h
   await page.getByPlaceholder(/paste your html/i).fill("<main>Fresh source</main>");
   await expect(page.getByRole("heading", { name: "Project setup status unavailable" })).not.toBeVisible();
 
-  await seedRecovery(records.foreignSession, {
+  await reloadWithRecovery(records.foreignSession, {
     browserSessionId: "123e4567-e89b-12d3-a456-426614174017",
   });
   await expect(page.getByRole("heading", { name: "Import HTML App" })).toBeVisible();
@@ -1262,7 +1306,7 @@ test("[cross-browser] clears or surfaces completed, failed, stale, and foreign h
     .poll(() => page.evaluate(() => sessionStorage.getItem("html-port-studio:handoff-recovery")))
     .toBeNull();
 
-  await seedRecovery(records.foreignOwner, { ownerId: "another-owner" });
+  await reloadWithRecovery(records.foreignOwner, { ownerId: "another-owner" });
   await expect(page.getByRole("heading", { name: "Import HTML App" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Resume handoff status" })).not.toBeVisible();
   await expect

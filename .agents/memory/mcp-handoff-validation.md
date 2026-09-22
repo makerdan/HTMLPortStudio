@@ -13,7 +13,7 @@ When a handoff UI is replaced by a different route or product flow, migrate brow
 
 **Why:** The embedded Replit creation panel was replaced by the external MCP handoff, but legacy tests still tried to click its button and obscured the independent reload-recovery behavior.
 
-**How to apply:** Seed a valid owner/session-bound recovery record when testing recovery directly, and keep assertions on the current user-visible handoff surface.
+**How to apply:** Seed a valid owner/session-bound recovery record when testing recovery directly, and keep assertions on the current user-visible handoff surface. Pass storage keys into Playwright init/evaluate callbacks; those browser callbacks cannot close over test-module constants.
 
 The locked validation runner can be blocked before application checks when the repository baseline catalog contains malformed or duplicate records; keep that infrastructure failure separate from feature-test evidence and do not repair it in an unrelated handoff task.
 
