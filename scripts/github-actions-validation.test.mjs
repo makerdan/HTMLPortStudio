@@ -71,6 +71,186 @@ function cleanDiagnosticsScript(workflow, jobName) {
     .join("\n");
 }
 
+function normalizeSource(source) {
+  return source.replace(/\s+/g, " ").trim();
+}
+
+function sourceBetween(source, startMarker, endMarker, description) {
+  const start = source.indexOf(startMarker);
+  const end = source.indexOf(endMarker, start + startMarker.length);
+  assert.notEqual(start, -1, `missing ${description}`);
+  assert.notEqual(end, -1, `unterminated ${description}`);
+  return normalizeSource(source.slice(start, end));
+}
+
+function matchValue(source, pattern, description) {
+  const match = source.match(pattern);
+  assert.ok(match, `missing ${description}`);
+  return match[1];
+}
+
+function diagnosticContract(workflow, jobName) {
+  const script = cleanDiagnosticsScript(workflow, jobName);
+  const diagnostics = jobBlock(workflow, jobName);
+  const allowedStatuses = matchValue(
+    script,
+    /const allowedStatuses = new Set\(\[([\s\S]*?)\]\);/,
+    "diagnostic status allowlist",
+  );
+  const allowedUpstreamJobs = matchValue(
+    script,
+    /const allowedUpstreamJobs = ([\s\S]*?);/,
+    "diagnostic upstream allowlist",
+  );
+  const redactions = matchValue(
+    script,
+    /redactions: \[([\s\S]*?)\n\s+\],/,
+    "diagnostic redactions",
+  );
+
+  return {
+    maxBytes: matchValue(
+      script,
+      /const maxBytes = ([^;]+);/,
+      "diagnostic artifact size bound",
+    ),
+    sanitizerDeclarations: [
+      sourceBetween(
+        script,
+        "const safeName =",
+        "\nconst safeLabel =",
+        "safeName sanitizer",
+      ),
+      sourceBetween(
+        script,
+        "const safeLabel =",
+        "\nconst safeRef =",
+        "safeLabel sanitizer",
+      ),
+      sourceBetween(
+        script,
+        "const safeRef =",
+        "\nconst safeSha =",
+        "safeRef sanitizer",
+      ),
+      sourceBetween(
+        script,
+        "const safeSha =",
+        "\nconst safeRunAttempt =",
+        "safeSha sanitizer",
+      ),
+      sourceBetween(
+        script,
+        "const safeRunAttempt =",
+        "\nconst runId =",
+        "safeRunAttempt sanitizer",
+      ),
+    ],
+    fixedFallbacks: {
+      workflow: matchValue(
+        script,
+        /workflow: safeLabel\(process\.env\.EVIDENCE_WORKFLOW, "([^"]+)"\)/,
+        "workflow fallback",
+      ),
+      job: matchValue(
+        script,
+        /job: safeLabel\(process\.env\.EVIDENCE_JOB, "([^"]+)"\)/,
+        "job fallback",
+      ),
+      event: matchValue(
+        script,
+        /event: safeLabel\(process\.env\.EVIDENCE_EVENT, "([^"]+)"\)/,
+        "event fallback",
+      ),
+      runId: matchValue(
+        script,
+        /const runId = safeName\(process\.env\.EVIDENCE_RUN_ID, "([^"]+)"\)/,
+        "run ID fallback",
+      ),
+      sha: matchValue(
+        script,
+        /:\s+"(unknown-sha)";/,
+        "commit SHA fallback",
+      ),
+      ref: matchValue(
+        script,
+        /:\s+"(unknown-ref)";/,
+        "ref fallback",
+      ),
+      tier: matchValue(
+        script,
+        /tier: safeName\(process\.env\.EVIDENCE_TIER, "([^"]+)"\)/,
+        "tier fallback",
+      ),
+    },
+    uploadNameHandling: {
+      artifactName: normalizeSource(
+        matchValue(
+          script,
+          /(name: safeName\(process\.env\.EVIDENCE_ARTIFACT_NAME,[^)]+\))/,
+          "generated artifact name",
+        ),
+      ),
+      output: normalizeSource(
+        matchValue(
+          script,
+          /(`artifact_name=\$\{envelope\.artifacts\[0\]\.name\}\\n`)/,
+          "artifact output handoff",
+        ),
+      ),
+      upload: normalizeSource(
+        matchValue(
+          diagnostics,
+          /(name: \$\{\{ steps\.prepare\.outputs\.artifact_name \}\})/,
+          "upload artifact name handoff",
+        ),
+      ),
+    },
+    allowedStatuses: [...allowedStatuses.matchAll(/"([^"]+)"/g)].map(
+      (match) => match[1],
+    ),
+    allowedUpstreamJobs: [...allowedUpstreamJobs.matchAll(/"([^"]+)"/g)].map(
+      (match) => match[1],
+    ),
+    redactions: [...redactions.matchAll(/"([^"]+)"/g)].map(
+      (match) => match[1],
+    ),
+  };
+}
+
+const expectedDiagnosticContract = {
+  maxBytes: "16 * 1024",
+  sanitizerDeclarations: [
+    'const safeName = (value, fallback) => { const name = String(value ?? ""); return /^[A-Za-z0-9._-]{1,100}$/.test(name) ? name : fallback; };',
+    'const safeLabel = (value, fallback, maxLength = 160) => { const label = String(value ?? "").trim(); return /^[A-Za-z0-9][A-Za-z0-9 ._:/-]*$/.test(label) && label.length <= maxLength ? label : fallback; };',
+    'const safeRef = (value) => { const ref = String(value ?? "").trim(); return /^[A-Za-z0-9][A-Za-z0-9._/@:+-]*$/.test(ref) ? ref.slice(0, 160) : "unknown-ref"; };',
+    'const safeSha = (value) => /^[0-9a-f]{7,64}$/i.test(String(value ?? "")) ? String(value) : "unknown-sha";',
+    'const safeRunAttempt = (value) => { const attempt = Number(value); return Number.isSafeInteger(attempt) && attempt >= 1 && attempt <= 1000 ? attempt : 1; };',
+  ],
+  fixedFallbacks: {
+    workflow: "unknown-workflow",
+    job: "unknown-job",
+    event: "unknown-event",
+    runId: "unknown-run",
+    sha: "unknown-sha",
+    ref: "unknown-ref",
+    tier: "not-specified",
+  },
+  uploadNameHandling: {
+    artifactName:
+      "name: safeName(process.env.EVIDENCE_ARTIFACT_NAME, `ci-diagnostic-${runId}`)",
+    output: "`artifact_name=${envelope.artifacts[0].name}\\n`",
+    upload: "name: ${{ steps.prepare.outputs.artifact_name }}",
+  },
+  redactions: [
+    "repository dumps, source bundles, and imported HTML",
+    "full logs, full dependency-install logs, and command output",
+    "provider payloads, prompts, and request identifiers",
+    "environment files and values, credentials, and secrets",
+    "unbounded browser traces, videos, DOM snapshots, and screenshots",
+  ],
+};
+
 function runCleanDiagnostics(workflow, jobName, upstream) {
   const directory = fs.mkdtempSync(join(tmpdir(), "ci-diagnostics-"));
   const output = join(directory, "evidence.json");
@@ -283,6 +463,79 @@ test("workflow diagnostics preserve lifecycle, safe metrics, and fail-closed agg
   assert.match(
     githubActionsDocumentation,
     /authoritative validation.*unchanged/i,
+  );
+});
+
+test("clean diagnostics share the approved metadata safety contract", () => {
+  const pullRequestContract = diagnosticContract(
+    pullRequestWorkflow,
+    "ci-diagnostics",
+  );
+  const postMergeContract = diagnosticContract(
+    postMergeWorkflow,
+    "post-merge-diagnostics",
+  );
+  const sharedContract = ({
+    maxBytes,
+    sanitizerDeclarations,
+    fixedFallbacks,
+    uploadNameHandling,
+    redactions,
+  }) => ({
+    maxBytes,
+    sanitizerDeclarations,
+    fixedFallbacks,
+    uploadNameHandling,
+    redactions,
+  });
+
+  assert.deepEqual(
+    sharedContract(pullRequestContract),
+    expectedDiagnosticContract,
+  );
+  assert.deepEqual(
+    sharedContract(postMergeContract),
+    expectedDiagnosticContract,
+  );
+  assert.deepEqual(
+    pullRequestContract.allowedStatuses,
+    ["success", "failure", "cancelled", "skipped"],
+  );
+  assert.deepEqual(
+    postMergeContract.allowedStatuses,
+    ["success", "failure", "cancelled", "skipped"],
+  );
+
+  // These are intentionally different because the workflows have different
+  // upstream jobs; keep the difference explicit instead of hiding it in the
+  // shared metadata contract.
+  assert.deepEqual(pullRequestContract.allowedUpstreamJobs, [
+    "test-standard",
+    "validate-api",
+    "production-build",
+    "validation",
+  ]);
+  assert.deepEqual(postMergeContract.allowedUpstreamJobs, [
+    "eligibility",
+    "post-merge-build",
+  ]);
+  const postMergeScript = cleanDiagnosticsScript(
+    postMergeWorkflow,
+    "post-merge-diagnostics",
+  );
+  assert.doesNotMatch(
+    cleanDiagnosticsScript(pullRequestWorkflow, "ci-diagnostics"),
+    /allowedExpectedSkips/,
+  );
+  assert.deepEqual(
+    [
+      ...matchValue(
+        postMergeScript,
+        /const allowedExpectedSkips = new Set\(\[([\s\S]*?)\]\);/,
+        "post-merge expected-skip allowlist",
+      ).matchAll(/"([^"]+)"/g),
+    ].map((match) => match[1]),
+    ["post-merge-build"],
   );
 });
 

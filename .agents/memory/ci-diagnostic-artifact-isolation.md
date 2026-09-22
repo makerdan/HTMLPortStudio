@@ -15,3 +15,15 @@ verified file before the upload action reads it.
 diagnostics job, generate a new allowlisted envelope there, require successful
 preparation before upload, and keep upload failure independent of authoritative
 validation.
+
+When multiple workflows contain separate clean diagnostic generators, test their
+sanitizers, fallbacks, bounds, redactions, and upload-name handoffs as one
+shared contract, then assert each workflow's upstream allowlist separately.
+
+**Why:** The no-checkout boundary prevents sharing repository source at runtime,
+so duplicated inline generators otherwise drift silently even when each job
+still looks locally safe.
+
+**How to apply:** Keep the clean runner source-free and upload-only; use a
+source-independent static contract for shared metadata safety and make every
+intentional per-workflow allowlist or skip policy explicit.
