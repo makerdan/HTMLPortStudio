@@ -5,6 +5,8 @@ task APIs or executable host tests are installed in this package. Structural
 document/package checks cannot prove live task creation or dependency behavior.
 Apply the mandatory [binding and recovery protocol](handoff-binding-and-recovery.md)
 to every case. Symbolic inputs below are test scenarios, not real host records.
+Also apply [delivery reconciliation](delivery-reconciliation.md). Expected
+implementation changes do not waive fixed obligations or payload protections.
 
 | Case | Required behavior and evidence |
 |---|---|
@@ -44,9 +46,29 @@ to every case. Symbolic inputs below are test scenarios, not real host records.
 | Verifier amendment after linkage | After successful full-payload readback, edit only the verifier's coverage, safety rules, or report path. Execution-time and report-acceptance full-payload comparison reject the substituted instructions despite unchanged primary/key/dependency. |
 | Identity resolution discovery | Permit minimal authorized read-only evidence to identify the intended Project. Substantive target inspection/writes wait for confirmed identity; a standalone file-based plan does not require a task namespace. |
 | Missing-source verification planning | An unavailable canonical target produces a staged blocked discovery plan/report without invented obligations. Planning delivery and future verification status are separate; a requested already extracted full matrix remains Partial/Blocked. |
+| D-01 two-phase creation | Create a dependent verifier before delivery with pinned requirement coverage/outcomes and explicitly pending method fields. Retain scope, safety, primary/key binding, and report destination; unknown paths/commands are not invented as immutable criteria. Creation does not pass future checks. |
+| D-02 expected baseline mutation | Installation changes Project files/configuration under the unchanged authorized primary. Keep obligation, pre-install, and delivered snapshots separate. Do not reject delivery because its implementation digest differs from the starting digest; required regression behavior must still pass. |
+| D-03 relocated entry point | Move an authorized implementation from a provisional path to a verified wired entry point. Resolve the method with requirement-level evidence, retain coverage and safety, and reuse the same binding. A matching function in an unwired file is insufficient. |
+| D-04 equivalent implementation | Deliver a different in-scope middleware/module architecture that demonstrably preserves the original behavior and acceptance outcomes. Record the equivalence and independently verify through actual host wiring; installer assertions alone cannot pass. |
+| D-05 incorrect command assumption | A provisional or previously specified validation command is invalid, but the host provides an authorized equivalent. Resolve pending fields or explicitly amend the method through the permitted route. Preserve required check coverage, record old/new commands and evidence impact, and do not silently edit a fixed payload. |
+| D-06 requirement weakening | Installer removes a required authorization check and labels it adaptation. Classify the unchanged requirement's violation as failed; do not regenerate criteria from the output. A genuine proposed contract change remains blocked until explicitly authorized renewal. |
+| D-07 ambiguous equivalence | A changed implementation cannot be proven equivalent or classified from available evidence. Mark the affected check blocked with owner/next action, not verified or automatically not applicable. |
+| D-08 independent handoff inspection | Publish a tracked installer handoff with snapshot, changed files, requirement mapping, commands, deviations, and authority references. Verify relied-on claims independently; a false handoff claim fails its affected requirement when evidence proves violation. Retain no secrets. |
+| D-09 legacy missing handoff | An existing primary lacks a handoff obligation. Reconstruct discovery from authoritative evidence and report the omission without silently revising the primary. Missing required delivery/evidence still blocks; if handoff publication was an authorized requirement, preserve that unmet obligation. |
+| D-10 method resolution and task lineage | Resolve methods with unchanged primary plan and semantic scope through a permitted route; preserve the duplicate key, record matrix/payload revisions, and read back changed executable instructions. If a successor is required, retain explicit predecessor/generation links rather than launching an unrelated duplicate. |
+| D-11 missing amendment route | A necessary method correction has no verified authorized host amendment/resolution route. Retain the original dependent task, publish the proposed reconciliation within report-write scope, and block affected execution. Do not guess permissions or automatically approve/reactivate work. |
+| D-12 material renewal | Change primary-plan digest, semantic scope, or obligations. Require authorization and a renewed binding, preserving old/new revisions and linked history. Do not overwrite the old key, silently inherit evidence, or treat the successor as unrelated. |
+| D-13 delivery mutation during verification | Relevant delivered inputs change after discovery or testing. Invalidate affected evidence, retain unaffected evidence only with established dependency/provenance binding, and report the actual tested snapshot. Do not claim concurrently changing current inputs passed. |
+| D-14 definition parity and Apply boundary | A pure Apply changes the target definition without Install authorization, or an exact-parity Install delivers unapproved source changes. Preserve the definition boundary and investigate/report the violation; implementation equivalence does not waive required content parity. Explicitly approved transformations retain original-spec/authority mapping. |
+| D-15 output-only acceptance | Installed source or handoff omits a pinned requirement. The verifier retains the original requirement matrix and tests it; it cannot construct a narrower standard solely from delivered output or call an omitted required capability not applicable. |
+| D-16 evidence-preserving correction | Correct a method after a failed check through the authorized route. Preserve the original result, rationale, and old/new matrix; invalidate affected evidence and rerun required checks before any pass. Uncertain evidence impact blocks reuse. |
 
 For each host test, retain the exact task and plan references, finalization
 evidence, selected Project/target/scope, verifier ID/dependency/key readback,
 observed outcomes, and unavailable capabilities. No user-data or production
 side effects are authorized by this matrix. Do not use invented task IDs as
 evidence of real host integration.
+For D-series cases, additionally retain all three baselines, original/resolved
+matrices, difference classification, handoff references, amendment authority,
+revision/generation history, and affected-evidence decisions. These are required
+host acceptance scenarios, not claims that they have been executed by packaging.

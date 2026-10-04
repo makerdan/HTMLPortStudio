@@ -46,18 +46,18 @@ test("List Skills preserves the private/custom inventory contract", () => {
   );
   requireContract(
     contract,
-    "The `.local/skills/` and `.local/secondary_skills/` trees are explicitly\n   excluded from the private/custom comparison.",
+    "Do not substitute `.local/skills/`, `.local/secondary_skills/`, another catalog,\n   a mirror, or a generated listing for this candidate set.",
     "exclusion of platform-provided skill catalogs",
   );
 
   requireContract(
     contract,
-    "Return Markdown text with exactly two comparison columns titled\n`Project-Installed` and `Available, Not Applied`. These are the only\ncomparison columns.",
+    "For a full comparison, return Markdown text with exactly two comparison\ncolumns titled `Project-Installed` and `Available, Not Applied`. These are\nthe only comparison columns.",
     "the exact two-column report",
   );
   requireContract(
     contract,
-    "Every represented runtime candidate must have these nested fields, even when\ninvalid or unknown:",
+    "Every represented runtime candidate must have all five nested fields:",
     "the required nested candidate fields",
   );
   for (const field of [
@@ -67,7 +67,7 @@ test("List Skills preserves the private/custom inventory contract", () => {
     "Evidence",
     "Gaps",
   ]) {
-    requireContract(contract, `- \`${field}\``, `the nested ${field} field`);
+    requireContract(contract, `**${field}:**`, `the nested ${field} field`);
   }
 
   for (const status of [
@@ -109,23 +109,28 @@ test("List Skills preserves the private/custom inventory contract", () => {
   );
   requireContract(
     contract,
-    "Never guess or silently drop an entry.",
+    "Do not silently drop entries.",
     "invalid and inaccessible entry preservation",
   );
 
   requireContract(
     contract,
-    "This skill is read-only: it inventories and\ninspects; it does not install, execute, repair, copy, refresh, synchronize, or\nmodify skills, project files, runtime state, generated outputs, or caches.",
+    "This skill inventories and inspects; it never installs, invokes, repairs,\n   copies, refreshes, synchronizes, or modifies skills, project files, runtime\n   state, generated outputs, or caches.",
     "the read-only safety boundary",
   );
   requireContract(
     contract,
-    "Do not follow symlinks, recurse into unrelated locations, inspect nested\nrepositories, execute a discovered skill or imported source, run validation to\nmanufacture evidence, or run commands that regenerate projections, manifests,\nmirrors, metadata, lockfiles, or caches.",
+    "Do not follow symlinks, recurse into unrelated locations, inspect nested\nrepositories, execute discovered skills or imported source, or run validation\nto manufacture evidence.",
     "the execution and regeneration safety boundaries",
   );
   requireContract(
     contract,
-    "Never reveal secrets, credentials, private instructions, skill bodies, or\ncanonical workspace paths.",
+    "Do not reproduce skill bodies, private workspace instructions, secrets,\n   credentials, environment values, or canonical workspace paths.",
     "the sensitive-information safety boundary",
+  );
+  requireContract(
+    contract,
+    "Redact secrets, credentials, tokens, query strings, environment values, and\ncanonical or absolute paths.",
+    "redaction of sensitive values and absolute paths",
   );
 });

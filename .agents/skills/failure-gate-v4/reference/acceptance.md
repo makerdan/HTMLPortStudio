@@ -15,6 +15,15 @@ or contract risk, the proving check, and post-change verification. Use the host'
 existing format; no named companion skill is mandatory. Do not fix unrelated
 baseline failures. Record raw failures and ownership separately.
 
+Covering every tier in this matrix does not authorize running every real tier.
+Use pinned definition inspection and isolated instrumented fixtures for unassigned
+dispatch cases, recording attempted and actually launched commands separately.
+Live checks must fit the approved selected tier or an explicit bounded non-tier
+verification policy; other-tier live runs need a separately authorized operation
+or approved atomic tier change. Do not exercise unauthorized production commands
+to prove denial. Fixtures cannot replace required live independent-caller,
+restore, or cutover evidence; unavailable proof blocks the affected readiness claim.
+
 ## Required host tests
 
 | Area | Prove |
@@ -36,6 +45,37 @@ baseline failures. Record raw failures and ownership separately.
 | Event semantics and reuse | Command approval, Active/Ready status, and later merge/apply actions do not count as plan approval. Wrong-plan, changed-tier, drifted-policy, and wrong-local-ID events are rejected; one event cannot bind two local IDs. Same-task retries obey idempotency/CAS without granting a new assignment. |
 | Decision source stability | Mutate working-tree captured event/decision evidence during activation: the coordinator uses pinned versioned evidence and governing policy, retains its reference atomically, and denies missing/inconsistent snapshots. A commit preserves verified captured contents but cannot prove an approval occurred. A separate identity-based human route pins its reviewer authority with its decision; the Replit-event route does not require a roster. |
 | Tier lock | Correct tier runs; lighter/heavier/unknown tiers, missing IDs, wrong plans, escaping paths, and stale digests fail before command launch. |
+| Agent initiation boundary | In instrumented host routes, a task Agent's request for another tier is denied before launch, whether called independent, diagnostic, ad hoc, non-evidence, or invoked without task metadata. Verify Agent guidance covers uncontrolled direct routes; do not claim local tools can identify or prevent arbitrary shell bypass. |
+| Independent origin preservation | A genuine existing platform, CI, or local independent caller still uses its unchanged invocation and own policy without task metadata. A task Agent launching that same script or deliberately requesting extra CI checks gains no independent authority; where origin is unverifiable, report the limitation rather than inventing authentication. |
+| Transitive execution manifest | Pin and verify wrappers, hooks, nested scripts, discovery/config branches, workers, and scheduler/remote targets. An undeclared broader-tier dispatch, unknown branch, drifted target, or argument/env expansion is denied before the affected command launches. |
+| Approved shared composition | An explicitly approved selected-tier composition containing shared checks remains executable with its existing coverage and locks; sharing does not permit a different unrestricted dispatcher. Composition expansion requires renewed applicable authorization. |
+| Actual scope violation | An instrumented unexpected child launch produces a violation, honest actual-step report, and authorized stop/quarantine handling, not acceptance by dropping its output. Fixtures do not claim to prevent arbitrary out-of-band execution. |
+| Delegated authority | Children, subagents, background jobs, and scheduler requests retain exact task/plan/authorization bindings, purpose, allowlists, shared budgets, reports, and lease ownership. Dropped/stale/borrowed bindings or new grants for the parent's validation deny cooperative dispatch; continuing children cannot disappear at parent exit/timeout/tier transition. |
+| Direct diagnostic restriction | No direct whole-tier command is blanket diagnostic permission. Current-snapshot whole-tier runs use the checked assigned-tier route; unknown selectors and unregistered diagnostic argv launch no commands. Authorized focused diagnostics remain usable but cannot satisfy required-tier evidence. |
+| Comparison scope | A verified earlier snapshot uses the registered bounded comparison commands without altering the working tree or production state. A whole assigned-tier comparison requires explicit bounded capability; another-tier or unapproved equivalent fallback is denied before launch. |
+| Cumulative auxiliary budgets | Concurrent workers and cross-purpose/equivalent routes atomically reserve shared finite limits before launch. Denied non-launches use no attempt; started failed/crashed/skipped/zero-test/cancelled attempts consume it. No oversubscription or unlimited comparison chain is permitted. |
+| Budget reset resistance | Restart, new wrapper/run IDs, renamed failures, purpose changes, snapshots, or authorization amendments do not reset retained cumulative consumption. New episodes follow policy; exhausted or unverifiable accounting blocks auxiliary launches. Explicit applicable renewal records new limits and prior history without self-approval. |
+| Bounded separate policies | Planning/discovery, additional checks, and maintenance/bootstrap identify approval, exact scope, transitive allowlists, and finite budgets. They cannot grant a second active tier, reconstruct another tier through split commands, or use arbitrary passthrough. Additional checks satisfy only their named non-tier obligation. |
+| Acceptance without tier sweep | All registry definitions and dispatch branches can be checked structurally and through instrumented fixtures without launching unassigned tiers. Live checks stay within selected-tier or bounded non-tier approval; missing necessary live evidence remains blocked, not fabricated or replaced by an all-tier loop. |
+| Permitted reruns and transitions | Necessary authorized same-tier reruns after relevant edits remain available and do not consume auxiliary diagnostic budgets. A separately approved atomic tier change allows the new tier only after safe run reconciliation; a pending request never grants it. |
+| Monitor installation mapping | Discover real hooks, persistent file path/schema, coverage, health, single-flight/resource interfaces, query access, and blind spots in the capability manifest/evidence index. No fake daemon, filename, runtime guarantee, task binding, or platform hook is claimed. |
+| Single-flight race | Concurrent same-task top-level required/diagnostic/comparison/additional requests across cooperative routes yield at most one confirmed launch. Exact duplicates return the active run identity, not a new pass; different requests follow the configured busy/queue policy. |
+| Queue revalidation | A bounded queue preserves request identity without treating queued work as running. Changed/revoked authorization, task cancellation, stale plan/inputs, exhausted budget, unsafe resources, or unhealthy logging prevents dispatch until applicable revalidation/approval succeeds. |
+| Parallel substep preservation | Approved workers/steps inherit the parent slot, lease, scope, and bindings without reacquiring its exclusive slot. They can execute approved parallel work without deadlock; a nested standalone validation cannot evade the top-level guard. |
+| Cross-task resource exclusion | Conflicting cooperating tasks cannot simultaneously own the same registered resource. Lock ordering and bounded waits avoid deadlock; unrelated independent callers retain existing invocations/policy. Uncoordinated external overlap is reported, not falsely claimed prevented. |
+| Child lifetime and uncertain death | Parent exit, timeout, stale heartbeat, missing finish, restart, or PID reuse cannot release live/uncertain ownership. Verified child/job lifecycle or safe quarantine is required before replacement, tier move, or terminal release; unrelated processes are not killed. |
+| Durable launch ordering | Decision/slot/lease/intent and file trail are safely persisted before managed dispatch. Missing monitor, log-write/flush failure, or unsafe coordination blocks launch without fallback. Denials and intents do not masquerade as confirmed starts. |
+| Post-spawn logging failure | Simulate a confirmed launch followed by recording failure: retain ownership/original evidence, mark monitoring incomplete, block further managed dispatch, and reconcile safely. No fabricated finish/pass, early unlock, or discarded gap. |
+| Crash-window reconciliation | Crash between intent, process/job spawn, start confirmation, projection, and finish: stable event IDs and verified lifecycle reconcile pending states. Recovery cannot silently duplicate a live run or assume an intent proves it started/stopped. |
+| Event provenance and reasons | Record applicable task/run/parent/authority versions, actual scope, initiator source/confidence, declared reason, guard decision/reason code, raw sources, and explicit unknowns. Declared intent is not verified motive; process names/flags alone do not establish tier or independent origin. |
+| Overlap classification | Distinguish different-tier unauthorized execution, duplicate same-tier top-level runs, independent overlap, and approved intra-run parallelism. Approved sequential tier changes and independently authorized distinct tasks are not tier violations; resource conflicts are separately assessed. |
+| Clock and coverage uncertainty | Confirm overlap from reliable intervals/liveness, not unknown-skew cross-host timestamps, reordered events, or an unexplained missing finish. No events under partial coverage cannot prove no extra runs; uncertainty and original corroboration remain visible. |
+| Concurrent structured file writes | Actual host appends/projection remain parseable and safely ordered under concurrent writers. Readers deduplicate event IDs without suppressing genuine repeated launches; incomplete tails/corrupt segments are visible, never silently rewritten as healthy. |
+| Persistent log and rotation | Verify the actual file location outside .local persists through applicable restart/checkout/merge/redeploy boundaries; rotation retains discoverable segment references and protects dependent evidence. Missing durability proof blocks that readiness claim; ephemeral output is insufficient. |
+| Log access and privacy | Bound/sanitize fields, redact secret argv/env and unrelated sensitive data, reject traversal/escaping symlink writes, and verify permissions/flush policy. Append-only is not called tamper-proof unless the host establishes stronger protection; live logs are not committed by default. |
+| Automatic overlap lookup | With no user-supplied path, an overlap/duplicate/unauthorized-validation question discovers the indexed file and queries the relevant task/interval plus competing runs/rotated segments and accessible original sources. No activation or validation launch is required for lookup. |
+| Missing-log investigation | Missing index/log, denied access, lost/pruned/corrupt history, unknown task/origin, or missing lifecycle boundaries yields scoped verified facts and explicit gaps. Agent does not guess a filename/cause, require pasted logs, claim unobserved coverage, or auto-install/repair. |
+| Investigation and closure boundaries | Reading telemetry cannot trigger tiers/CI, kill processes, change policy/logs, invent authority, or create repair tasks. Logging outages do not add passing-test or second-approval conditions to owner closure; existing safe run handling still applies. |
 | Independent caller execution | Each discovered independent caller's existing command executes its intended safe checks with TASK_PLAN_FILE or the host's equivalent optional adapter absent, without changing its command string or requiring new task metadata/caller changes. Prove real step execution, not merely a zero exit. Fixtures alone do not prove platform caller compatibility. |
 | Compatibility without task-route cutover | When a plan-file route remains the sole approved ordinary-task route, independent checks work without that plan while the ordinary route, bindings, and change controls remain unchanged. No new lifecycle, cutover, or independent-to-task evidence conversion is introduced. |
 | Checked plan input adapters | Supported native arguments, local interfaces, or optional environment/file adapters resolve the exact task/namespace, approved plan/version/digest, authorized tier/definition, and current authorization. A supported non-environment input works without TASK_PLAN_FILE; conflicting supplied bindings are rejected. |
@@ -45,6 +85,11 @@ baseline failures. Record raw failures and ownership separately.
 | Independent raw outcomes | Deliberately failing independent checks preserve nonzero statuses and reports; crashes, missing reports, unexpected zero-test runs, and unfinished steps stay failed/incomplete as applicable, not fabricated passes or automatic catalog ignores. |
 | Shared execution preservation | Verify every existing registered tier retains checks, coverage, timeouts, resource/writer locks, report adapters, and heavy-suite serialization where present across supported entry points. Preserve independent command strings, shared workflows, and Run-button definitions unless a separate approved change explicitly covers them. No example tier names are required. |
 | Compatibility repair provenance | An evidenced installation-introduced independent-caller rejection is owned by that integration change, not automatically a pre-existing product baseline. A scoped repair uses applicable approval/versioning without inventing a new lifecycle/cutover; separately planned original installation/confirmation pins its original source and records the later amendment distinctly. |
+| Required configuration preflight | Declare every actual required per-command environment/config value, verified source, and validation. Missing, malformed, unavailable, or conflicting config blocks before the command starts, including independent callers that require it; report missing names/status safely and do not claim the build ran or attribute it to product code. |
+| Configuration values and provenance | With valid values, verify the actual intended command environment reaches the builder and evidence records safe source/version metadata. Do not fabricate defaults, change caller commands, or expose secret values in logs, reports, errors, digests, or evidence exports. |
+| Base path and deployment configuration | Validate a required base path against verified project/deployment configuration and target applicability. Missing/invalid config blocks; `/`, empty values, or changed deployment targets are not guessed. These inputs are host-dependent, not universal skill defaults. |
+| Port assignment and conflicts | Respect a verified fixed project port and report conflicts without silently rebinding callers. If no fixed port exists but a listener needs one, assign a valid number from the host's verified range/allocator. Demonstrate safe reservation, allowed range, environment propagation, lifecycle handoff/release, and coordination between simultaneous checked/independent runs. A released free-port probe cannot establish reservation; block if safe coordination is unavailable. |
+| Build-only port values | When a build embeds rather than binds a port/URL, validate and use the verified stable build target; do not allocate or advertise an ephemeral listener endpoint. Record only non-secret configuration identity, never credentials. |
 | Defaults | A task has exactly one authoritative tier; no redundant deny-list migration is required when another tier is added. |
 | Derived tier status | For each registered tier, status and activation/change audit snapshot derive from the single assignment; added tiers default NOT ALLOWED; suspended/terminal tasks deny all tiers; pending change cannot allow its target. |
 | Overrides | Arguments, environment, config, package-script routes, and diagnostic selectors cannot reduce accepted required coverage. |
@@ -72,15 +117,15 @@ baseline failures. Record raw failures and ownership separately.
 | Lifecycle | Expired, revoked, non-active, or newly broadened baselines cannot waive a task failure without approved policy. |
 | Ownership | An owned repair cannot be discharged by reclassification, expiry, skipped/deleted/renamed tests, or unapproved plan amendments. |
 | Completeness | Ignored failures followed by missing required steps, reports, discovery, or runner crashes remain incomplete/unacceptable. |
-| Results | Raw nonzero statuses are preserved under acceptable-with-ignored-failures; diagnostic results cannot stand in for full-tier runs. |
+| Results | Raw nonzero statuses are preserved under acceptable-with-ignored-failures; diagnostic results cannot stand in for complete assigned-tier runs. |
 | Evidence acceptance | Unknown/stale snapshots, invalidated plans, and missing required external checks prevent local success. |
 | Capability boundary | Missing required external checks remain blocked; a local check cannot impersonate an unavailable service. |
 | Local dispatch | The checked project entry point resolves one authorized tier from the supplied local task and plan; it does not sweep all tiers. Missing report adapters and not-reached steps cannot produce accepted runs. |
-| Ordinary-task route | A live local-ID plan can be activated through a verified approval event, configured human route, or preapproved policy decision and run its selected tier as checked evidence. A draft/review-request-only CLI, nonexistent activation/run entry point, or direct test route remains blocked/diagnostic. Reruns do not reactivate unchanged plans. |
+| Ordinary-task route | A live local-ID plan can be activated through a verified approval event, configured human route, or preapproved policy decision and run its selected tier as checked evidence. A draft/review-request-only CLI, nonexistent activation/run entry point, or direct test route cannot supply this route; diagnostics require their explicit bounded capability. Reruns do not reactivate unchanged plans. |
 | Active-phase sequence | Task-agent guidance explicitly calls local activation when Draft/Plan work enters Active, then performs work and checked validation on the changed inputs. Edits after a passing run require a fresh checked run. Missing activation or validation is reported as blocked, not treated as a pass; a project-level test does not prove a platform Active-state event hook. |
 | User review boundary | Local completion outcome and evidence are reported for the user's usual merge-or-dismiss choice; no local operation automatically merges or claims to control when the platform offers that choice. |
 | Workflow separation | A Replit Workflow or other scheduler launch is neither plan approval nor completion evidence by itself; the checked runner stores the actual run, tested inputs, raw results, and the local checker makes its separate completion decision. |
-| No managed completion | No project code or CLI dispatches, requests, depends on, or presents a result from platform-managed completion; any old managed-completion CLI operation is retired, and direct tier commands remain diagnostic. |
+| No managed completion | No project code or CLI dispatches, requests, depends on, or presents a result from platform-managed completion; any old managed-completion CLI operation is retired. Direct tier commands retain genuine independent availability but are not blanket task-Agent diagnostics or completion evidence. |
 | Plan identity | Missing, stale, malformed, wrong-local-task, or unresolvable plans are rejected; no newest-plan/default-plan inference occurs. |
 | Recovery | Poll timeout does not launch a duplicate; orphan reconciliation requires confirmed stop or documented quarantine. |
 | Terminal states | Validated completion requires acceptance; explicit owner-directed completion requires its administrative decision and safe terminal release, not passing validation. Failed/cancelled cleanup remains possible after safe run handling; released IDs cannot run or reopen. |
@@ -134,11 +179,36 @@ items must match the authoring task's items, including:
   preserves unresolved validation, and does not require a second approval or
   Agent self-authorization. Ordinary validated completion remains protected.
 - Local validation uses the supplied local task and plan to run one authorized tier.
+- Execution permission, not merely evidence acceptance, constrains task-Agent
+  direct, indirect, delegated, background, scheduled, and remote-triggered launches.
+- Genuine independent callers keep existing authority and invocations; a task
+  Agent cannot acquire it by relabeling a discretionary launch or dropping metadata.
+- Approved transitive scope preserves intentional shared checks while rejecting
+  unknown/expanded dispatch. Delegates inherit bindings, budgets, and lease ownership.
+- Diagnostic/comparison allowlists and cumulative accounting are explicit,
+  subordinate, and cannot reset through relabeling/restarts or become another tier.
+- Separate policies authorize bounded non-tier obligations, not tier sweeps;
+  acceptance verification does not itself authorize every live tier.
+- Same-tier reruns, approved atomic transitions, owner closure, and honest
+  cooperative/platform limitations remain intact.
+- The normative monitoring reference requires actual host monitor/file mapping,
+  atomic task single-flight and shared-resource guards, safe child reconciliation,
+  durable lifecycle events, coverage uncertainty, and automatic read-only lookup.
+- Requests, denials, launch intents, confirmed starts, and finishes remain distinct;
+  logs record declared reasons and policy mismatches without inventing motive.
+- Monitoring failures fail closed for managed dispatch/evidence, not genuine
+  independent callers or owner-directed administrative closure. New host controls
+  are requirements, not asserted installed services or executed acceptance tests.
 - Independent callers retain their existing invocations without mandatory task
   metadata or an environment variable. Explicit checked requests fail closed
   without fallback; independent results cannot become required-tier evidence.
 - Both execution paths have regression cases preserving raw outcomes, checks,
   timeouts, resource locks, reports, heavy serialization, and workflow definitions.
+- Each required build/runtime configuration input has a verified source and
+  preflight; missing inputs block before launch, with secret values redacted.
+- Required listener ports use the verified fixed project port or a safely
+  allocated/reserved numeric port; build-only embedded ports remain stable and
+  come from verified deployment configuration. Base paths are verified, not guessed.
 - A project-level launcher test is not represented as proof of Replit Agent platform routing.
 - Another valid local task plan cannot be substituted for the local task being checked.
 - Local result consistency checks are not described as forgery resistance.

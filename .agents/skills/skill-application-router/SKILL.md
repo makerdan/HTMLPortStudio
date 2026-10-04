@@ -117,6 +117,10 @@ Process target skills in dependency order:
 5. **Plan:** Map every applicable requirement to an action or evidenced
    `not applicable`; include required companion skills and Regression Guard
    when applicable. Difficulty is not grounds for omission.
+   Keep the obligation, pre-install Project, and delivered implementation
+   baselines separate. For a new Install/Apply primary, include a tracked
+   installer handoff record within the authorized plan; existing primaries
+   require the permitted amendment route for new obligations.
 6. **Execute:** Follow the target's required order and mode. Obtain required
    consent before destructive, irreversible, privileged, or externally visible
    actions. Edit skill definitions only for an authorized **Install** operation.
@@ -142,6 +146,16 @@ Read and follow the complete
 before creating or reusing any follow-up. Its immutable baselines, normalized
 keys, full-payload readback, lifecycle, uncertain-write recovery, attachment
 checks, and execution readiness rules are mandatory, not optional hardening.
+
+Also read the complete
+[delivery reconciliation policy](references/delivery-reconciliation.md).
+Create a two-phase verifier: pin authorized requirements, scope, safety rules,
+and expected outcomes now; explicitly defer unresolved implementation-specific
+methods until delivery discovery. Expected Project changes are not themselves
+contract drift. Independently resolve methods against actual delivered wiring
+without weakening criteria. Installer handoffs aid discovery but cannot prove
+compliance or authorize exceptions. Material obligation changes require
+authorized renewal, not criteria regenerated solely from installed output.
 
 The ordinary router phrases above trigger this handoff internally; the user
 does not need to invoke a second skill or use special verification words.
@@ -210,6 +224,9 @@ requested report path. For a planned new installation, the target definition
 may not exist yet: pass the authorized specification and expected canonical
 destination, mark source-dependent checks pending, and require the verifier
 to read the installed source later. Never invent its digest or contract.
+Pass the separate pre-install Project baseline, expected authorized mutations
+where known, installer handoff destination, and deferred-method fields/bounds.
+Bind the delivered implementation snapshot after readiness and discovery.
 
 Create the separate verification task through the selected Project's *verified*
 task-creation interface only after the primary readback succeeds. Give it a
@@ -239,6 +256,11 @@ them, and report ambiguous or inconsistent records rather than duplicating.
 A genuinely changed primary-plan version or verification scope needs explicit
 reconciliation and a newly bound verification plan; source drift invalidates
 affected evidence, not permission to silently create a duplicate or claim a pass.
+Use the delivery reconciliation policy to distinguish authorized implementation
+changes, incorrect method assumptions, material obligation changes, defects,
+and unresolved differences. Deferred-method resolution and method-only
+corrections preserve the key when the primary plan and semantic scope are
+unchanged; any payload revision still requires authorized handling and readback.
 Prefer verified atomic idempotency; otherwise
 search for the exact key before creating, serialize locally if possible, and
 re-read the result. Report non-atomic duplicate risk and surface duplicates
@@ -342,6 +364,8 @@ account Settings update.
   owner and next action | not applicable and reason>
 - <primary task ID, committed plan reference, planned report path; no
   verification result claimed until independently run>
+- <obligation/pre-install/delivered baselines, handoff reference, deferred or
+  resolved methods, and reconciliation/amendment status>
 
 ## Not applied
 - <blocked, failed, unavailable, or not-applicable requirement and reason>

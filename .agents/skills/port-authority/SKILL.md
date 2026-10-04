@@ -1,328 +1,478 @@
 ---
-name: Port-Authority
-description: Runtime hygiene playbook for any Replit app — prevention and repair of stale/zombie/orphaned processes, port conflicts and EADDRINUSE errors, blank or unreachable preview panes, hung or stuck test runs, and test suites blocking each other. Use when a port is already in use, a server won't start, the preview is blank, tests hang or deadlock, or when setting up a new project to prevent these problems. Ships dependency-free template scripts for port cleanup and crash-safe test serialization.
+name: port-authority
+description: Runtime hygiene for Replit apps, from ordinary projects to multi-service projects with heavy validation. Use for stale or orphaned processes, EADDRINUSE and port conflicts, blank previews, hung or conflicting tests, workflow-count limits, or prevention during project setup. Includes port-cleanup and validation-lock templates. Heavy-project controls activate only when the audited project needs them; no companion skill is required.
 ---
 
-# Port-Authority — Runtime Hygiene for Replit Apps
+# Port Authority — Unified Runtime Hygiene
 
-This skill applies to **any Replit app**, in two modes:
+Apply this skill in **prevention** mode during project setup, or **repair**
+mode for an existing runtime problem. Both start with Phase 0: audit before
+changing anything.
 
-- **Prevention** — apply it while setting up a new project so stale processes,
-  port conflicts, and hung test runs never appear.
-- **Repair** — apply it to an already-broken project ("port already in use",
-  "EADDRINUSE", blank preview, tests stuck forever). Repair mode starts at
-  Phase 0 like everything else: audit before you touch anything.
+Phases are sequential. ALWAYS means inspect and apply relevant requirements;
+it does not authorize unrelated rewrites. CONDITIONAL phases state a gate:
+record whether it passes and skip the phase entirely when it does not.
+Never add conditional machinery speculatively.
 
-Phases are **sequential**. Each phase is marked ALWAYS or CONDITIONAL.
-A CONDITIONAL phase states its gate up front — if the gate fails, **skip the
-phase entirely**. Never apply conditional machinery speculatively.
-
-> If the project has two or more heavy test suites AND multiple services,
-> also read the `Port-Authority-Heavy` skill after finishing this one.
-
----
+This is one self-contained skill. Ordinary projects use the base phases.
+Projects with workflow pressure, multiple services, or conflicting heavy
+validation additionally use the gated heavy controls below. Do not install
+or require a separate `port-authority-heavy` skill.
 
 ## Installation contract (ALWAYS)
 
-The downloadable bundle contains exactly these resources:
+The bundle contains exactly five files under `port-authority/`:
 
-- `SKILL.md` — this guidance.
-- `scripts/free-ports.mjs` — a dependency-free **template** for the target
-  project's port cleanup command.
-- `scripts/validation-lock.mjs` — a dependency-free **template** for the
-  target project's validation serialization command.
-- `Port-Authority-Heavy/SKILL.md` — the optional companion extension.
+- `SKILL.md` — all base and conditional heavy-project instructions.
+- `scripts/free-ports.mjs` — dependency-free port-cleanup template.
+- `scripts/validation-lock.mjs` — dependency-free serialization template.
+- `reference/runtime-contract.md` — interfaces, limits, and acceptance matrix.
+- `tests/hardening.test.mjs` — executable isolated regression tests.
 
-The two scripts in the bundle are templates, not promises that the target
-project already has those paths. Install them only after the Phase 0 audit:
+There is no nested or companion Heavy skill, and no `serial-lock.mjs`.
+Both scripts are templates, not promises that the target project already
+has those paths.
 
-1. Extract the bundle into a temporary directory and verify the four entries,
-   their frontmatter, and their executable smoke checks. A missing, extra,
-   renamed, or byte-different entry is an installation failure.
-2. Audit the target project's existing workflows, scripts, lock files, and
-   port ownership. If the project already has a cleanup or serialization
-   implementation, compare behavior and adapt that implementation instead of
-   overwriting it. Never replace an existing script blindly.
-3. If a template is needed, copy it into the target project's `scripts/`
-   directory, preserve its executable bit, and change only its documented
-   adaptation points. Defaults resolve relative to the copied script:
-   `.local/` for locks and no ports for cleanup (ports must be supplied).
-4. Run the template's invalid-input and no-op smoke checks in an isolated
-   temporary directory. Do not use a live application port or the workspace's
-   real lock directory. A failed smoke check stops installation.
-5. Install the project's own runtime wiring separately. The templates do not
-   know the target project's package manager, workflow names, e2e port registry,
-   generated files, or database layout. Do not copy BathyScan-specific paths,
-   `--e2e` behavior, or hidden project assumptions into a fresh installation.
-6. Do not edit `.local/custom_skills/`; it is a platform-managed mirror. The
-   tracked `.agents/skills/` source and generated archive are canonical.
+1. Inspect the archive before extraction. Extract into a fresh temporary
+   directory, never over a project. Verify the five files, valid skill
+   frontmatter, local script references, and executable smoke checks.
+   Missing or renamed required files fail installation. If a trusted
+   checksum manifest is supplied, verify it; do not invent an expected hash.
+2. Audit existing workflows, scripts, locks, and port ownership in Phase 0.
+   Compare any existing cleanup/serialization implementation and adapt it
+   rather than blindly replacing it.
+3. If a template is needed, copy it from the canonical
+   `.agents/skills/port-authority/scripts/` source into the project's
+   `scripts/` directory and preserve its executable bit. Prefer documented
+   adaptation points; necessary safety/lifecycle changes are allowed only
+   with applicable approval, interface documentation, and regression evidence.
+   Never use a `.local/custom_skills/`
+   mirror or another copied definition as an implementation source.
+4. Run invalid-input and no-op smoke checks in isolation. Never use a live
+   application port or the workspace's actual validation lock directory.
+   Failed smoke checks stop installation.
+5. Wire only audited needs. Templates do not know the project's package
+   manager, service ports, workflow names, generated files, or database.
+   Do not copy application-specific paths, `--e2e` behavior, or assumptions.
+6. Keep skill sources, scripts, configuration, documentation, and reports
+   outside `.local/`. The lock template's `.local/` defaults are disposable
+   runtime lock/waiter state only; overrides can relocate that state.
 
 ### Validation registration acceptance
 
-The target project must have an executable backing command for **each** of
-these four names before registration is reported successful:
+Use the project's canonical validation contract and authorized task tier.
+If an available canonical `validation-tiers` skill defines that contract,
+read it. Its absence must not create a dependency on another installed
+skill: discover executable commands and document the choice instead.
+Do not silently change an assigned tier or invent a successful registration.
+
+When the host uses the four-tier registration convention, retain these
+four names, each with an executable backing command:
 
 | Command | Use when | Minimum acceptance |
 |---|---|---|
-| `test-fast` | copy, style, UI, or new-component-only changes | typecheck and lint targets exist and run |
-| `test-standard` | most bug fixes and features touching existing behavior | fast targets plus unit and relevant documentation/data checks exist |
-| `test-standard-plus` | static/unit coverage across multiple packages, without browser suites | the complete non-Playwright target is executable |
-| `test-heavy` | new routes with e2e coverage, schema, auth/security, or broad refactors | the serialized full target, including browser/schema checks, is executable |
+| `test-fast` | copy/style or UI changes with no logic impact | typecheck and lint targets exist and run |
+| `test-standard` | most features and fixes touching existing behavior | fast targets plus unit and relevant documentation/data checks |
+| `test-standard-plus` | multi-package static/unit coverage without browser suites | complete non-Playwright target is executable |
+| `test-heavy` | schema, auth/security, new routes needing e2e, broad refactors | serialized full applicable target, including browser/schema checks where present |
 
-Verify the registration manifest, the platform registration, and the target
-package scripts independently. A name without an executable backing command is
-an installation failure; never register an optimistic placeholder or silently
-substitute another tier. Record the selected tier, its timeout budget, and
-whether its steps use `validation-lock.mjs` before accepting the installation.
-Read the `validation-tiers` skill for the project-specific decision table, but
-retain all four names even when a particular project omits a tier's optional
-checks.
+Do not assign fast solely because a change adds a component: classify its
+behavior and risk. Do not default every task to heavy.
+
+Where platform registration is supported, compare the canonical manifest,
+platform registrations, and package commands independently. A name without
+an executable backing command fails registration; never use placeholders
+or silently substitute a tier. If that capability or convention is absent,
+record it as not applicable and use existing executable validation commands,
+not fictional platform APIs. Missing optional checks must be explicit.
+
+Record the selected tier/command, its execution budget, queue-wait limit,
+and serialization coverage before accepting installation.
+
+If Failure Gate v4 is active in the target project, its authorization,
+execution-scope, evidence, and completion rules govern these launches.
+Use the verified task-ID/approved-plan checked route for required-tier runs.
+Direct package commands, dry runs, smoke checks, isolation retries, and
+earlier-snapshot comparisons need their applicable separately authorized
+bounded capability; labeling them diagnostic does not grant permission.
+No Port Authority instruction grants a tier change, coverage override,
+baseline waiver, or bypass. Missing required capability blocks the affected
+operation. Bundle authoring/testing in this conversation is not host validation.
 
 ### Installation acceptance
 
-Run these deterministic smoke checks from the target project before touching
-live services:
+Read [runtime-contract.md](reference/runtime-contract.md) before adapting or
+wiring either script. Run `node --test tests/hardening.test.mjs` from the
+skill directory twice sequentially, in isolation, before touching services.
+The adversarial acceptance matrix is mandatory, not optional smoke guidance.
+Map its assertions to the actual adapted implementation. Package tests prove
+only their isolated scope; require separate authorized host-wiring checks.
 
-1. `node scripts/free-ports.mjs` must reject the missing port with exit 2.
-2. Ask Node to bind port `0`, record the assigned ephemeral port, close that
-   probe server, then pass the now-unused port to `free-ports.mjs`; it must exit
-   0 without signaling any process.
-3. Set `VALIDATION_LOCK_FILE` and `VALIDATION_LOCK_WAITERS_DIR` to paths inside
-   a new temporary directory. Wrap `node -e "process.exit(0)"`, then
-   `node -e "process.exit(7)"`; the wrapper must return 0 and 7 respectively
-   and leave no lock behind.
-4. In that same temporary directory, seed a lock with a confirmed-dead PID and
-   run the wrapper again. It must log a stale takeover, succeed, and clean up.
-   Nest a wrapper for the same resource once; it must log reentrant execution
-   and finish without waiting.
-5. List platform registrations and compare the four names and command strings
-   with the target project's canonical manifest. Invoke every backing package
-   command in its documented dry-run/list mode, or once normally if it has no
-   non-executing mode. Missing registrations, targets, or interpreters fail
-   installation.
+If validation registration applies, compare names and command strings with
+the canonical manifest. Invoke backing commands only through their authorized
+list/dry-run or checked execution route. Missing required registrations,
+commands, interpreters, or applicable evidence fail acceptance.
 
-After wiring only the resources required by the audit, run the selected
-registered tier twice back-to-back. There must be no manual port clearing,
-process killing, or lock deletion between runs. Confirm that the health probe
-reaches the backend, that each forced cleanup/reclaim is loud, and that a
-failed child command releases its lock and propagates its exit status. If any
-acceptance step fails, leave the existing implementation intact, report the
-failure, and do not claim the installation is complete.
-
----
+After wiring required resources, run the selected validation command twice
+back-to-back without manual port clearing, killing, or lock deletion.
+Verify applicable backend health, loud forced cleanup/reclaim, failed-child
+exit propagation, and lock release. If acceptance fails, preserve or restore
+the prior working implementation, report the blocker, and do not claim
+installation is complete.
 
 ## Phase 0 (ALWAYS) — Audit first
 
-Before changing anything, inventory the runtime:
+Before changing anything, inventory:
 
-1. Running processes: `ps -eo pid,ppid,comm,args | head -50` (note: under Nix,
-   Node processes may report their comm as `MainThread`, not `node`).
-2. Listening ports: `ss -tlnp` (or parse `/proc/net/tcp` + `/proc/net/tcp6`
-   if `ss` is unavailable).
-3. Configured workflows and what commands they run.
-4. Test/validation commands and which ports, generated files, or databases
-   they share.
+1. Processes: `ps -eo pid,ppid,comm,args`. Do not rely solely on a truncated
+   listing; examine relevant process ancestry. Nix Node may appear as
+   `MainThread`, not `node`.
+2. Listening ports: `ss -tlnp`, or `/proc/net/tcp` and `/proc/net/tcp6`.
+3. Configured workflows, commands, ownership, and actual platform limit
+   evidence if workflow pressure is reported.
+4. Validation commands, duration, and shared ports, generated files, CPU
+   pressure, or database state.
+5. Browser/e2e harness, code generation, connection pools, WebSockets/HMR,
+   health routes, and available registration/validation capabilities.
 
-Write down what you find. Repair decisions made without this inventory
-routinely kill the wrong process or "fix" a port that was never the problem.
+Write down the evidence and applicable gates. Audit decisions without
+ownership evidence can kill the wrong process or fix an unrelated port.
+Before stopping a service or signaling a process, explain the consequence
+and obtain authorization for that disruption.
+
+### Heavy-control gates
+
+Evaluate each control independently; a project need not satisfy all gates.
+
+- **Workflow budgeting/consolidation:** observed workflow-limit errors,
+  scarce slots, or multiple services and several heavy validation jobs.
+- **Serialization:** two or more heavy suites, or any commands sharing
+  generated files, DB state, ports, or demonstrated resource contention.
+- **Stale-counter handling:** creation rejected after removal, while the
+  current inventory indicates available capacity.
+- **Heavy execution budgets:** long-running/heavy validation steps exist.
+
+Multiple services alone do not justify serializing unrelated tests.
+An ordinary project with a real workflow-limit error may need budgeting.
+The former base and Heavy guides are fully contained here; no prerequisite
+companion installation or intermediate acceptance run is required.
 
 ## Phase 1 (ALWAYS) — Process discipline
 
-- **Never** start servers or long-running jobs via `nohup`, `setsid`, or
-  backgrounded shells (`cmd &`). They either die silently when the calling
-  shell ends, or survive as port-holding orphans that break the next run.
-- Anything that runs longer than ~2 minutes belongs in a **named workflow**
-  or a **registered validation command**, never an ad-hoc shell.
-   Registered validation commands come in four tiers: `test-fast`
-   (typecheck + lint only), `test-standard` (typecheck + lint + unit +
-   doc checks), `test-standard-plus` (all static + unit checks without
-   Playwright), and `test-heavy` (full suite including e2e and schema checks).
-   Read the `validation-tiers` skill for the decision table.
-  **Never default to `test-heavy` for every task** — it is reserved for
-  high-risk changes (new API routes, schema migrations, auth/security
-  changes, multi-package refactors).
-- Every service must read its port from the `PORT` environment variable.
-  Hunt down hard-coded ports (e.g. Vite `server: { port: N }`, Express
-  `app.listen(3000)`) — they are the #1 cause of port collisions and blank
-  preview panes.
+- Never start services or long-lived jobs with `nohup`, `setsid`, or ad-hoc
+  background shells (`cmd &`). They can vanish or survive as port-holding
+  orphans. Use named managed workflows for persistent services.
+- Jobs lasting roughly two minutes or more belong in managed workflows or
+  registered validation commands when available, not unmanaged shells.
+  Distinguish finite validation from persistent servers/watchers.
+- Select validation by task risk using the installation contract. Keep
+  the canonical contract; do not create a workflow per test suite by habit.
+- Read service ports from the project's authoritative environment/config
+  mapping. A single service can use `PORT`; multiple services need distinct
+  configured ports, not every service binding the same inherited `PORT`.
+  Find hard-coded or conflicting Vite/backend ports and inspect preview
+  routing before changing them.
 
-## Phase 2 (ALWAYS) — One canonical port-cleanup script
+### Conditional heavy controls — Workflow budgeting and consolidation
 
-Adopt a single port-cleanup script and use it everywhere. A template ships
-with this skill: `scripts/free-ports.mjs`. Non-negotiable properties:
+Gate: Phase 0 shows workflow pressure or a multi-service/heavy-job project.
 
-- **Do not rely on `fuser`** — it is often missing from PATH under Nix, and a
-  silently no-op `fuser -k` is worse than nothing.
-- **Do not rely on process names** — Node under Nix can report its command as
-  `MainThread`. Discover holders via `/proc` fd scanning (or `lsof`/`ss` on
-  PIDs), matching socket inodes, never names.
-- **Exempt the caller's own process tree** by walking parent PIDs. A sweep
-  that kills the server it is clearing the way for is a self-inflicted
-  denial of service.
-- **Guard with an environment variable** against recursive or production
-  execution.
-- Kill the whole supervising wrapper tree (pnpm/npm/node/sh), not just the
-  socket holder — a bare port-kill leaves package-manager zombies that
-  respawn or confuse later restarts.
-- SIGTERM first with a grace period, then SIGKILL survivors, then confirm
-  the port is actually free before returning success.
+- Reserve scarce workflow slots for servers, watchers, and persistent
+  services. Discover actual limits; do not hard-code a universal cap.
+  The former Heavy guide reported approximately ten workflows and possible
+  hidden entries; that is a diagnostic clue, not a guaranteed platform rule.
+- Run finite tests, lint, typecheck, and audits as registered validation
+  commands where supported. Otherwise use the host's managed finite-job
+  mechanism. Do not bypass caps with background shells.
+- Prefer an existing consolidated validation command over one workflow per
+  suite. Keep fast, standard, standard-plus, and heavy distinctions where
+  that contract applies. Consolidation does not itself provide locking:
+  conflicting runs also need Phase 4.
+- Never delete unrelated workflows or move persistent services into ad-hoc
+  shells to make room. Budget and consolidate within authorized scope.
 
-## Phase 3 (CONDITIONAL — only if a browser/e2e harness such as Playwright exists)
+### Conditional heavy controls — Stale workflow counters
 
-Gate: the project runs browser/e2e tests. If not, skip this phase.
+Gate: a limit error follows workflow removal.
 
-- Playwright starts `webServer` processes **before** `globalSetup` runs.
-  Port sweeps placed in `globalSetup` therefore run too late and can kill
-  the freshly started servers of the very run they protect. Put sweeps
-  inside each `webServer` command (or env-guarded at config-load time),
-  never in `globalSetup`.
-- Pass values into `addInitScript` as **explicit arguments**, never captured
-  closures — closure captures are silently dropped in serialization and the
-  script runs with `undefined`.
+1. List workflows and compare actual inventory with available limit evidence.
+2. If a free slot is evident, allow a brief bounded wait and one retry;
+   a stale counter is a hypothesis, not a confirmed platform diagnosis.
+3. If genuinely full, consolidate. If inventory and platform disagree after
+   the bounded retry, report that blocker; do not create an endless retry
+   loop or launch unmanaged services as a workaround.
 
-## Phase 4 (CONDITIONAL — only if 2+ heavy suites, or suites sharing generated files/DB state/ports)
+## Phase 2 (ALWAYS) — One canonical port-cleanup implementation
 
-Gate: two or more heavy suites, or suites that share generated files,
-database state, or ports. If not, skip this phase.
+Use one audited cleanup implementation wherever cleanup is needed. The
+bundled template is `scripts/free-ports.mjs`.
 
-Wrap each heavy command in a **crash-safe serialization lock** using
-`scripts/validation-lock.mjs`:
+- Do not depend on `fuser`: it may be absent under Nix.
+- Discover holders by socket inode and PID (`/proc` fd scanning or suitable
+  `ss`/`lsof` evidence), not process names.
+- Protect caller ancestry and the current run's process tree. Never kill
+  editors, workflow supervisors, unrelated jobs, or active services merely
+  because they share a wrapper name.
+- Preserve recursion/disable and production guards. Inspect actual
+  deployment flags before wiring; do not weaken guards for convenience.
+- Stop the owned stale supervising wrapper tree, not just its listening
+  child, to prevent orphan wrappers or respawn.
+- Require an unexpired, host-authorized ownership manifest binding permitted
+  ports, boot identity, and exact PID/start-time targets. A port, process name,
+  local JSON field, or CLI action flag cannot establish human authorization.
+  Default to dry-run inventory; require explicit action mode for signals.
+  Never infer authorization for wrappers or descendants from ancestry alone.
+- SIGTERM first, allow a grace period, then SIGKILL authorized survivors.
+  Confirm the intended port and owned processes reach the expected state.
+  Log forced actions loudly.
 
-```
+The hardened template reports `FREE` (0), failed cleanup (1), invalid/prohibited
+(2), protected busy/skipped (3), or unknown discovery/ownership (4). Unreadable
+socket tables and protected listeners are never successful cleanup. Disabled
+or recursive invocations return skipped/non-success, not a free-port claim.
+Verify the structured outcome, not only the existence of log output. `FREE`
+is an observation, not a reservation; coordinate the subsequent bind.
+
+`--include-own-tree` is only for an audited boundary BETWEEN serialized
+steps, when no legitimate service in that tree should hold the listed ports.
+It additionally requires manifest permission; it never authorizes killing
+caller ancestors or unrelated services. No live process is signaled by default.
+The template is Linux `/proc` based; unsupported discovery is a blocker,
+not permission to claim cleanup worked.
+
+## Phase 3 (CONDITIONAL) — Browser/e2e startup safety
+
+Gate: a browser/e2e harness exists.
+
+- Playwright starts `webServer` processes before `globalSetup`. Put sweeps
+  in each relevant `webServer` command, not `globalSetup`, where cleanup
+  can kill freshly started servers. Config-load cleanup is acceptable only
+  with explicit guards and verified startup order.
+- Pass values to `addInitScript` as explicit arguments, never captured
+  closures that serialization drops.
+
+## Phase 4 (CONDITIONAL) — Crash-safe validation serialization
+
+Gate: two or more heavy suites, or commands sharing generated files,
+database state, ports, or demonstrated resource contention.
+
+Use the existing audited lock or `scripts/validation-lock.mjs`:
+
+```sh
 node scripts/validation-lock.mjs [--resource <name>] [--priority <1-9>] -- <command...>
 ```
 
-### Named-resource striping
+### Resource striping and priorities
 
-Pass `--resource <name>` to acquire a per-resource lock
-(`.local/validation-lock-<name>.lock`) instead of a single global lock.
-Steps that don't conflict with each other use different resource names and
-run in parallel; steps sharing a resource serialize. The default resource
-is `global` (backward-compatible).
+`--resource <name>` selects a per-resource lock; default `global` is simply
+another independent resource name, NOT a hierarchical or catch-all lock.
+Conflicting commands must acquire the same lock identity on a supported local
+filesystem. Publish a caller-to-resource conflict map covering every entry
+point; block wiring when any conflict is uncovered.
 
-**Step-to-resource mapping (this project's conventions):**
+The template supports **one resource per invocation**, not a list:
 
-| Step | Resource |
+| Audited conflict | Example resource |
 |---|---|
-| `typecheck` (regenerates `lib/api-zod/src/generated/api.ts`) | `codegen` |
-| `test:unit` | `unit-cpu` |
-| `test:e2e` steps | `e2e-port` and `unit-cpu` |
-| `lint`, `check:*` | *(none — run unwrapped)* |
+| commands regenerating the same outputs | `codegen` |
+| measured unit/e2e CPU contention | `validation-cpu` |
+| browser suites sharing service ports | `e2e-port` |
+| suites sharing database state | `test-db` |
+| independent lint/static checks | none, unless evidence shows a conflict |
 
-### Priority queue
+These are examples, not installed project paths or fixed mappings.
+For multiple resources, either ALL conflicting callers adopt the same shared
+composite/global lock, or ALL acquire their overlapping resource sets in one
+verified order. A composite lock does not conflict with its constituent names.
+One invocation acquires one resource. Names must be lowercase; reentry keys
+bind the canonical lock path, not a case-normalized name. Override paths are
+part of lock identity; different files do not coordinate despite equal names.
 
-Pass `--priority <N>` (1 = highest, 9 = lowest; default 5) to influence
-acquisition order when multiple steps wait for the same resource. Each
-waiting process writes a manifest entry to
-`.local/validation-waiters-<name>/<pid>.json`. On each poll tick,
-lower-priority waiters yield to higher-priority ones that have been queued
-longer than a short grace period (default 2 s).
+Priority is 1 (highest) through 9 (lowest), default 5. Waiters write
+disposable manifests beside the selected lock (or an explicit override); higher-priority
+waiters influence acquisition after the grace period (default two seconds).
+Priority is advisory, not a fairness or execution-time guarantee.
+Where tiers exist, recommended priorities are fast 1, standard/standard-plus
+2, and heavy 3. Do not wrap independent checks unnecessarily.
 
-**Recommended tier assignments:** fast-tier steps → `1`, standard-tier →
-`2`, heavy-tier → `3`.
+### Reentrancy and crash safety
 
-### Per-resource reentrancy
+- Verified reentry binds the exact lease path/token, boot identity, owner
+  process incarnation, and actual ancestry. Legacy PID-only variables are
+  rejected. Nested wrappers acquire a parent-token-specific sibling slot;
+  siblings serialize while deeper sequential nesting avoids self-deadlock.
+  Parent/child simultaneous resource mutation and daemonization are prohibited.
+- Prefer unwrapped inner commands, such as `test:e2e:run`, in a locked
+  serial runner. Correct same-resource reentrancy is supported; inconsistent
+  resource identity, environment propagation, or lock ordering can deadlock.
+- Neither stale heartbeat nor max-hold age permits another caller to reclaim
+  a live or uncertain workload. The owner enforces its execution budget,
+  stops verified owned work, and confirms quiescence before release.
+- Track the owned process group and observed descendant incarnations. Parent
+  exit, signal delivery, or timeout alone never proves workload termination.
+  Surviving descendants are cleaned up; that run fails rather than passes.
+- Dead-supervisor recovery is allowed only for a verified compatible lease
+  with no surviving/unknown workload. Malformed legacy leases, interrupted
+  launch gaps, abandoned transition mutexes, foreign boot identity, escaped
+  workload uncertainty, or unavailable discovery fail closed and retain state.
+  Use the host's separately authorized recovery route; never unlink blindly.
+- Read the runtime contract's supervision limits. Verify the actual command
+  tree does not daemonize or escape supervision before accepting wiring.
+  Failure Gate task single-flight/monitoring remains a separate host control.
+- Execution budgets start AFTER acquisition. Queue-wait limits are separate
+  and labeled as queue timeouts, not slow-test failures.
 
-The holder exports `VALIDATION_LOCK_HELD_PID_<RESOURCE_UPPER>` (e.g.
-`VALIDATION_LOCK_HELD_PID_CODEGEN`, `VALIDATION_LOCK_HELD_PID_UNIT_CPU`)
-into its child environment. A nested wrapper for the same resource detects
-this env var and runs its command directly, skipping re-acquisition.
-For the `global` resource, the legacy `VALIDATION_LOCK_HELD_PID` variable
-is also checked and exported for backward compatibility.
+Lock only conflicting consolidated tiers, not automatically heavy. Preserve
+non-Playwright coverage. Evaluate the independent budget gate below even
+when this entire serialization phase is skipped.
 
-### Required properties
+## Phase 5 (CONDITIONAL) — Generated-file safety
 
-- **Reentrancy-safe**: nested wrappers for the same resource skip
-  acquisition (see above). Without this, a wrapped command that invokes
-  another wrapped command for the same resource deadlocks until the
-  max-hold safety valve fires.
-- **Crash-safe**: the lockfile stores the holder PID; waiters check holder
-  liveness so a crashed run can never block future runs forever. Layered
-  staleness checks: dead PID, stale heartbeat (for PID-reuse cases), and
-  max-hold safety valve for hung-but-alive holders.
-- **Loud on takeover**: forcibly cleared stale locks are logged as
-  incidents, never silently absorbed.
-- **Budgets start after acquisition**: all time budgets/timeouts must start
-  ticking AFTER the lock is acquired, or queued runs falsely appear timed
-  out while merely waiting their turn.
+Gate: the project regenerates clients, schemas, types, or other files.
 
-### Anti-pattern: double-wrapping causes deadlock
+- Never run regenerators of the same outputs concurrently. Include all
+  entry points in Phase 4's shared resource coverage when needed.
+- For generated-file parse/missing-export failures, rerun the failing step
+  alone before attributing the symptom to a source bug. Preserve evidence
+  of a generation race rather than silently rerunning until green.
 
-Inner steps of a serial runner must use their **unwrapped** variants (e.g.
-`test:e2e:run`, not `test:e2e`). Calling a lock-wrapped command from inside
-another locked step holding the same resource self-deadlocks until the
-max-hold safety valve fires (default 2 hours).
+## Phase 6 (ALWAYS, per-item gates) — Test hygiene
 
-## Phase 5 (CONDITIONAL — only if the project has codegen/generated files)
+- If fake timers exist, use isolated file/suite lifecycle setup and explicit
+  restoration. Avoid global per-test clock resets that break cross-file
+  TTL/cache assumptions; preserve frameworks' isolation semantics.
+- Pre-existing failing tests require explicit tracking and the project's
+  authorized evidence policy. Do not skip, quarantine, filter, rename, delete,
+  or alter discovery merely to obtain a green run or shorten validation.
+  A tracking note or “known-failing” label is not permission to reduce coverage.
+- Long-lived pools with error events, such as `pg.Pool`, need appropriate
+  listeners; unhandled background pool errors can terminate the process.
 
-Gate: the project regenerates files (API clients, schemas, types). If not,
-skip this phase.
+### Failure Gate v4 — Failure evidence and quarantine boundaries
 
-- Never run two regenerators of the same file concurrently — serialize them
-  (Phase 4's lock is the natural home).
-- When a failure smells like a half-written generated file (parse errors,
-  "missing export" in a generated module), **re-run the failing step alone**
-  before assuming a real bug. Concurrent regeneration races masquerade as
-  code bugs.
+Gate: Failure Gate v4 governs the target project's validation. Read its
+canonical `.agents` source and applicable evidence/recovery reference before
+classifying failures. Do not install or copy another skill merely to satisfy
+this gate; if active policy cannot be verified, block the affected decision.
+Without Failure Gate, use the verified host policy; these instructions never
+create their own permission to waive tests.
 
-## Phase 6 (ALWAYS, with per-item gates) — Test hygiene
+- **Owned repair first:** a declared owned baseline repair remains an
+  obligation. Expiry, reclassification, skipping, filtering, renaming,
+  deletion, or non-discovery cannot prove repair or discharge ownership.
+- **Explicit ignore:** only an exact match to an authoritative, active,
+  unexpired catalog record applicable to the environment authorizes an
+  ignore. Match suite/test, variant/environment, and failure signature.
+  Keep the raw failing result. An ignore permits assessment of that observed
+  failure; it does NOT authorize excluding the test or a required step.
+- **Unlisted failure:** perform exactly three authorized isolation retries
+  through the registered bounded diagnostic capability, with each attempt
+  recorded. The initial failure is not a retry. Preserve actual selectors,
+  transitive scope, per-attempt/cumulative budgets, and task/run bindings.
+  A passing retry proves intermittency, not pre-existing provenance.
+  Crashes, skips, missing reports, and zero-test runs are not passing attempts.
+  If isolation is unsafe/unavailable or cannot fit the authorized budget,
+  use only a registry-defined approved equivalent policy, or report
+  classification blocked; do not retry until lucky or broaden the tier.
+- **Pre-existing provenance:** require direct evidence of the same failure
+  on a verified earlier task-unaffected snapshot plus independent
+  corroboration, with matching environment applicability and original-source
+  lineage. Copies of one observation count once. Narrative memory or
+  untouched files without direct provenance is insufficient.
+- **Quarantine is a coverage change, not an ignore:** no automatic quarantine
+  is allowed under this skill. Any proposed exclusion needs separate
+  applicable coverage/policy approval before use, with renewed bound plan/
+  tier authorization wherever affected. Never apply it retroactively to
+  turn an incomplete or failed run into acceptable evidence, broaden the
+  catalog, waive an owned repair, or evade required coverage.
+- **Complete evidence:** account for every assigned-tier step even if an
+  ignored failure appears. An unsafe dependent step may stop, but the run
+  remains incomplete. Diagnostics cannot replace complete checked-tier
+  evidence on current inputs. Unexpected zero-test runs, missing reports,
+  or skipped required steps cannot become acceptable via baseline classification.
+- **Assessment and completion:** preserve raw exit status separately from
+  `PASS`, `ACCEPTABLE_WITH_IGNORED_FAILURES`, `FAIL`, `BLOCKED`, or `INCOMPLETE`.
+  Insufficient provenance leaves an unresolved potential regression and
+  blocks validated completion. Only the verified local checker can accept
+  applicable complete task evidence; never call an ignored failing suite a
+  clean pass. Owner-directed administrative closure is separate:
+  “Closed by owner direction—not validation passed.” It does not waive
+  repairs or convert missing/failed evidence into validation success.
 
-- Fake-timer/clock resets live in a **file-level setup file**, never a
-  global per-test `beforeEach` — per-test clock resets silently break TTL
-  caches across test files.
-- Known-failing tests are explicitly skipped/quarantined **with a tracking
-  note**, never left running: they burn wall-clock time and mask real
-  regressions.
-- Every long-lived connection pool (e.g. `pg.Pool`) gets an `error` event
-  listener — an unhandled pool error becomes `uncaughtException` and kills
-  the process mid-run.
+## Phase 7 (CONDITIONAL) — WebSockets and preview HMR
 
-## Phase 7 (CONDITIONAL — only if the app uses WebSockets, live updates, or Vite HMR through the Replit preview pane)
+Gate: WebSockets/live updates/HMR exist; add keepalive changes only when
+idle disconnects are observed or confirmed by the environment contract.
 
-Gate: the app has WebSocket connections (including HMR). If not, skip
-entirely — do not add ping machinery speculatively.
-
-- The Replit proxy drops WebSocket connections after roughly **30 seconds
-  idle**, and only **native protocol-level ping frames (opcode 0x9)** reset
-  the timer — application-level JSON heartbeats do NOT.
-- Add native pings at ~20-second intervals on HMR sockets and application
-  WebSockets (e.g. a small Vite plugin that pings HMR clients; `ws.ping()`
-  server-side for app sockets).
+The prior guide reported preview idle disconnects around thirty seconds.
+Treat that value and proxy behavior as environment-dependent, not universal.
+Where supported and indicated, use server protocol-level ping frames (for
+example `ws.ping()`) at a suitable interval, historically about twenty seconds.
+An application JSON heartbeat is not a protocol ping; browsers do not expose
+a native ping API. Clean up timers and connections; verify actual reconnection
+and idle behavior before claiming the symptom is fixed.
 
 ## Phase 8 (ALWAYS) — Health checks and restarts
 
-- Health probes must target a route that **genuinely reaches the backend**
-  (e.g. `/api/healthz`). A root-relative probe against an SPA gets the HTML
-  fallback and returns a lying 200 even when the API is down.
-- After dependency or config changes, **restart the affected workflow**
-  rather than trusting hot-reload.
+- For a backend app, health probes must genuinely reach the backend, such
+  as `/api/healthz`, and validate the expected response. SPA HTML fallback
+  can return a misleading 200 while the API is down. Static-only apps do
+  not need an invented backend endpoint.
+- After dependency/config changes, restart affected managed workflows
+  rather than assuming hot reload applied everything.
 
-## Phase 9 (ALWAYS) — Regression hardening
+## Phase 9 (ALWAYS) — Regression hardening and acceptance
 
-- **Acceptance gate**: the **validation tier appropriate for the work
-  done** runs **twice back-to-back** with zero manual port clearing or
-  process killing in between (consult the `validation-tiers` skill for
-  the tier decision table). If a human (or agent) had to intervene, the
-  hygiene work is not done.
-- The env guards from Phases 2 and 4 stay **permanent** — they are not
-  scaffolding to remove later.
-- Any forced unlock or forced kill logs loudly so hidden hangs surface
-  instead of being absorbed.
-- When a hygiene problem recurs, **fix the rule or the script — never just
-  the single instance.**
+- Run the authorized, appropriate validation tier/command twice back-to-back
+  with no manual port cleanup, process killing, or lock deletion between.
+  Automatic audited cleanup may run; its forced actions must remain visible.
+  If intervention is needed, hygiene acceptance has not passed.
+- When Failure Gate v4 is active, both runs use its checked route and retain
+  applicable current-snapshot evidence. Apply Phase 6's failure rules to
+  each run; two invocations or a passing retry do not prove clean acceptance.
+  Qualifying ignored failures retain their raw outcomes and explicit assessment,
+  not a fabricated `PASS`. Quarantined/skipped required coverage cannot
+  satisfy this acceptance gate.
+- Verify only the conditional controls that actually apply, plus their
+  positive and skip paths. An ordinary project must not need a Heavy file,
+  heavy workflow allocation, or serialization merely to install this skill.
+- Production and recursion guards remain permanent. Every forced unlock or
+  kill stays loud. Fix recurring script/rule defects, not only an instance.
+- Report inventory, applicable/skipped gates, changes, exact checks and
+  results, selected tier, queue/execution budgets, and remaining blockers.
+  Distinguish packaged-script smoke tests from actual host-project validation.
 
----
+## Independent gate — Heavy/long-running execution budgets
 
-## Template scripts
+Evaluate this gate independently of Phase 4: heavy or long-running validation
+steps exist, even a SINGLE non-conflicting suite. A skipped serialization phase
+does not skip budgets.
 
-Both templates are dependency-free Node scripts. Each has a header comment
-listing its adaptation points (port list, lock path, env-guard variable
-names).
+- Set explicit per-step and applicable parent execution budgets; start after
+  acquisition/dispatch, never while queued. Report queue limits separately.
+- Budget reports state observed concurrent load. Contention is a hypothesis
+  to investigate, not proof of a lock bug. Use an authorized bounded solo
+  diagnostic before tuning limits; fix demonstrated coverage defects.
+- A budget breach fails/blocks the run. Termination must be confirmed before
+  replacement. Keep forced cleanup/recovery incidents loud and in host evidence.
 
-- `scripts/free-ports.mjs` — canonical port cleanup (Phase 2).
-- `scripts/validation-lock.mjs` — crash-safe serialization lock with named-resource striping and priority queue (Phase 4).
+## Migration from the two-skill setup
 
-The scripts are intentionally self-contained. A target project may use
-different runtime scripts (for example `kill-port-holders.mjs`) after the
-audit, but those project-specific files are not part of this bundle and must
-not be referenced as if they were installed resources.
+Replace the workspace's Port Authority skill with this bundle. Once the
+replacement is accepted, remove the obsolete separate Port Authority - Heavy
+entry so future sessions do not load contradictory instructions.
+
+For existing projects, inventory both canonical skill entries and references,
+then consolidate authorized references onto
+`.agents/skills/port-authority/SKILL.md`. Compare existing runtime wiring;
+do not reinstall scripts blindly. Never edit disposable platform mirrors.
+Replacing the workspace bundle does not by itself migrate every project's
+installed copy or prove its runtime validation passes.
+
+This hardening revision replaces both legacy scripts; they are NOT byte-identical
+to the uploaded originals. Migrate approved callers to the documented v2 lease
+and ownership-manifest interfaces; legacy leases and PID-only reentry need
+verified safe cutover, not optimistic reuse. Preserve Failure Gate governance,
+coverage, independent caller compatibility, and real raw results. Templates
+remain cooperative adaptation points with explicitly documented limits.
+No separate Heavy installation is necessary.

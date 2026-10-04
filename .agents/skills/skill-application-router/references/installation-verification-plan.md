@@ -19,6 +19,12 @@ implementation. If the user also requests execution and a report, carry out the
 approved plan only after the target Project and its files are available. Never
 present a proposed check as a completed check.
 
+Read the complete [delivery reconciliation policy](delivery-reconciliation.md).
+Create a two-phase plan: freeze the authorized obligations before implementation,
+then discover delivered details and resolve verification methods without
+changing those obligations. Never derive the acceptance standard solely from
+the installed output or fail solely on a disproven provisional method assumption.
+
 ## Source and scope rules
 
 1. Identify the target Project from the active Project context or project
@@ -89,12 +95,19 @@ already extracted matrix remains Partial/Blocked until its source is available.
 For each item, define:
 
 - requirement and source location;
-- intended verification method and relevant host path;
+- stable requirement ID, fixed expected outcome, and applicability;
+- intended verification method and relevant host path, distinguishing verified
+  details from fields explicitly pending delivery discovery;
 - expected evidence (code, test, live run, raw record, approval, or other);
 - responsible role (verification owner, implementation owner, reviewer, or
   platform owner);
 - dependencies, safety/authorization preconditions, and pass/fail rule;
 - report status: `verified`, `failed`, `blocked`, or `not applicable`.
+
+Pin every requirement now when its authorized source is available. Do not invent
+unknown implementation paths or commands. Record bounded discovery/resolution
+rules for pending methods; at execution, unresolved required methods block the
+affected check. Original and resolved matrices must retain complete coverage.
 
 Use `not applicable` only with a reason. Use `blocked` when evidence, a
 capability, an approval, or safe authorization is missing. Name a concrete
@@ -111,6 +124,8 @@ Plan a discovery task to inventory:
   recovery documentation;
 - the actual final completion writer and any locks or isolation mechanisms;
 - platform-owned task status separately from Project-local state.
+- installer handoff, expected/actual Project mutations, delivered snapshot,
+  and differences from the separate obligation and pre-install baselines.
 
 Use evidence from the target Project itself. Link each claim to a path and line,
 test name, run/record identifier, or approval reference. Never invent a path,
@@ -129,6 +144,15 @@ that a plan author's statement is approval. Where the reviewed skill requires
 a local ID, authorization, reviewer decision, or exact execution profile, make
 the plan verify the actual bound records and approval source.
 
+For automatic handoffs, Phase A creates the fixed-obligation dependent task.
+Phase B first establishes readiness, independently discovers actual delivery,
+classifies differences, and resolves its method matrix through the permitted
+route; substantive verification follows. Installer assertions cannot authorize
+criteria changes. Apply the reconciliation policy's logged resolution,
+method-only correction, and material-renewal routes, including payload readback
+and affected-evidence invalidation. Keep verification read-only except for
+authorized plan/report writes and safe validation activity.
+
 ## Handoff from a skill-application router
 
 Read the complete [binding and recovery protocol](handoff-binding-and-recovery.md)
@@ -144,6 +168,12 @@ ID and plan digest (or direct-application record), outcome, and requested report
 path. Recheck these inputs against the target Project; caller assertions are
 not proof of installation. Never read a mirror to fill a missing canonical
 source.
+Accept the separate pre-install Project baseline, expected authorized mutations
+where known, installer handoff destination, and bounded deferred-method fields.
+Require a delivered implementation snapshot at execution, not an invented
+future snapshot at planning. Verify the handoff independently; handle legacy
+primaries without it under the reconciliation policy rather than silently
+adding obligations or waiving required evidence.
 The primary may be newly created or an existing task surfaced by Replit Agent
 during the Router invocation. Eligibility depends on the verified durable
 record and matching Install/Apply scope, not who created it or whether a create
@@ -207,6 +237,11 @@ Revalidate the verifier's actual executable revision/full payload immediately
 before substantive checks and at report acceptance, not only at linkage.
 Changed verifier instructions require blocked/authorized reconciliation and
 invalidate affected prior evidence.
+Expected delivery changes and method assumptions use the explicit reconciliation
+classification, not blanket source-drift exemptions. Preserve the task key for
+bounded method resolution/correction with unchanged primary plan and semantic
+scope; pin resolved matrices/payload revisions separately. Actual primary-plan
+or scope changes require renewed binding and linked history, not silent duplicates.
 Cancelled/failed or blocked required verifiers are not satisfied follow-ups;
 completed verification needs current accepted snapshot/manifest-bound evidence.
 Do not launch a replacement for a running verifier or silently reopen a
@@ -277,6 +312,10 @@ Use the host's format where possible; preserve these fields:
 ## Source and evidence baseline
 - Canonical skill/specification baseline: [immutable revisions/digests/snapshots;
   planned future source explicitly pending]
+- Pre-install Project baseline: [starting revision/relevant inputs, required
+  baseline checks, and evidenced pre-existing failures]
+- Delivered implementation baseline: [pending until delivery; then the actual
+  independently established tested snapshot and relevant inputs]
 - Implementation/acceptance references: [complete required closure and manifest]
 - Runtime-visible text: [source and parity status]
 - Project/task identity: [verified Project path and local IDs, if applicable]
@@ -284,6 +323,10 @@ Use the host's format where possible; preserve these fields:
   complete coverage, safety conditions, report destination]
 - Delivery/evidence binding: [readiness/resume strategy, tested snapshot and
   relevant environment inputs; lifecycle and freshness checks]
+- Installer handoff: [tracked destination/reference, delivery mapping,
+  independently checked claims, and omissions]
+- Two-phase resolution: [fixed requirement matrix, pending method fields/bounds,
+  resolved matrix revision, classified differences, and authorized amendments]
 
 ## Guardrails
 [Read-only boundaries, required approvals, safe environment, and unavailable
@@ -292,8 +335,11 @@ capabilities.]
 ## Ordered tasks
 | ID | Task and acceptance criteria | Owner | Depends on | Evidence to retain |
 |---|---|---|---|---|
-| V-01 | Discover source, references, Project format, and actual host wiring | ... | — | ... |
-| V-02 | Build clause-by-clause requirement matrix from canonical references | ... | V-01 | ... |
+| V-01 | Discover available source, references, Project format, and host capabilities; keep future wiring pending | ... | — | Available input manifest and provenance; pending delivery fields |
+| V-02 | Pin clause-by-clause obligations; record provisional methods and permitted resolution bounds | ... | V-01 | Original matrix, obligation/pre-install identities, and delivered identity explicitly pending |
+| V-03 | After primary delivery, verify readiness and handoff, independently rediscover wiring, and classify differences | ... | V-02 and delivered primary | Delivered snapshot, discovery evidence, handoff checks, difference log |
+| V-04 | Resolve/correct methods through the authorized route without changing obligations; read back any revised executable payload | ... | V-03 | Original/resolved matrices, authority, revision and evidence-impact record |
+| V-05 | Run applicable required checks and recheck evidence binding at report acceptance | ... | V-04 | Raw required evidence, tested snapshot, per-requirement outcomes |
 | ... | ... | ... | ... | ... |
 
 ## Required report
@@ -337,3 +383,7 @@ responsible action. Do not mark a check verified until its evidence exists.
   honest partial result and label unmet verification blocked, not passed.
   A durably delivered staged discovery plan may still satisfy a planning-only
   request; preserve the narrower scope and source-dependent blocked items.
+- Report all three baselines, original/resolved matrices, classified differences,
+  handoff checks, authorization/amendment history, and evidence impact. Expected
+  implementation change is not a pass; a stale method assumption is not proof
+  of an implementation defect. Verify the fixed obligations against delivery.

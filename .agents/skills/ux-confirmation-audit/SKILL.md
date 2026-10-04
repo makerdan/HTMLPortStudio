@@ -1,10 +1,10 @@
 ---
-name: UX Confirmation Audit
+name: ux-confirmation-audit
 description: >-
   End-to-end UX confirmation audit playbook for any app. Walks every major user
   journey to find and fix broken flows, silent failures, and rough edges before
-  shipping. Two modes: report-only (DEFAULT — audit and deliver findings, change
-  nothing) and audit-and-fix (fix in severity order with verification and
+  shipping. Two modes: task-proposal (DEFAULT — audit and present an actionable
+  task tree, change nothing) and audit-and-fix (fix in severity order with verification and
   regression hardening). Stack-agnostic; gated checks activate only when the
   relevant stack feature is present. Focused on user-journey correctness, not
   code style — every finding must be a real user-visible failure with a
@@ -19,10 +19,10 @@ A phased, repeatable playbook for confirming that every major user journey in an
 
 ## Invocation Modes — decide first
 
-- **report-only** (DEFAULT): audit all phases, deliver the findings report, change NOTHING. Stop before Phase 13's fix loop and ask the user which findings to fix.
+- **task-proposal** (DEFAULT): audit all phases, turn confirmed findings into a user-visible proposed task tree, and change NOTHING. Stop before Phase 13's fix loop and ask the user which tasks they want implemented.
 - **audit-and-fix**: only when the user explicitly asks for fixes ("fix what you find", "repair these issues"). Runs all phases including the fix loop.
 
-If the user's intent is ambiguous, **default to report-only**. Never modify code in report-only mode — not even "trivial" fixes.
+If the user's intent is ambiguous, **default to task-proposal**. Never modify code in task-proposal mode — not even "trivial" fixes. Present proposed tasks in a project-native task surface when available; otherwise show the task tree in the response. Do not claim tasks were persisted unless they were actually created. Do not create tasks in an external tracker unless the user explicitly requests that.
 
 ---
 
@@ -55,10 +55,12 @@ Classify every finding using one of these four levels. When in doubt, classify *
 
 | Level | Criteria |
 |---|---|
-| **Critical** | Data loss, security exposure, or total feature crash — the user cannot complete the journey at all |
-| **High** | User-visible malfunction that blocks or misleads the user, but a workaround exists |
+| **Critical** | Confirmed data loss, unauthorized data exposure, security compromise, irreversible harm, or a total feature failure that prevents completion of a critical journey |
+| **High** | A user-visible malfunction that blocks or misleads the user, or another materially harmful failure that does not meet the Critical criteria; a workaround may exist |
 | **Medium** | Latent failure that occurs under reachable but non-obvious conditions (specific input, specific sequence, second tab, low memory, etc.) |
 | **Low** | Polish, hygiene, or accessibility gap that degrades experience but does not block any journey |
+
+Do not promote an unverified suspicion to a confirmed finding. When evidence is incomplete, state what is known and what remains unverified; choose severity from the demonstrated impact, not the most alarming hypothetical.
 
 ---
 
@@ -67,7 +69,12 @@ Classify every finding using one of these four levels. When in doubt, classify *
 State these rules once here; individual phases do not repeat them.
 
 ### Code-Inspection Fallback
-Where a check requires live browser interaction (DevTools offline, window resize, rapid double-click), **verify by code inspection instead** — find the relevant code path and reason about it. Any check that cannot be verified by code inspection must be flagged as `[MANUAL QA NEEDED]` in the findings.
+Code inspection can identify a likely behavior or defect, but it does not prove runtime behavior. For checks requiring live interaction, test only in a safe isolated environment. If that environment or required access is unavailable, record the code path inspected, mark the behavior **not runtime-verified**, and add `[MANUAL QA NEEDED]`. Never describe static inspection as an end-to-end test.
+
+### Test Isolation & Side Effects
+Use a disposable local or staging environment, synthetic data, and designated test accounts for state-changing checks. Do not clear, overwrite, or delete real user data; upload sensitive files; send messages; make purchases; publish; invite users; reset real credentials; or trigger other external side effects. Clear only test-owned state, and preserve a way to restore it.
+
+An audit-and-fix request authorizes code changes within the requested scope; it does not authorize production deployment, live account or data mutations, external communications, or other irreversible actions. Before any such action, obtain explicit approval for that specific action. If a safe test target is unavailable, skip the mutating check, preserve existing state, and report it as blocked with `[MANUAL QA NEEDED]`.
 
 ### Finding IDs
 Number every finding sequentially across all phases as **F-001, F-002, …** Never reuse an ID within a run. The ID stays with the finding even if it is later deferred or resolved.
@@ -76,13 +83,13 @@ Number every finding sequentially across all phases as **F-001, F-002, …** Nev
 If the same root cause surfaces in two different phases, **keep the higher-severity instance** and add a cross-reference note (`see also: F-0XX`) to both. Do not report the same bug twice.
 
 ### Critical Mid-Audit Policy
-A Critical finding does **not** stop the audit. Mark it, flag it prominently in the running findings list (e.g., **⚠ CRITICAL**), and continue — all Criticals are fixed first in Phase 13. The **only** exception: a finding that makes continued auditing impossible (e.g., the app will not load at all). In that case: stop, report what has been found so far, and ask the user to fix the blocker before the audit resumes.
+A Critical finding does **not** automatically stop safe, read-only audit work. Mark it prominently (e.g., **⚠ CRITICAL**) and continue only with checks that cannot expose more data, cause additional loss or corruption, or trigger external side effects. Stop risky interactions, preserve evidence, and report the blocker. Do not attempt to reproduce or expand a security exposure against real users or data. Resume the affected checks only after the risk is contained and a safe test target is available.
 
 ### Third-Party Widgets / iFrames
 Note their presence in the app map but do not audit their internals — they are out of scope. Verify only that the embedding integration (load, error handling, sizing) works correctly.
 
 ### Prior Audit Reports
-Before starting Phase 0, **check the repo** for any existing bug-audit or UX-audit reports (`bug-audit-report.md`, `ux-audit-report.md`, or similar files in the root and docs). If found, use their open findings as seed data and prefix them `[SEED]` in the running findings list. Do not re-discover what is already documented.
+Before starting Phase 0, **check the repo** for existing bug-audit or UX-audit reports (`bug-audit-report.md`, `ux-audit-report.md`, or similar files in the root and docs). Treat their open findings as candidates, prefix them `[SEED]`, and verify against the current code or safe runtime evidence before presenting them as current. If status cannot be verified, label them **unverified seed**; do not count them as confirmed findings or assume they remain open.
 
 ---
 
@@ -95,7 +102,7 @@ A user journey is a **goal-oriented sequence of actions** a user performs to acc
 
 ### Steps
 
-1. **Check for prior reports.** Look for `bug-audit-report.md`, `ux-audit-report.md`, or similar in the repo root and docs. Add any open findings as seed findings (prefix `[SEED]`) in the running findings list.
+1. **Check for prior reports.** Look for `bug-audit-report.md`, `ux-audit-report.md`, or similar in the repo root and docs. Treat prior findings as candidates, prefix them `[SEED]`, and verify their current status before including them as confirmed findings or proposed implementation tasks. If they cannot be verified, make a separate investigation task rather than carrying them forward as confirmed.
 
 2. **Stack detection.** Identify:
    - Languages and frameworks (React, Vue, Svelte, native mobile, etc.)
@@ -125,19 +132,20 @@ A user journey is a **goal-oriented sequence of actions** a user performs to acc
 ## Phase 1 — Happy Path Sweep (ALWAYS)
 
 For **each journey** on the app map, walk it from a **defined clean state**:
-- Relevant localStorage/sessionStorage keys cleared
-- User logged in with a test/demo account if auth exists
-- No pre-existing data unless the journey specifically requires it
+- Use a disposable local/staging environment and synthetic fixtures; do not run clean-state setup against production or a user's existing account.
+- Clear only the test-owned localStorage/sessionStorage keys needed for the journey; never clear broad storage, credentials, or user data.
+- Use a designated test/demo account if auth exists. If one is unavailable, do not substitute a real user account; mark affected checks blocked.
+- Start without pre-existing test data unless the journey specifically requires it, and restore or discard only the disposable test state when finished.
 
 For each step in each journey, verify:
 
 **(a) End-to-end completion.** The journey completes without crashes, white screens, or error boundaries triggering.
 
-**(b) Visible, timely feedback.** Every action produces a visible, timely result — loading indicator, success message, or on-screen state change. An action that silently does nothing is at minimum a **Medium** finding.
+**(b) Visible, timely feedback.** Every action produces a visible, timely result — loading indicator, success message, or on-screen state change. An action that silently does nothing is at minimum a **High** finding.
 
 **(c) Persistence after reload.** The final result of the journey persists and is still correct after a page refresh. If state silently resets to a default, it is a **High** finding.
 
-**Heuristic — console errors:** After each step, check the browser console or grep the relevant code path for `console.error`, `console.warn`, `Uncaught`, or `Failed to fetch`. Any such message produced during a normal happy-path action is at minimum a **Medium** finding.
+**Heuristic — console errors:** After each step, check the browser console or inspect the relevant code path for `console.error`, `console.warn`, `Uncaught`, or `Failed to fetch`. A message is a finding only when it is attributable to the audited action and indicates a real user-visible or reliability impact. Do not flag benign, expected, development-only, or unrelated third-party messages by presence alone; record uncertain attribution as unverified rather than assigning severity.
 
 ---
 
@@ -151,7 +159,7 @@ Check every piece of state that is supposed to survive navigation or reload.
 
 **(c) Tool / mode / tab switching.** Switch between tools, modes, or tabs and verify no state is lost or corrupted.
 
-**(d) Second-tab behavior.** Open the app in a second tab. Watch for:
+**(d) Second-tab behavior** — GATE: use only the isolated test environment and test account. Open the app in a second tab. Watch for:
 - Duplicate records appearing
 - Last-write-wins data loss (Tab A saves, Tab B saves, Tab A's save is gone)
 - UI showing stale data from before Tab B's change
@@ -171,7 +179,7 @@ Targets operations that appear to work but don't, or that fail without telling t
 
 **(b) Offline behavior** — GATE: `backend: true`. Grep for `navigator.onLine` checks, service workers, or offline handlers. If none exist, flag as **Medium** (no offline handling). `[MANUAL QA NEEDED: verify behavior when network is disconnected]`
 
-**(c) Log-only catch blocks.** Grep for `catch` blocks that only `console.error` without setting any user-facing error state — each is a finding (severity: **High** if the operation is a user-triggered write, **Medium** otherwise).
+**(c) Log-only catch blocks.** Grep for `catch` blocks that only `console.error` without setting any user-facing error state. When the caught failure is confirmed and leaves a user-facing operation silently failed, it is at minimum **High** under the global rule. If the catch does not represent a confirmed silent failure, classify it by its demonstrated user impact; do not assign severity from the presence of logging alone.
 
 **(d) Fire-and-forget async calls.** Grep for async function calls without `await` or `.catch` inside event handlers (pattern: `asyncFn()` in a sync handler, or `.then(...)` without `.catch(...)`). Each unhandled rejection path is a finding.
 
@@ -189,9 +197,9 @@ Stress inputs and states:
 
 **(b) Double-submit / rapid repeat.** By code inspection, look for debounce, throttle, or disabled-during-submit guards on every form submit and destructive action. Absence of any guard is a **Medium** finding. `[MANUAL QA NEEDED: verify in browser when possible]`
 
-**(c) Extreme numeric values.** Grep for numeric inputs and sliders. Verify min/max constraints are enforced in both the UI element **and** the handler code — a constraint only on the UI element can be bypassed.
+**(c) Extreme numeric values.** Grep for numeric inputs and sliders. Verify min/max constraints are enforced in the UI for clear feedback and at the authoritative server/API boundary when a backend exists. Client-side and UI-handler checks alone can be bypassed.
 
-**(d) File uploads** — GATE: if file uploads exist. Verify type and size constraints are enforced **client-side before upload**, not only server-side.
+**(d) File uploads** — GATE: if file uploads exist. Use synthetic, non-sensitive files in the isolated test environment. Verify client-side type/size checks provide timely feedback **and** the server independently validates type, size, and content before processing; never trust the filename or client-supplied MIME type as authoritative. If no backend exists, identify the actual trusted processing boundary and do not claim server-side validation.
 
 **(e) Empty and high-volume states.** For every list, grid, or canvas, verify:
 - The empty state renders something informative (not a blank box)
@@ -238,7 +246,7 @@ Walk every navigation path:
 - Paste inserts at the correct location
 - Cut removes the source correctly
 
-**Rule:** Any documented shortcut that silently does nothing is a **Medium** finding.
+**Rule:** Any documented shortcut that silently does nothing is at minimum a **High** finding.
 
 ---
 
@@ -278,7 +286,7 @@ For every control in every settings panel:
 
 **GATE: Skip entirely and note it if `auth: false`.**
 
-**(a) Session expiry.** Find the session timeout / token refresh logic. If there is **none**, flag as **High** (sessions never expire — may be intentional, but must be confirmed). If a timeout exists, verify the expiry handler either silently refreshes the token or redirects to login with a clear message — not a crash or silent save failure.
+**(a) Session expiry.** Find the session timeout / token refresh behavior, including the identity provider and server configuration where applicable. Absence of timeout logic in the app repository alone does **not** prove sessions never expire. Confirm the effective behavior before reporting a finding; if provider/runtime configuration is unavailable, mark it unverified and `[MANUAL QA NEEDED]`. If a timeout exists, verify the expiry handler refreshes safely or redirects to login with a clear message — not a crash or silent save failure.
 
 **(b) Protected route guards.** For every route that requires auth, verify by code inspection that an auth guard exists and unauthenticated access redirects cleanly rather than rendering a broken page or exposing data.
 
@@ -314,7 +322,7 @@ For every object the user can create, read, update, and delete:
 
 **(b) Edit** — GATE: applies to all apps; server persistence check requires `backend: true`. Verify the edit is saved and displayed correctly — not reverted, not doubled, not partially applied.
 
-**(c) Delete** — GATE: applies to all apps; server + cache checks require `backend: true`. Verify the item:
+**(c) Delete** — GATE: perform only on synthetic objects in the isolated test environment; server + cache checks require `backend: true`. Never delete a real user record to test this flow. Verify the test item:
 - Disappears from the UI immediately
 - Is removed from storage/DB
 - Cannot be accessed via direct URL
@@ -330,7 +338,7 @@ Stale in-memory data after delete is a **High** finding.
 
 ## Phase 12 — Cross-Context Pass (ALWAYS; some checks MANUAL QA)
 
-**(a) First-run / empty state.** Open the app with all relevant storage cleared. Verify:
+**(a) First-run / empty state** — GATE: clear only test-owned storage in the isolated environment; do not clear a user's existing browser or account state. Verify:
 - Empty states are shown with informative placeholders (not blank white boxes)
 - Defaults are sensible
 - There is some guidance for new users
@@ -362,26 +370,29 @@ Phase:    [which audit phase found it]
 Severity: Critical | High | Medium | Low
 Failure:  [exact user-visible description of what breaks, written from the user's perspective]
 Fix:      [concrete, actionable code change — name the file, function, and what to change]
+Evidence: [code path, test steps/results, or other evidence supporting the finding]
+Verification: [runtime-tested | code-inspected, not runtime-verified | unverified seed | blocked / manual QA needed]
 ```
 
-### Report-Only Mode
+### Task-Proposal Mode
 
-Deliver all findings sorted by severity (Critical → High → Medium → Low). Include a summary table at the top:
+Present a proposed task tree as the primary deliverable, ordered by severity (Critical → High → Medium → Low) and dependencies. Do not deliver only a flat findings report. A brief audit summary may show finding counts, but every confirmed finding must map to a proposed task or be explicitly excluded with a reason.
 
-| Severity | Count |
-|---|---|
-| Critical | N |
-| High | N |
-| Medium | N |
-| Low | N |
+#### Shape the Task Tree
 
-**STOP HERE in report-only mode.** Ask the user which findings (if any) they want fixed before doing anything else. Do not proceed to the fix loop without explicit approval.
+- **Consolidate** findings when they share the same root cause and can be addressed by one coherent change. Preserve every source finding ID and severity on the task; use the highest applicable severity for task ordering.
+- **Subdivide** work when findings need independently actionable implementation, test, or rollout work. Use nested child tasks under a parent outcome when that makes ownership, dependencies, or completion clearer.
+- **Do not combine** unrelated fixes merely to shorten the task list. Keep a single small fix as one task; do not add artificial parent tasks.
+- **Unverified or seeded findings** become investigation/verification tasks, not confirmed implementation tasks. **Blocked or manual-only checks** become verification tasks with the missing access, environment, or evidence stated.
+- Every task includes: title, linked finding ID(s), severity/priority, user impact, concrete scope, acceptance criteria, and verification method. Include dependencies or parent/child relationships when relevant.
+- Keep the task list actionable and bounded. Order dependencies before dependent implementation or verification tasks.
 
+**STOP HERE in task-proposal mode.** Present the task tree to the user and ask which tasks they want implemented. Do not modify code or begin the fix loop without explicit approval.
 ---
 
 ### Audit-and-Fix Mode
 
-Fix in severity order: **Critical → High → Medium → Low**.
+Use the same task-tree rules to plan the work, then fix in severity order: **Critical → High → Medium → Low**. Keep finding IDs traceable through parent and child tasks and through the final delivery.
 
 For each finding:
 
@@ -411,6 +422,7 @@ Prefer guards over documentation. A lint rule outlives everyone's recollection o
 
 Deliver a final summary covering:
 - Counts by severity (fixed vs. deferred)
+- Tasks completed, deferred, or blocked, including parent/child structure where used and the finding IDs each task addressed
 - What was fixed
 - What was deferred and why
 - What hardening was added
@@ -423,12 +435,15 @@ Deliver a final summary covering:
 Before using or delivering this skill, confirm:
 
 - [ ] Every phase has an explicit **skip gate** or **ALWAYS** designation
-- [ ] Every browser-interaction check has a code-inspection fallback **or** a `[MANUAL QA NEEDED]` label
-- [ ] The findings format includes all required fields: ID, Journey, Phase, Severity, Failure, Fix
+- [ ] State-changing checks use an isolated test target, synthetic data, and designated test accounts; blocked checks do not touch real data
+- [ ] Risky checks stop after a Critical finding unless the remaining work is safe and read-only
+- [ ] Runtime-tested behavior is distinguished from code-inspected behavior and unverified seed findings
+- [ ] The findings format includes all required fields: ID, Journey, Phase, Severity, Failure, Fix, Evidence, Verification
 - [ ] The **fix-loop escape hatch** (3 consecutive new findings → stop) is present
 - [ ] The **regression hardening threshold** (2+ findings in same class) is stated
 - [ ] The **Critical mid-audit policy** (don't stop, flag prominently, continue) is in Global Ground Rules
 - [ ] The **de-duplication rule** (higher-severity instance wins, cross-reference the other) is in Global Ground Rules
 - [ ] The **third-party iframe policy** (note presence, audit only embedding integration) is in Global Ground Rules
 - [ ] The **prior audit reports check** is the first step in Phase 0
-- [ ] The **report-only mode stop point** is clearly marked before the fix loop in Phase 13
+- [ ] The **task-proposal mode stop point** is clearly marked before the fix loop in Phase 13
+- [ ] Confirmed findings map to proposed tasks; task consolidation, subdivision, nesting, and unverified-work rules are stated

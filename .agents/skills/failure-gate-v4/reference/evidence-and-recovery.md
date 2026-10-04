@@ -30,6 +30,11 @@ Cover allocator state/backups, namespace/ID/tombstone and consistency records,
 task/plan/tier/approval history, raw runs and tested snapshots, baseline catalog
 versions/history, classification/corroboration, recovery/health reports,
 and validated versus owner-directed closure decisions.
+Include the actual persistent execution-log path/segments, monitoring coverage and
+health, guard decisions, and bounded read/query route required by
+[execution-monitoring.md](execution-monitoring.md). Agent uses these automatically
+for overlap/duplicate/unauthorized-validation questions; the user need not repeat
+the path. Unknown or lost telemetry stays explicit, not invented history.
 Never assert that an illustrative repository path contains the live store.
 Protected stores may live outside the repository; document safe access rather
 than committing database binaries or exposing secrets.
@@ -108,6 +113,9 @@ Discover or implement an authorized read-only inspection route covering
 broken/inaccessible artifact references, missing reports, namespace/task binding
 mismatches, stale authorizations, unresolved leases/runs, expired baselines,
 backup/restore policy status, lineage independence, and completion-mode ambiguity.
+Include execution-log availability/segments, incomplete telemetry, known monitoring
+blind spots, and unresolved single-flight/resource ownership. Inspection itself
+does not start validation, install a watcher, or release a lock.
 Use bounded reads and authorized access; no invasive scan, external charge,
 production probe, or secret collection is implied.
 
@@ -144,6 +152,9 @@ and exact task identity, plan/tier/policy versions, source/tested snapshot and
 environment references, raw statuses, baseline/classification lineage,
 corroboration origins, closure mode/decision, unresolved obligations, and
 a versioned manifest with artifact identities/digests and any redactions.
+For relevant execution investigations, include scoped monitoring events, original
+source references, guard/authority decisions, coverage and clock uncertainty.
+Do not imply unobserved routes were monitored or exported events authorize a run.
 Record absent/inaccessible evidence rather than inventing or omitting it silently.
 
 Export only data authorized for the destination. Exclude credentials, secrets,

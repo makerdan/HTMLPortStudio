@@ -1,363 +1,327 @@
 #!/usr/bin/env node
 /**
- * validation-lock.mjs — dependency-free crash-safe validation serialization.
- *
- * TEMPLATE — adaptation points:
- *   1. LOCK LOCATION: defaults to .local/validation-lock-<resource>.lock
- *      relative to the directory above this script. Override with
- *      VALIDATION_LOCK_FILE in isolated tests or a project-specific layout.
- *   2. ENVIRONMENT: VALIDATION_LOCK_* names are deliberately explicit; rename
- *      them only together with the documented interface and your tests.
- *   3. TIMINGS: tune the positive millisecond variables below for the longest
- *      legitimate step. Budgets in the wrapped command must begin after lock
- *      acquisition, not while waiting.
- *   4. RESOURCE NAMES: use alphanumeric and hyphen names such as codegen,
- *      unit-cpu, and e2e-port. The resource becomes part of a lock filename
- *      and reentrancy environment variable.
- *
- * Usage:
- *   node scripts/validation-lock.mjs [--resource <name>] [--priority <1-9>] -- <command...>
- *
- * The lock uses an atomic exclusive file, a PID/acquire-time record, a
- * heartbeat, a max-hold safety valve, and an isolated priority-waiter
- * manifest. Stale takeover is loud. A small sidecar mutex makes stale
- * verify-and-unlink atomic among competing waiters; every acquisition uses
- * that same mutex so a replacement lock cannot be removed accidentally.
- * No npm package, project import, or application-specific path is required.
+ * Linux/local-filesystem cooperative validation lease v2.
+ * node validation-lock.mjs [--resource lowercase-name] [--priority 1-9] -- CMD...
+ * Named locks (including "global") are independent, not hierarchical.
+ * Env: VALIDATION_LOCK_FILE, VALIDATION_LOCK_WAITERS_DIR, *_POLL_MS,
+ * *_TIMEOUT_MS (queue only), *_HEARTBEAT_MS, *_STALE_HEARTBEAT_MS,
+ * *_MAX_HOLD_MS (execution), *_STOP_GRACE_MS, *_STOP_KILL_MS.
+ * Reentry uses verified token/incarnation/path context, plus a nested sibling
+ * slot. Legacy PID variables are never authorization. No command arguments
+ * are logged. Unknown lifecycle/corrupt leases/abandoned transition mutexes
+ * block and retain evidence for host-authorized recovery.
+ * Commands must not daemonize or escape supervision. This is neither Failure
+ * Gate's task single-flight/evidence system nor protection from malicious code.
  */
 import {
-  openSync, closeSync, unlinkSync, mkdirSync, writeSync, writeFileSync,
-  readFileSync, utimesSync, statSync, readdirSync,
+  readFileSync, readdirSync, mkdirSync, rmdirSync, unlinkSync, openSync,
+  closeSync, writeFileSync, fsyncSync, renameSync, lstatSync, realpathSync,
 } from "node:fs";
-import { resolve, dirname, join } from "node:path";
+import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { randomUUID, createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 
-const here = dirname(fileURLToPath(import.meta.url));
-const projectRoot = resolve(here, "..");
-
-function positiveMs(name, fallback) {
-  const raw = process.env[name] ?? String(fallback);
-  const value = Number(raw);
-  if (!Number.isFinite(value) || value <= 0) {
-    console.error(`validation-lock: invalid value for ${name}: '${raw}'`);
-    process.exit(1);
-  }
-  return value;
+const fail = (message, code = 4) => {
+  console.error(JSON.stringify({ tool: "validation-lock", state: "BLOCKED", reason: message }));
+  process.exit(code);
+};
+if (process.platform !== "linux") fail("Linux process-incarnation discovery required", 2);
+if (process.env.NODE_ENV === "production" || process.env.REPLIT_DEPLOYMENT === "1" ||
+    process.env.REPLIT_ENVIRONMENT === "production") fail("production indicator takes precedence", 2);
+function ms(name, fallback) {
+  const n = Number(process.env[`VALIDATION_LOCK_${name}`] ?? fallback);
+  if (!Number.isSafeInteger(n) || n <= 0) fail(`invalid ${name}`, 2);
+  return n;
 }
-
-const POLL_MS = positiveMs("VALIDATION_LOCK_POLL_MS", 1_000);
-const TIMEOUT_MS = positiveMs("VALIDATION_LOCK_TIMEOUT_MS", 3 * 60 * 60 * 1000);
-const HEARTBEAT_MS = positiveMs("VALIDATION_LOCK_HEARTBEAT_MS", 30_000);
-const STALE_HEARTBEAT_MS = positiveMs("VALIDATION_LOCK_STALE_HEARTBEAT_MS", 60_000);
-const MAX_HOLD_MS = positiveMs("VALIDATION_LOCK_MAX_HOLD_MS", 2 * 60 * 60 * 1000);
-const PRIORITY_GRACE_MS = positiveMs("VALIDATION_LOCK_PRIORITY_GRACE_MS", 2_000);
-const RECLAIM_MUTEX_STALE_MS = positiveMs("VALIDATION_LOCK_RECLAIM_MUTEX_STALE_MS", 30_000);
-
-const isDevelopmentWorkspace = Boolean(process.env.REPLIT_DEV_DOMAIN);
-if (
-  !isDevelopmentWorkspace &&
-  (process.env.NODE_ENV === "production" ||
-    process.env.REPLIT_DEPLOYMENT === "1" ||
-    process.env.REPLIT_ENVIRONMENT === "production")
-) {
-  console.error("validation-lock: refusing to run in a production environment.");
-  process.exit(2);
+const pollMs = ms("POLL_MS", 100);
+const queueMs = ms("TIMEOUT_MS", 3 * 60 * 60 * 1000);
+const heartbeatMs = ms("HEARTBEAT_MS", 1000);
+const staleMs = ms("STALE_HEARTBEAT_MS", 10000);
+const maxHoldMs = ms("MAX_HOLD_MS", 2 * 60 * 60 * 1000);
+const graceMs = ms("STOP_GRACE_MS", 3000);
+const killMs = ms("STOP_KILL_MS", 5000);
+const priorityGraceMs = ms("PRIORITY_GRACE_MS", 2000);
+if (staleMs <= heartbeatMs) fail("stale heartbeat must exceed heartbeat interval", 2);
+const args = process.argv.slice(2), sep = args.indexOf("--");
+if (sep < 0 || sep === args.length - 1) fail("command after -- required", 2);
+let resource = "global", priority = 5;
+for (let i = 0; i < sep; i++) {
+  if (args[i] === "--resource" && i + 1 < sep) resource = args[++i];
+  else if (args[i] === "--priority" && i + 1 < sep && /^[1-9]$/.test(args[i + 1])) priority = Number(args[++i]);
+  else fail("invalid option", 2);
 }
-
-const argv = process.argv.slice(2);
-const separator = argv.indexOf("--");
-if (separator < 0 || separator === argv.length - 1) {
-  console.error(
-    "Usage: validation-lock.mjs [--resource <name>] [--priority <1-9>] -- <command...>",
-  );
-  process.exit(2);
-}
-
-let resource = "global";
-let priority = 5;
-for (let i = 0; i < separator; i++) {
-  const arg = argv[i];
-  if (arg === "--resource") {
-    const value = argv[i + 1];
-    if (value === undefined || value.startsWith("--")) {
-      console.error("Usage: validation-lock.mjs --resource requires a non-empty name.");
-      process.exit(2);
-    }
-    resource = value;
-    i++;
-  } else if (arg === "--priority") {
-    const value = argv[i + 1];
-    if (value === undefined || !/^[1-9]$/.test(value)) {
-      console.error("Usage: validation-lock.mjs --priority must be an integer from 1 to 9.");
-      process.exit(2);
-    }
-    priority = Number(value);
-    i++;
-  } else {
-    console.error(`validation-lock: unknown option '${arg}'.`);
-    process.exit(2);
-  }
-}
-
-if (!/^[a-zA-Z0-9][a-zA-Z0-9-]*$/.test(resource)) {
-  console.error(
-    "Usage: validation-lock.mjs --resource accepts only alphanumeric characters and hyphens.",
-  );
-  process.exit(2);
-}
-const safeResource = resource;
-const resourceUpper = safeResource.toUpperCase().replaceAll("-", "_");
-const command = argv.slice(separator + 1);
-const commandLabel = command.join(" ");
-
-const lockFile = process.env.VALIDATION_LOCK_FILE
-  ? resolve(process.env.VALIDATION_LOCK_FILE)
-  : resolve(projectRoot, ".local", `validation-lock-${safeResource}.lock`);
-const lockDir = dirname(lockFile);
-const waitersDir = process.env.VALIDATION_LOCK_WAITERS_DIR
-  ? resolve(process.env.VALIDATION_LOCK_WAITERS_DIR)
-  : resolve(projectRoot, ".local", `validation-waiters-${safeResource}`);
-const reclaimMutex = `${lockFile}.reclaim`;
-const heldPidEnv = `VALIDATION_LOCK_HELD_PID_${resourceUpper}`;
-
-function pidAlive(pid) {
+if (!/^[a-z0-9][a-z0-9-]*$/.test(resource)) fail("resource must be lowercase alphanumeric/hyphen", 2);
+const command = args.slice(sep + 1);
+const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const requested = resolve(process.env.VALIDATION_LOCK_FILE ??
+  join(projectRoot, ".local", `validation-lock-${resource}.lock`));
+mkdirSync(dirname(requested), { recursive: true, mode: 0o700 });
+const baseFile = join(realpathSync(dirname(requested)), requested.split("/").at(-1));
+const bootId = readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim();
+function proc(pid) {
   try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error.code === "EPERM";
+    const raw = readFileSync(`/proc/${pid}/stat`, "utf8");
+    const f = raw.slice(raw.lastIndexOf(")") + 2).trim().split(/\s+/);
+    return { pid, state: f[0], ppid: Number(f[1]), pgrp: Number(f[2]),
+      session: Number(f[3]), startTime: f[19] };
+  } catch (e) {
+    if (e.code === "ENOENT" || e.code === "ESRCH") return null;
+    throw e;
   }
 }
-
-function readLockInfo() {
-  const raw = readFileSync(lockFile, "utf8");
-  const lines = raw.split("\n");
-  const pid = Number(lines[0]?.trim());
-  const acquiredAt = Number(lines[1]?.trim());
-  const mtimeMs = statSync(lockFile).mtimeMs;
-  return { raw, pid, acquiredAt, mtimeMs };
+const self = proc(process.pid);
+const same = (a, b) => a && b && a.pid === b.pid && a.startTime === b.startTime;
+const alive = identity => {
+  const actual = proc(identity.pid);
+  return same(actual, identity) && !["Z", "X"].includes(actual.state);
+};
+function allProcesses() {
+  return readdirSync("/proc").filter(n => /^\d+$/.test(n)).map(n => proc(Number(n))).filter(Boolean);
 }
-
-function staleReason(info, now) {
-  if (!Number.isInteger(info.pid) || info.pid <= 0) return "invalid holder pid";
-  if (!Number.isFinite(info.acquiredAt) || info.acquiredAt <= 0) {
-    return "invalid acquire timestamp";
+function ancestor(identity) {
+  let current = self, seen = new Set();
+  while (current && current.pid > 1 && !seen.has(current.pid)) {
+    if (same(current, identity)) return current.pid !== self.pid;
+    seen.add(current.pid);
+    current = proc(current.ppid);
   }
-  if (!pidAlive(info.pid)) return `held by dead pid ${info.pid}`;
-  if (now - info.mtimeMs > STALE_HEARTBEAT_MS) {
-    return `heartbeat stale for ${Math.round((now - info.mtimeMs) / 1000)}s (pid ${info.pid} presumed reused/gone)`;
-  }
-  if (now - info.acquiredAt > MAX_HOLD_MS) {
-    return `held for ${Math.round((now - info.acquiredAt) / 60000)} min by pid ${info.pid}, exceeding the ${Math.round(MAX_HOLD_MS / 60000)} min max-hold safety valve — holder appears hung`;
-  }
-  return null;
-}
-
-function acquireReclaimMutex() {
-  try {
-    const fd = openSync(reclaimMutex, "wx");
-    try {
-      writeSync(fd, `${process.pid}\n${Date.now()}\n`);
-    } finally {
-      closeSync(fd);
-    }
-    return true;
-  } catch (error) {
-    if (error.code !== "EEXIST") throw error;
-    try {
-      const raw = readFileSync(reclaimMutex, "utf8").split("\n");
-      const pid = Number(raw[0]);
-      const createdAt = Number(raw[1]);
-      const age = Date.now() - statSync(reclaimMutex).mtimeMs;
-      if (
-        !Number.isInteger(pid) ||
-        pid <= 0 ||
-        !Number.isFinite(createdAt) ||
-        createdAt <= 0 ||
-        !pidAlive(pid) ||
-        age > RECLAIM_MUTEX_STALE_MS
-      ) {
-        console.error("[validation-lock] WARNING: reclaiming abandoned stale-takeover mutex.");
-        try { unlinkSync(reclaimMutex); } catch { /* another waiter reclaimed it */ }
-      }
-    } catch { /* mutex changed while inspected */ }
-    return false;
-  }
-}
-
-function releaseReclaimMutex() {
-  try {
-    const owner = Number(readFileSync(reclaimMutex, "utf8").split("\n")[0]);
-    if (owner === process.pid) unlinkSync(reclaimMutex);
-  } catch { /* already gone or replaced */ }
-}
-
-function tryAcquire() {
-  if (!acquireReclaimMutex()) return { acquired: false, reason: "reclaim-busy" };
-  try {
-    try {
-      const lockFd = openSync(lockFile, "wx");
-      try {
-        writeSync(lockFd, `${process.pid}\n${Date.now()}\n`);
-        closeSync(lockFd);
-        return { acquired: true };
-      } catch (error) {
-        try { closeSync(lockFd); } catch { /* best effort */ }
-        try { unlinkSync(lockFile); } catch { /* best effort */ }
-        console.error(`[validation-lock] failed to write lock file ${lockFile}: ${error.message}`);
-        return { acquired: false, reason: "write-failed" };
-      }
-    } catch (error) {
-      if (error.code !== "EEXIST") throw error;
-      let info;
-      try { info = readLockInfo(); } catch { return { acquired: false, reason: "lock-changing" }; }
-      const reason = staleReason(info, Date.now());
-      if (reason) {
-        console.error(`[validation-lock] WARNING: forcibly reclaiming stale lock (${reason})`);
-        try { unlinkSync(lockFile); } catch (unlinkError) {
-          if (unlinkError.code !== "ENOENT") {
-            console.error(`[validation-lock] failed to reclaim ${lockFile}: ${unlinkError.message}`);
-          }
-        }
-      }
-      return { acquired: false, reason: reason ? "reclaimed" : "held" };
-    }
-  } finally {
-    releaseReclaimMutex();
-  }
-}
-
-const sleep = (ms) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
-const waiterFile = join(waitersDir, `${process.pid}.json`);
-let waiterRegistered = false;
-function registerWaiter() {
-  try {
-    mkdirSync(waitersDir, { recursive: true });
-    writeFileSync(waiterFile, JSON.stringify({ pid: process.pid, priority, enqueuedAt: Date.now() }));
-    waiterRegistered = true;
-  } catch { /* priority is best effort */ }
-}
-function deregisterWaiter() {
-  if (!waiterRegistered) return;
-  waiterRegistered = false;
-  try { unlinkSync(waiterFile); } catch { /* already gone */ }
-}
-function shouldYield() {
-  try {
-    const now = Date.now();
-    for (const file of readdirSync(waitersDir)) {
-      if (!file.endsWith(".json") || file === `${process.pid}.json`) continue;
-      try {
-        const entry = JSON.parse(readFileSync(join(waitersDir, file), "utf8"));
-        if (
-          entry.priority < priority &&
-          typeof entry.enqueuedAt === "number" &&
-          now - entry.enqueuedAt > PRIORITY_GRACE_MS &&
-          typeof entry.pid === "number" &&
-          pidAlive(entry.pid)
-        ) return true;
-      } catch { /* stale waiter manifest */ }
-    }
-  } catch { /* directory may not exist */ }
   return false;
 }
-
-let lockAcquired = false;
-let heartbeatTimer = null;
-function releaseLock() {
-  if (heartbeatTimer) clearInterval(heartbeatTimer);
-  heartbeatTimer = null;
-  if (!lockAcquired) return;
-  lockAcquired = false;
+function readLease(path) {
   try {
-    if (readLockInfo().pid === process.pid) unlinkSync(lockFile);
-  } catch { /* lock was reclaimed or already removed */ }
-}
-function startHeartbeat() {
-  heartbeatTimer = setInterval(() => {
-    try {
-      const now = new Date();
-      utimesSync(lockFile, now, now);
-    } catch { /* lock was reclaimed */ }
-  }, HEARTBEAT_MS);
-  heartbeatTimer.unref();
-}
-
-async function acquire() {
-  registerWaiter();
-  const deadline = Date.now() + TIMEOUT_MS;
-  let announced = false;
-  try {
-    while (Date.now() < deadline) {
-      if (!shouldYield() && tryAcquire().acquired) {
-        deregisterWaiter();
-        return;
-      }
-      if (!announced) {
-        console.log(`[validation-lock] queued at priority ${priority} for resource="${resource}" — waiting…`);
-        announced = true;
-      }
-      await sleep(POLL_MS);
+    if (lstatSync(path).isSymbolicLink()) throw new Error("lease symlink rejected");
+    const r = JSON.parse(readFileSync(path, "utf8"));
+    if (r.version !== 2 || r.bootId !== bootId ||
+        !/^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(r.token) ||
+        !Number.isInteger(r.owner?.pid) || r.owner.pid <= 1 ||
+        typeof r.owner.startTime !== "string" || !/^\d+$/.test(r.owner.startTime) ||
+        r.baseFile !== baseFile || r.resource !== resource ||
+        !Array.isArray(r.observed) || !["reserved", "launching", "running", "finished"].includes(r.phase) ||
+        !Number.isFinite(r.heartbeatAt) || r.heartbeatAt <= 0 ||
+        !Number.isFinite(r.acquiredAt) || r.acquiredAt <= 0 ||
+        (r.group !== null && (!Number.isInteger(r.group) || r.group <= 1)) ||
+        (r.phase === "running" && r.group === null) ||
+        r.observed.some(p => !Number.isInteger(p.pid) || p.pid <= 1 ||
+          typeof p.startTime !== "string" || !/^\d+$/.test(p.startTime))) {
+      throw new Error("invalid, foreign-boot, or incompatible lease");
     }
-    deregisterWaiter();
-    console.error(
-      `[validation-lock] timed out after ${(TIMEOUT_MS / 60000).toFixed(0)} min waiting for ${lockFile}. ` +
-      "If no validation step is running, inspect the lock before removing it.",
-    );
-    process.exit(3);
-  } catch (error) {
-    deregisterWaiter();
-    throw error;
+    return r;
+  } catch (e) {
+    if (e.code === "ENOENT") return null;
+    throw e;
   }
 }
-
-try {
-  mkdirSync(lockDir, { recursive: true });
-} catch (error) {
-  console.error(`validation-lock: cannot create lock directory '${lockDir}': ${error.message}`);
-  process.exit(1);
-}
-
-const heldPid = Number(
-  process.env[heldPidEnv] ||
-    (resource === "global" ? process.env.VALIDATION_LOCK_HELD_PID : 0) ||
-    0,
-);
-
-function runChild(options = {}) {
-  const child = spawn(command[0], command.slice(1), { stdio: "inherit", ...options });
-  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
-    process.on(signal, () => {
-      if (child.exitCode === null && child.signalCode === null) {
-        try { process.kill(-child.pid, signal); } catch { try { child.kill(signal); } catch { /* gone */ } }
-      }
-      releaseLock();
-      process.exit(1);
-    });
-  }
-  return child;
-}
-
-if (Number.isInteger(heldPid) && heldPid > 0 && heldPid !== process.pid && pidAlive(heldPid)) {
-  console.log(`[validation-lock] lock already held by ancestor pid ${heldPid} (resource="${resource}") — running reentrantly: ${commandLabel}`);
-  const child = runChild();
-  child.on("exit", (code, signal) => process.exit(signal ? 1 : code ?? 1));
+// Path identity, not a normalized resource name, is the reentry key.
+const contextKey = `VALIDATION_LOCK_CONTEXT_${createHash("sha256").update(baseFile).digest("hex")}`;
+let context, lockFile = baseFile;
+if (process.env[contextKey]) {
+  try {
+    context = JSON.parse(process.env[contextKey]);
+    if (context.baseFile !== baseFile || context.resource !== resource ||
+        !Array.isArray(context.chain) || !context.chain.length || context.chain.length > 64) throw new Error("invalid context binding");
+    for (let i = 0; i < context.chain.length; i++) {
+      const entry = context.chain[i];
+      const expectedFile = i === 0 ? baseFile : `${baseFile}.nested-${context.chain[i - 1].token}`;
+      if (entry.file !== expectedFile) throw new Error("invalid nested path");
+      const lease = readLease(entry.file);
+      if (!lease || lease.token !== entry.token || !same(lease.owner, entry.owner) ||
+          !ancestor(entry.owner) || !alive(entry.owner)) throw new Error("unverified reentry lease/ancestor");
+    }
+    lockFile = `${baseFile}.nested-${context.chain.at(-1).token}`;
+  } catch (e) { fail(e.message); }
 } else {
-  let child = null;
-  process.on("exit", () => { deregisterWaiter(); releaseLock(); });
-  await acquire();
-  lockAcquired = true;
-  startHeartbeat();
-  console.log(`[validation-lock] lock acquired (resource="${resource}", priority=${priority}) — running: ${commandLabel}`);
-  const childEnv = { ...process.env, [heldPidEnv]: String(process.pid) };
-  if (resource === "global") childEnv.VALIDATION_LOCK_HELD_PID = String(process.pid);
-  child = runChild({ detached: true, env: childEnv });
-  child.unref();
-  const lifecycleTimer = setInterval(() => {}, 60_000);
-  child.on("exit", (code, signal) => {
-    clearInterval(lifecycleTimer);
-    releaseLock();
-    process.exit(signal ? 1 : code ?? 1);
+  const key = `VALIDATION_LOCK_HELD_PID_${resource.toUpperCase().replaceAll("-", "_")}`;
+  if (process.env[key] || (resource === "global" && process.env.VALIDATION_LOCK_HELD_PID)) {
+    fail("legacy PID-only reentry rejected; verified v2 context required");
+  }
+}
+const transitionDir = `${lockFile}.transition`;
+const transitionToken = randomUUID();
+function guarded(fn) {
+  try { mkdirSync(transitionDir, { mode: 0o700 }); }
+  catch (e) { if (e.code === "EEXIST") return { busy: true }; throw e; }
+  try {
+    writeFileSync(join(transitionDir, "owner.json"), JSON.stringify({ token: transitionToken, owner: self }), { mode: 0o600 });
+    return { value: fn() };
+  } finally {
+    // Never steal an abandoned mutex: uncertain interrupted transitions require
+    // an authorized host recovery with contenders stopped, not a timed unlink.
+    try {
+      const owner = JSON.parse(readFileSync(join(transitionDir, "owner.json"), "utf8"));
+      if (owner.token === transitionToken) {
+        unlinkSync(join(transitionDir, "owner.json"));
+        rmdirSync(transitionDir);
+      }
+    } catch { /* preserve uncertain state */ }
+  }
+}
+function durableWrite(path, record, exclusive = false) {
+  const temp = exclusive ? path : `${path}.write-${record.token}`;
+  const fd = openSync(temp, exclusive ? "wx" : "w", 0o600);
+  try { writeFileSync(fd, JSON.stringify(record)); fsyncSync(fd); } finally { closeSync(fd); }
+  if (!exclusive) renameSync(temp, path);
+  const dirFd = openSync(dirname(path), "r");
+  try { fsyncSync(dirFd); } finally { closeSync(dirFd); }
+}
+function workloadAlive(record, processes = allProcesses()) {
+  if (record.phase === "launching" && !record.group) throw new Error("interrupted launch: child identity unknown");
+  if (record.group && !Number.isInteger(record.group)) throw new Error("invalid workload group");
+  return processes.some(p => !["Z", "X"].includes(p.state) &&
+    ((record.group && p.pgrp === record.group && p.session === record.group) ||
+      record.observed.some(old => same(p, old))));
+}
+const waitersDir = resolve(process.env.VALIDATION_LOCK_WAITERS_DIR ??
+  `${lockFile}.waiters`);
+mkdirSync(waitersDir, { recursive: true, mode: 0o700 });
+const waiterFile = join(waitersDir, `${process.pid}-${self.startTime}.json`);
+const enqueuedAt = Date.now();
+writeFileSync(waiterFile, JSON.stringify({ owner: self, priority, enqueuedAt, lockFile }), { mode: 0o600 });
+const deregister = () => { try { unlinkSync(waiterFile); } catch { /* absent */ } };
+function yieldPriority() {
+  for (const file of readdirSync(waitersDir)) {
+    if (!file.endsWith(".json")) continue;
+    try {
+      const w = JSON.parse(readFileSync(join(waitersDir, file), "utf8"));
+      if (w.lockFile === lockFile && w.priority < priority &&
+          Date.now() - w.enqueuedAt > priorityGraceMs && alive(w.owner)) return true;
+    } catch { /* priority is advisory; manifests never grant ownership */ }
+  }
+  return false;
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+let lease, child, stopReason, cancelled = false, released = false;
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+  process.on(signal, () => { cancelled = true; stopReason ??= signal; });
+}
+process.on("exit", deregister);
+try {
+  while (!cancelled && Date.now() - enqueuedAt < queueMs) {
+    if (yieldPriority()) { await sleep(pollMs); continue; }
+    const result = guarded(() => {
+      const old = readLease(lockFile);
+      if (old) {
+        if (alive(old.owner)) return false; // age/heartbeat never authorizes takeover
+        if (workloadAlive(old)) throw new Error("dead supervisor has surviving workload; recovery required");
+        console.error(JSON.stringify({ incident: "verified-quiescent-stale-recovery", token: old.token }));
+        unlinkSync(lockFile); // all cooperating transitions use this same mutex
+      }
+      lease = { version: 2, bootId, token: randomUUID(), owner: self, baseFile, resource,
+        acquiredAt: Date.now(), heartbeatAt: Date.now(), phase: "reserved", group: null, observed: [] };
+      durableWrite(lockFile, lease, true);
+      return true;
+    });
+    if (result.value) break;
+    await sleep(pollMs);
+  }
+  deregister();
+  if (!lease || cancelled) {
+    if (lease) guarded(() => { if (readLease(lockFile)?.token === lease.token) unlinkSync(lockFile); });
+    fail(cancelled ? "cancelled while queued" : "queue timeout; no takeover of live/uncertain ownership", cancelled ? 1 : 3);
+  }
+  // Revalidate every inherited lease after queueing, before child dispatch.
+  if (context) for (const entry of context.chain) {
+    const current = readLease(entry.file);
+    if (!current || current.token !== entry.token || !alive(entry.owner)) throw new Error("parent lease changed while queued");
+  }
+  const transition = async fn => {
+    const until = Date.now() + Math.max(1000, graceMs);
+    do {
+      const r = guarded(fn);
+      if (!r.busy) return r.value;
+      await sleep(Math.min(pollMs, 25));
+    } while (Date.now() < until);
+    throw new Error("transition interrupted/busy; lifecycle cannot be recorded");
+  };
+  const mutate = () => transition(() => {
+    if (readLease(lockFile)?.token !== lease.token) throw new Error("lease ownership changed");
+    durableWrite(lockFile, lease);
   });
+  const chain = [...(context?.chain ?? []), { file: lockFile, token: lease.token, owner: self }];
+  const env = { ...process.env, [contextKey]: JSON.stringify({ baseFile, resource, chain }) };
+  // Do not export PID-only reentry authority.
+  const legacyKey = `VALIDATION_LOCK_HELD_PID_${resource.toUpperCase().replaceAll("-", "_")}`;
+  delete env[legacyKey];
+  if (resource === "global") delete env.VALIDATION_LOCK_HELD_PID;
+  lease.phase = "launching"; await mutate(); // crash in launch gap must remain blocked
+  console.log(JSON.stringify({ tool: "validation-lock", state: "ACQUIRED", resource,
+    nested: Boolean(context), token: lease.token, queueWaitMs: Date.now() - enqueuedAt }));
+  child = spawn(command[0], command.slice(1), { detached: true, stdio: "inherit", env });
+  let exitCode = null, childSignal = null, spawnError = null, ended = false;
+  child.on("error", e => { spawnError = e; ended = true; });
+  child.on("exit", (code, signal) => { exitCode = code; childSignal = signal; ended = true; });
+  if (Number.isInteger(child.pid)) {
+    lease.group = child.pid;
+    const identity = proc(child.pid);
+    if (identity) lease.observed.push(identity);
+    lease.phase = "running"; await mutate();
+  } else {
+    // spawn() failed before creating a child; no unknown launch is inferred.
+    await sleep(0);
+    if (!spawnError) throw new Error("launch outcome unknown");
+    lease.phase = "finished"; await mutate();
+  }
+  let lastHeartbeat = Date.now(), stoppingAt = null, killedAt = null;
+  function discover() {
+    const processes = allProcesses();
+    const known = new Set(lease.observed.filter(alive).map(p => p.pid));
+    let added = true;
+    while (added) {
+      added = false;
+      for (const p of processes) if (!["Z", "X"].includes(p.state) &&
+          ((lease.group && p.pgrp === lease.group && p.session === lease.group) || known.has(p.ppid))) {
+        if (!lease.observed.some(old => same(old, p))) { lease.observed.push(p); added = true; }
+        known.add(p.pid);
+      }
+    }
+    return processes;
+  }
+  function signalOwned(signal, processes) {
+    for (const old of lease.observed) {
+      const now = processes.find(p => same(p, old));
+      if (!now || ["Z", "X"].includes(now.state)) continue;
+      const fresh = proc(now.pid);
+      if (!same(fresh, old)) throw new Error("process incarnation changed before signal");
+      console.error(JSON.stringify({ incident: "owned-workload-signal", pid: old.pid, startTime: old.startTime, signal }));
+      try { process.kill(old.pid, signal); } catch (e) { if (e.code !== "ESRCH") throw e; }
+    }
+  }
+  while (true) {
+    const processes = discover(), active = workloadAlive(lease, processes);
+    if (Date.now() - lastHeartbeat >= heartbeatMs || active) {
+      lease.heartbeatAt = Date.now(); await mutate(); lastHeartbeat = Date.now();
+    }
+    if (ended && !active) break;
+    if (Date.now() - lease.acquiredAt >= maxHoldMs) stopReason ??= "execution-budget";
+    if (ended && active) stopReason ??= "surviving-descendant";
+    if (stopReason && stoppingAt === null) {
+      stoppingAt = Date.now();
+      signalOwned("SIGTERM", processes);
+    }
+    if (stoppingAt !== null && killedAt === null && Date.now() - stoppingAt >= graceMs) {
+      killedAt = Date.now();
+      signalOwned("SIGKILL", processes);
+    }
+    if (killedAt !== null && Date.now() - killedAt >= killMs && active) {
+      throw new Error("owned workload not confirmed stopped; lease retained");
+    }
+    await sleep(Math.min(pollMs, 50));
+  }
+  lease.phase = "finished"; lease.heartbeatAt = Date.now(); await mutate();
+  await transition(() => {
+    if (readLease(lockFile)?.token !== lease.token || workloadAlive(lease)) throw new Error("unsafe release");
+    unlinkSync(lockFile);
+    released = true;
+  });
+  if (!released) throw new Error("release transition unavailable; lease retained");
+  const status = stopReason || spawnError || childSignal ? 1 : exitCode ?? 1;
+  console.log(JSON.stringify({ tool: "validation-lock", state: status === 0 ? "FINISHED" : "FAILED",
+    rawExitCode: exitCode, signal: childSignal, reason: stopReason ?? (spawnError ? "spawn-failed" : null),
+    workloadStopped: true, token: lease.token }));
+  process.exit(status);
+} catch (e) {
+  // A malformed or interrupted lease remains for verified recovery. Do not
+  // turn an evidence/lifecycle gap into an unlocked successful validation.
+  deregister();
+  fail(e.message);
 }

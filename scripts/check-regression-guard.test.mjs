@@ -37,7 +37,7 @@ test("default guidance checks use project documents without reading or rewriting
   const canonical = fs.readFileSync(path.join(root, canonicalPath));
   assert.equal(
     createHash("sha256").update(canonical).digest("hex"),
-    "70e624776e9202062ed551d5f96042276f61f3be0e2e5987f0737c9a7358b418",
+    "44f44b84ad1b4192cdd1a0f101647c21ff245c4d232f66f0a4c91ce50a676008",
     "The canonical v4 definition must retain the approved upload bytes.",
   );
   assert.equal(fs.existsSync(path.join(root, ".agents/skills/failure-gate")), false);

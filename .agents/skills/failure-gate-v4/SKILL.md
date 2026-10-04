@@ -5,7 +5,8 @@ description: >-
   Discover host capabilities, assign one authorized tier per task, prevent
   unintended tier changes, classify failures using provenance, and require
   applicable recorded validation for completion. Use for task planning,
-  task-driven validation, baseline ownership, or Failure Gate installation.
+  task-driven validation, baseline ownership, Failure Gate installation, or
+  investigations of overlapping, duplicate, or unauthorized validation.
 ---
 
 # Failure Gate v4
@@ -32,6 +33,8 @@ missing required authorization blocks the affected operation.
 Project code and CLI must not invoke, request, rely on, or present results from
 platform-managed task completion. Validated completion here is solely a local coordinator
 decision; existing direct test commands may be diagnostics, not task evidence.
+Direct-command availability is not permission for a task Agent to launch them;
+diagnostics need the explicit bounded capability defined below.
 
 ## 1. Discover, then install or operate
 
@@ -56,6 +59,9 @@ Read [evidence-and-recovery.md](reference/evidence-and-recovery.md) for
 installation, evidence classification/acceptance, recovery, health inspection,
 retention, and export. Its eight requirements are part of this contract,
 not optional recommendations or supplied host implementations.
+Read [execution-monitoring.md](reference/execution-monitoring.md) for installation,
+launch coordination, or overlapping/duplicate/unauthorized validation questions.
+Its monitor, durable file log, guard, and automatic lookup are required host contracts.
 
 - **Operate:** use verified host commands and interfaces.
 - **Install:** implement the missing pieces only when installation is requested;
@@ -83,6 +89,10 @@ unrelated work or explicit owner-directed closure.
 - Within checked project tooling, one stable local task ID has one active
   authorized tier. All other tiers are denied by default; do not maintain
   redundant per-tier deny lists.
+- The task Agent may initiate only that tier through its checked route, plus
+  explicitly authorized bounded non-tier capabilities. This applies to direct,
+  indirect, delegated, background, scheduled, and remote-triggered launches.
+  Calling a run independent, diagnostic, ad hoc, or non-evidence grants no permission.
 - The authoritative task record binds the canonical plan digest, tier-definition
   digest, permitted execution parameters, policy version, and authorization version.
 - Each run separately binds the actual tested snapshot and relevant environment.
@@ -219,6 +229,57 @@ Reject another task's plan.
 The runner resolves the single authorized tier from the registry and validates
 the entire authorization before starting its commands.
 
+### Constrain all task-Agent-initiated execution
+
+Decide permission before launch, not only when accepting results. Do not run,
+request, trigger, or delegate another tier without an approved atomic tier change.
+Do not partition another tier into auxiliary commands to reproduce it. The
+assigned tier may intentionally include shared checks from other tiers when that
+composition is explicitly approved; shared coverage is not a second assignment.
+
+Bind the approved transitive execution scope: wrappers, package/build hooks,
+nested scripts, test discovery/configuration, workers, and scheduler/remote
+targets where present. Verify their actual definitions and permitted branches
+before launch; unknown scope or an undeclared tier dispatch blocks that route.
+Delegates and child/background jobs inherit task/plan/authorization bindings,
+purpose, permitted commands/selectors, and shared budgets; they cannot choose
+another tier, borrow another task's grant, or invent independent authority.
+Use only verified host interfaces; process labels cannot attest caller identity.
+
+Whole-tier reruns on current inputs use the checked required-tier route. Diagnostics
+and earlier-snapshot comparisons use registered, bounded capabilities, not a direct
+tier command relabeled after launch. Record their exact command/selector allowlist,
+approved transitive scope, failure/snapshot applicability, and per-attempt plus
+cumulative task budgets across workers and auxiliary purposes. Reserve budgets
+atomically before launch; started failed/cancelled attempts consume them.
+Renaming a failure, changing purpose, restarting a worker, or creating a new
+wrapper/run record cannot reset limits. Exhaustion or unavailable safe accounting
+blocks further diagnostics; renewal requires the applicable explicit approval.
+These auxiliary limits do not prohibit necessary authorized same-tier reruns.
+Read the implementation's execution-scope contract for policy and accounting details.
+
+### Monitor execution and prevent overlapping launches
+
+Require a verified monitor and durable structured file trail outside `.local/`,
+linked from the capability manifest and evidence index. Record attempted versus
+confirmed launches, parent/initiator, task/run/authorization bindings, actual scope,
+declared reason, decision/reason code, start/finish evidence, and coverage gaps;
+never infer motive or treat absent events as proof of no extra execution.
+Use one atomic single-flight slot per task/approved operation across top-level
+validation purposes. Duplicates return the active run or follow a bounded reject/
+queue policy, never spawn another run. Revalidate queued work before dispatch.
+Approved parallel substeps inherit the parent's slot; shared-resource locks cover
+conflicting cooperating runs across tasks. Keep leases until children are confirmed
+stopped or safely quarantined; timeout alone cannot permit replacement.
+Required monitoring/logging failures block managed launches or acceptance as
+specified in the reference, not genuine independent callers or owner-directed closure.
+
+When asked about overlapping, duplicate, or unauthorized validation, automatically
+find and read the indexed log and relevant original evidence using bounded read-only
+queries. Do not require the user to repeat its path. Report actual launches, overlap,
+authority, supported causes, and missing coverage; do not start tests or mutate
+processes/policy just to investigate. The reference defines durability and proof.
+
 ### Preserve independent validation callers
 
 Discover existing validation callers: platform final checks, CI, local tools,
@@ -226,6 +287,12 @@ and other host integrations when present. Keep their independent invocations
 working without new task/plan metadata or caller changes. `TASK_PLAN_FILE` and
 equivalent host inputs are optional adapters, never universal prerequisites,
 approval, or execution-mode selectors merely because they are present or absent.
+Compatibility preserves genuinely independent invocations under their own existing
+authority, not a task Agent's discretionary extra launches. A local tool is not
+independent merely because it bypasses the runner or lacks task metadata. Do not
+trigger extra local/CI/platform tiers or broaden their dispatch to evade assignment.
+Observe existing autonomous checks without treating them as task authorization;
+do not add caller metadata requirements or claim control of platform dispatch.
 
 Put task authorization at the explicit checked entry point, not unconditionally
 in shared check commands. Checked requests lacking valid identity, approved plan,
@@ -243,9 +310,35 @@ heavy-suite serialization, and workflow/Run-button definitions unless separately
 authorized to change them. Verify both execution paths and evidence separation
 through the host acceptance cases; do not claim platform integration from fixtures.
 
+### Verify required command configuration before launch
+
+For each registered command, identify required environment/configuration inputs,
+their verified source, validation rule, and whether the value is secret. Check
+them before launching the affected command; a missing, invalid, or unavailable
+required input is `BLOCKED` before that command starts, not a build failure, successful no-op, or
+fabricated default. Apply this to independent callers too without adding caller
+metadata or altering their existing command strings. Preserve raw outcomes and
+identify which stage actually ran.
+
+For a required port, prefer the host/project's verified assigned port and keep
+its expected value consistent across the caller, builder, and reports. If
+dynamic allocation is necessary, use a verified host allocator or coordinated
+reservation and pass the assigned value through the command's environment, not
+shell interpolation. Validate the port and handle conflicts/concurrent runs
+under the host's resource lifecycle; a probe of a free port without reservation
+does not guarantee it remains available. If the build only embeds a port in
+output and does not bind a socket, use its verified build configuration instead
+of inventing a listener or ephemeral URL. Resolve `BASE_PATH` and similar
+deployment settings from verified project/deployment configuration; do not
+assume `/` or any universal port. Do not log secrets or invent fallback values.
+When an actual local listener needs a port and no fixed project port is defined,
+assign one from the host's verified allowed range/allocator and retain its
+reservation through bind; do not guess a familiar port number or blindly take
+the first one that answers as free.
+
 Execute required steps without coverage-reducing overrides. Authorized diagnostic
 selectors may retry a failed test or compare a verified earlier snapshot; these
-are distinct run purposes, not alternative tiers or full-tier completion evidence.
+are distinct run purposes, not alternative tiers or complete assigned-tier evidence.
 Do not remove the local task ID from checked runner inputs, borrow another local
 task's authorization, or relabel required validation as ad hoc.
 
@@ -296,6 +389,10 @@ and unknown evidence; copied origins cannot establish independent corroboration.
 If isolation is impossible or unsafe, use a registry-defined equivalent diagnostic
 policy with explicit coverage and attempt limits. Otherwise classification is
 blocked; missing diagnostics do not authorize a broader tier.
+Comparison and equivalent policies must stay within the approved diagnostic scope,
+including transitive commands and cumulative budgets. If three isolation retries
+cannot safely fit the authorized budget, report classification blocked; do not
+claim fewer attempts satisfy the rule or replenish the budget yourself.
 
 Typecheck failures remain failures under the host's typecheck policy, not
 test-baseline waivers. Harness failures remain blocked/incomplete, not proven
@@ -350,9 +447,9 @@ Keep raw exit status separate from assessment:
 - `BLOCKED`: authorization, evidence, required capability, or environment is missing.
 - `INCOMPLETE`: execution/results are unfinished or untrustworthy.
 
-The project-local completion checker must examine applicable full-tier run
+The project-local completion checker must examine complete assigned-tier run
 records and all observed failures, not accept a summary or a manually supplied
-`PASS` label. Diagnostics cannot replace full-tier validation. Unexpected
+`PASS` label. Diagnostics cannot replace complete assigned-tier validation. Unexpected
 zero-test runs, missing reports, and skipped required steps cannot become
 acceptable through baseline classification. Ad-hoc runs are not recorded as
 required-tier validation for a project-local task. The checker can reject

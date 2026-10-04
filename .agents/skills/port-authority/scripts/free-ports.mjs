@@ -1,341 +1,206 @@
 #!/usr/bin/env node
 /**
- * free-ports.mjs — reliably free TCP ports before starting a server.
- *
- * TEMPLATE — adaptation points:
- *   1. PORTS: pass ports as CLI args, or hard-code a default list below.
- *   2. ENV GUARD: set FREE_PORTS_DISABLE=1 to make this script a no-op;
- *      FREE_PORTS_RUNNING=1 is set internally to prevent recursion. Rename
- *      both variables to suit your project, but keep both guards so the sweep
- *      can never run recursively or in production.
- *   3. WRAPPER_COMMS: extend with any extra dev-server wrappers your stack
- *      uses (e.g. "deno", "bun", "turbo").
- *   4. --include-own-tree: only pass this flag BETWEEN serialized steps,
- *      when nothing in your own process tree should legitimately hold the
- *      swept ports (see comment at the flag below).
- *
- * Usage:
- *   node scripts/free-ports.mjs <port> [<port>...]
- *
- * For each port this script:
- *   1. Finds every process LISTENing on it (pure /proc parsing — no
- *      lsof/fuser dependency; `fuser` is often missing from PATH under Nix,
- *      and a silently no-op `fuser -k` is worse than nothing).
- *   2. Walks UP the parent chain through pnpm/npm/node/sh wrappers so the
- *      whole supervising tree dies, not just the socket holder (a bare
- *      port-kill leaves package-manager zombies that respawn or confuse
- *      later restarts). The climb stops before: PID 1, any ancestor of THIS
- *      process (so it can never kill its own workflow shell / test runner),
- *      and any process whose comm is not a known script-runner/shell wrapper.
- *   3. SIGTERMs the whole tree (root + descendants), waits up to 3 s, then
- *      SIGKILLs survivors, and finally waits (up to 5 s) until the port is
- *      confirmed free.
- *
- * It is a strict no-op when the port is already free, and never touches
- * processes outside the discovered holder trees.
- *
- * Process names are never trusted for holder discovery: the Nix Node.js
- * build reports its comm as "MainThread" rather than "node". Holders are
- * matched by socket inode via /proc/<pid>/fd.
+ * Linux-only, cooperative TCP cleanup. No PID is authorized by its port/name.
+ * Usage: node free-ports.mjs [--dry-run] [--ownership-manifest FILE]
+ *        [--authorized-cleanup] [--include-own-tree] PORT...
+ * Ownership manifest v1: {version:1, bootId, expiresAt, ports:[...],
+ *   processes:[{pid,startTime}], authorizationReference, allowOwnTree?:true}
+ * A verified host must produce and authorize this manifest. A CLI flag, JSON
+ * field, or local file cannot authenticate approval against a caller editing it.
+ * States: FREE=0, failed=1, invalid/production=2, busy/skipped=3, unknown=4.
+ * Adapt host wiring/manifest generation with approval; do not weaken guards.
  */
-import { readFileSync, readdirSync, readlinkSync } from "node:fs";
+import { readFileSync, readdirSync, readlinkSync, lstatSync } from "node:fs";
 
-// ── Env guard ───────────────────────────────────────────────────────────────
-if (process.env.FREE_PORTS_DISABLE === "1") {
-  console.log("free-ports: FREE_PORTS_DISABLE=1 — skipping sweep.");
-  process.exit(0);
-}
-if (process.env.FREE_PORTS_RUNNING === "1") {
-  console.log("free-ports: already running in an ancestor process — skipping sweep.");
-  process.exit(0);
-}
-const isDevelopmentWorkspace = Boolean(process.env.REPLIT_DEV_DOMAIN);
+const output = (state, code, details = {}) => {
+  console.log(JSON.stringify({ tool: "free-ports", state, ...details }));
+  process.exit(code);
+};
+if (process.platform !== "linux") output("UNKNOWN", 4, { reason: "Linux /proc required" });
 if (
-  !isDevelopmentWorkspace &&
-  (process.env.NODE_ENV === "production" ||
-    process.env.REPLIT_DEPLOYMENT === "1" ||
-    process.env.REPLIT_ENVIRONMENT === "production")
-) {
-  console.error("free-ports: refusing to run in production.");
-  process.exit(2);
+  process.env.NODE_ENV === "production" ||
+  process.env.REPLIT_DEPLOYMENT === "1" ||
+  process.env.REPLIT_ENVIRONMENT === "production"
+) output("PROHIBITED", 2, { reason: "production indicator takes precedence" });
+if (process.env.FREE_PORTS_DISABLE === "1" || process.env.FREE_PORTS_RUNNING === "1") {
+  output("SKIPPED", 3, { reason: "disabled/recursive; no free-port claim" });
 }
+const args = process.argv.slice(2);
+let manifestPath, dryRun = false, action = false, includeOwn = false;
+const ports = [];
+for (let i = 0; i < args.length; i++) {
+  const a = args[i];
+  if (a === "--ownership-manifest" && args[i + 1] && !args[i + 1].startsWith("--")) manifestPath = args[++i];
+  else if (a === "--dry-run") dryRun = true;
+  else if (a === "--authorized-cleanup") action = true;
+  else if (a === "--include-own-tree") includeOwn = true;
+  else if (/^\d+$/.test(a) && Number(a) >= 1 && Number(a) <= 65535) ports.push(Number(a));
+  else output("INVALID", 2, { reason: "invalid option or port" });
+}
+if (!ports.length || (dryRun && action)) output("INVALID", 2, { reason: "ports required; choose dry-run or action" });
+if (action && !manifestPath) output("INVALID", 2, { reason: "action mode requires an ownership manifest" });
+const wanted = [...new Set(ports)];
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function incarnation(pid) {
+  try {
+    const raw = readFileSync(`/proc/${pid}/stat`, "utf8");
+    const fields = raw.slice(raw.lastIndexOf(")") + 2).trim().split(/\s+/);
+    const status = readFileSync(`/proc/${pid}/status`, "utf8");
+    return { pid, state: fields[0], ppid: Number(fields[1]), startTime: fields[19],
+      uid: Number(status.match(/^Uid:\s+(\d+)/m)?.[1]) };
+  } catch (e) {
+    if (e.code === "ENOENT" || e.code === "ESRCH") return null;
+    throw e;
+  }
+}
+function socketMap() {
+  const tables = [readFileSync("/proc/net/tcp", "utf8")];
+  try { tables.push(readFileSync("/proc/net/tcp6", "utf8")); }
+  catch (e) {
+    // Some Linux hosts disable IPv6 at module initialization. An absent table
+    // is safe to omit ONLY with positive independent kernel capability proof.
+    if (e.code !== "ENOENT" ||
+        readFileSync("/sys/module/ipv6/parameters/disable", "utf8").trim() !== "1" ||
+        /^\s*TCPv6\s/m.test(readFileSync("/proc/net/protocols", "utf8"))) throw e;
+  }
+  const byPort = new Map(wanted.map(p => [p, new Set()]));
+  for (const table of tables) for (const line of table.split("\n").slice(1)) {
+    const cols = line.trim().split(/\s+/);
+    if (cols.length < 10 || cols[3] !== "0A") continue;
+    const port = parseInt(cols[1].split(":").at(-1), 16);
+    if (byPort.has(port)) byPort.get(port).add(cols[9]);
+  }
+  return byPort;
+}
+function inventory() {
+  socketMap(); // verify discovery capability before any PID inspection
+  const sockets = new Map();
+  const processes = new Map();
+  for (const name of readdirSync("/proc").filter(n => /^\d+$/.test(n))) {
+    const pid = Number(name), info = incarnation(pid);
+    if (!info) continue;
+    processes.set(pid, info);
+    try {
+      for (const fd of readdirSync(`/proc/${pid}/fd`)) {
+        try {
+          const inode = readlinkSync(`/proc/${pid}/fd/${fd}`).match(/^socket:\[(\d+)\]$/)?.[1];
+          if (inode) {
+            if (!sockets.has(inode)) sockets.set(inode, new Set());
+            sockets.get(inode).add(pid);
+          }
+        } catch (e) {
+          if (e.code !== "ENOENT" && e.code !== "ESRCH") throw e;
+        }
+      }
+    } catch (e) {
+      // Unreadable foreign fds cannot authorize cleanup. Unmapped listener
+      // inodes below produce UNKNOWN rather than a false free-port result.
+      if (!["ENOENT", "ESRCH", "EACCES", "EPERM"].includes(e.code)) throw e;
+    }
+  }
+  // Socket closure between the table snapshot and fd walk is normal during
+  // shutdown. Re-read tables: vanished inodes are not unknown live listeners.
+  const byPort = socketMap();
+  const holders = new Set();
+  for (const inodes of byPort.values()) for (const inode of inodes) {
+    if (!sockets.get(inode)?.size) throw new Error("listener ownership unavailable");
+    for (const pid of sockets.get(inode)) holders.add(pid);
+  }
+  return { byPort, processes, holders };
+}
+let initial;
+try { initial = inventory(); } catch (e) { output("UNKNOWN", 4, { reason: e.message }); }
+if (!initial.holders.size && !action) output("FREE", 0, { ports: wanted });
+const holders = [...initial.holders].map(pid => initial.processes.get(pid));
+if (!manifestPath) output("PROTECTED_BUSY", 3, { reason: "ownership manifest required", ports: wanted, holders });
+let manifest, bootId;
+try {
+  if (lstatSync(manifestPath).isSymbolicLink()) throw new Error("manifest symlink rejected");
+  manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  bootId = readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim();
+  if (manifest.version !== 1 || manifest.bootId !== bootId ||
+      !Number.isFinite(manifest.expiresAt) || manifest.expiresAt <= Date.now() ||
+      typeof manifest.authorizationReference !== "string" || !manifest.authorizationReference.trim() ||
+      !Array.isArray(manifest.ports) || !wanted.every(p => manifest.ports.includes(p)) ||
+      !Array.isArray(manifest.processes)) throw new Error("invalid/expired manifest scope");
+} catch (e) { output("UNKNOWN", 4, { reason: e.message }); }
+const targets = new Map();
+for (const target of manifest.processes) {
+  if (!Number.isInteger(target.pid) || target.pid <= 1 ||
+      typeof target.startTime !== "string" || !/^\d+$/.test(target.startTime) ||
+      targets.has(target.pid)) output("INVALID", 2, { reason: "invalid/duplicate process identity" });
+  targets.set(target.pid, target);
+}
+const ancestors = new Set([1]);
+let p = process.pid;
+while (p > 1 && !ancestors.has(p)) {
+  ancestors.add(p);
+  const info = incarnation(p);
+  if (!info) break;
+  p = info.ppid;
+}
+function inOwnTree(pid, all) {
+  const seen = new Set();
+  while (pid > 1 && !seen.has(pid)) {
+    seen.add(pid);
+    const parent = all.get(pid)?.ppid;
+    if (!parent || parent <= 1) return false;
+    if (ancestors.has(parent)) return true;
+    pid = parent;
+  }
+  return false;
+}
+function preflight(current) {
+  if (manifest.expiresAt <= Date.now()) throw new Error("manifest expired");
+  for (const pid of current.holders) if (!targets.has(pid)) throw new Error("unapproved listener");
+  for (const target of targets.values()) {
+    const info = current.processes.get(target.pid);
+    if (!info) continue; // exact incarnation already gone
+    if (info.startTime !== target.startTime || info.uid !== process.getuid() ||
+        ancestors.has(target.pid)) throw new Error("changed identity, foreign uid, or caller ancestor");
+    if (inOwnTree(target.pid, current.processes) && !(includeOwn && manifest.allowOwnTree === true)) {
+      throw new Error("protected own tree");
+    }
+  }
+  // No inferred wrappers and no unapproved descendant may be swept along.
+  for (const info of current.processes.values()) {
+    if (targets.has(info.ppid) && !targets.has(info.pid) && !["Z", "X"].includes(info.state)) {
+      throw new Error("unapproved descendant");
+    }
+  }
+}
+try { preflight(initial); } catch (e) { output("PROTECTED_BUSY", 3, { reason: e.message, holders }); }
+if (dryRun || !action) output("PROTECTED_BUSY", 3, { reason: "dry-run inventory; no signals sent", holders, targets: [...targets.values()] });
 process.env.FREE_PORTS_RUNNING = "1";
-
-const argv = process.argv.slice(2);
-// --include-own-tree: also kill holders that belong to this process's own
-// ancestor tree (but never the ancestors themselves). Needed by serialized
-// heavy-test runners: orphaned webServers from a finished step get
-// reparented under a still-alive supervisor (a subreaper), so the normal
-// own-tree exemption would wrongly protect them and the next step fails
-// with "port already used". Only safe BETWEEN steps, when nothing in our
-// tree should legitimately hold the swept ports.
-const includeOwnTree = argv.includes("--include-own-tree");
-const unknownFlags = argv.filter(
-  (arg) => arg.startsWith("--") && arg !== "--include-own-tree",
-);
-const positional = argv.filter((arg) => !arg.startsWith("--"));
-if (unknownFlags.length > 0) {
-  console.error(`free-ports: unknown option(s): ${unknownFlags.join(", ")}`);
-  process.exit(2);
-}
-if (
-  positional.length === 0 ||
-  positional.some((arg) => !/^\d+$/.test(arg)) ||
-  positional.some((arg) => Number(arg) < 1 || Number(arg) > 65535)
-) {
-  console.error("Usage: free-ports.mjs [--include-own-tree] <port> [<port>...]");
-  process.exit(2);
-}
-const ports = [...new Set(positional.map(Number))];
-
-// ── /proc helpers ───────────────────────────────────────────────────────────
-
-/** Return { comm, ppid } for a pid, or null if it's gone. */
-function statOf(pid) {
-  let raw;
-  try {
-    raw = readFileSync(`/proc/${pid}/stat`, "utf8");
-  } catch {
-    return null;
-  }
-  const close = raw.lastIndexOf(")");
-  const comm = raw.slice(raw.indexOf("(") + 1, close);
-  const rest = raw.slice(close + 2).split(" ");
-  return { comm, ppid: Number(rest[1]) };
-}
-
-/**
- * Best-effort executable name for a pid: basename of argv[0] from
- * /proc/pid/cmdline, falling back to comm. Needed because the Nix Node.js
- * build reports comm as "MainThread" rather than "node".
- */
-function execNameOf(pid) {
-  try {
-    const cmdline = readFileSync(`/proc/${pid}/cmdline`, "utf8");
-    const argv0 = cmdline.split("\0")[0];
-    if (argv0) return argv0.split("/").pop();
-  } catch {
-    // fall through
-  }
-  return statOf(pid)?.comm ?? "";
-}
-
-function allPids() {
-  return readdirSync("/proc").filter((n) => /^\d+$/.test(n)).map(Number);
-}
-
-/** Set of inodes of sockets LISTENing on `port` (tcp4 + tcp6). */
-function listeningInodes(port) {
-  const hexPort = port.toString(16).toUpperCase().padStart(4, "0");
-  const inodes = new Set();
-  for (const file of ["/proc/net/tcp", "/proc/net/tcp6"]) {
-    let text;
-    try {
-      text = readFileSync(file, "utf8");
-    } catch {
-      continue;
-    }
-    for (const line of text.split("\n").slice(1)) {
-      const cols = line.trim().split(/\s+/);
-      if (cols.length < 10) continue;
-      const [, local, , st] = cols;
-      if (st !== "0A") continue; // LISTEN
-      if (local.endsWith(`:${hexPort}`)) inodes.add(cols[9]);
-    }
-  }
-  return inodes;
-}
-
-/** PIDs of processes holding a socket listening on `port`. */
-function listenersOf(port) {
-  const inodes = listeningInodes(port);
-  if (inodes.size === 0) return [];
-  const holders = [];
-  for (const pid of allPids()) {
-    let fds;
-    try {
-      fds = readdirSync(`/proc/${pid}/fd`);
-    } catch {
-      continue; // permission or gone
-    }
-    for (const fd of fds) {
-      let link;
-      try {
-        link = readlinkSync(`/proc/${pid}/fd/${fd}`);
-      } catch {
-        continue;
-      }
-      const m = link.match(/^socket:\[(\d+)\]$/);
-      if (m && inodes.has(m[1])) {
-        holders.push(pid);
-        break;
-      }
-    }
-  }
-  return holders;
-}
-
-// ── Tree discovery ──────────────────────────────────────────────────────────
-
-/** Ancestor chain of this script (inclusive) — never kill any of these. */
-function selfAncestors() {
-  const set = new Set();
-  let pid = process.pid;
-  while (pid > 1 && !set.has(pid)) {
-    set.add(pid);
-    const s = statOf(pid);
-    if (!s) break;
-    pid = s.ppid;
-  }
-  set.add(1);
-  return set;
-}
-
-const PROTECTED = selfAncestors();
-
-/**
- * A holder is "our own" if walking its parent chain reaches one of our
- * ancestors (other than PID 1) before hitting init. Example: Playwright
- * starts its webServer BEFORE globalSetup runs, so the current run's servers
- * are sibling subtrees under the same Playwright process — killing them
- * would sabotage the very run this sweep is protecting. Stale servers from a
- * dead previous run are reparented to PID 1 and therefore never match.
- */
-function isOwnedByProtected(pid) {
-  let current = pid;
-  for (let i = 0; i < 64; i++) {
-    const s = statOf(current);
-    if (!s) return false;
-    const parent = s.ppid;
-    if (parent <= 1) return false;
-    if (PROTECTED.has(parent)) return true;
-    current = parent;
-  }
-  return false;
-}
-
-// Wrapper comms we are allowed to climb through / consider part of a stale
-// dev-server tree. Anything else (workflow supervisors, editors, language
-// servers, system daemons) is a hard boundary.
-const WRAPPER_COMMS = new Set([
-  "node", "sh", "bash", "dash", "pnpm", "npm", "npx", "tsx", "vite", "esbuild",
-]);
-
-function isWrapper(pid) {
-  const s = statOf(pid);
-  if (!s) return false;
-  return WRAPPER_COMMS.has(s.comm) || WRAPPER_COMMS.has(execNameOf(pid));
-}
-
-/** Climb from a holder to the top of its pnpm/node wrapper chain. */
-function treeRootOf(pid) {
-  let current = pid;
-  for (let i = 0; i < 32; i++) {
-    const s = statOf(current);
-    if (!s) return current;
-    const parent = s.ppid;
-    if (parent <= 1 || PROTECTED.has(parent)) return current;
-    if (!isWrapper(parent)) return current;
-    current = parent;
-  }
-  return current;
-}
-
-/** All descendants of `root` (inclusive), via a ppid map snapshot. */
-function subtreeOf(root) {
-  const children = new Map();
-  for (const pid of allPids()) {
-    const s = statOf(pid);
-    if (!s) continue;
-    if (!children.has(s.ppid)) children.set(s.ppid, []);
-    children.get(s.ppid).push(pid);
-  }
-  const out = [];
-  const queue = [root];
-  while (queue.length > 0) {
-    const pid = queue.pop();
-    out.push(pid);
-    for (const child of children.get(pid) ?? []) queue.push(child);
-  }
-  return out;
-}
-
-// ── Kill logic ──────────────────────────────────────────────────────────────
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-function signalAll(pids, signal) {
-  for (const pid of pids) {
-    if (PROTECTED.has(pid)) continue; // paranoid double-guard
-    try {
-      process.kill(pid, signal);
-    } catch {
-      // already gone
-    }
+function signalTargets(signal) {
+  const current = inventory();
+  preflight(current); // all-or-nothing scope check before each escalation
+  for (const target of targets.values()) {
+    const info = incarnation(target.pid);
+    if (!info || ["Z", "X"].includes(info.state)) continue;
+    if (info.startTime !== target.startTime) throw new Error("PID incarnation changed before signal");
+    console.error(JSON.stringify({ incident: "authorized-process-signal", pid: target.pid, startTime: target.startTime, signal }));
+    try { process.kill(target.pid, signal); } catch (e) { if (e.code !== "ESRCH") throw e; }
   }
 }
-
-async function waitPortFree(port, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (listeningInodes(port).size === 0) return true;
-    await sleep(150);
-  }
-  return listeningInodes(port).size === 0;
+function stoppedAndFree() {
+  const current = inventory();
+  preflight(current);
+  return current.holders.size === 0 && [...targets.values()].every(t => {
+    const info = current.processes.get(t.pid);
+    return !info || info.startTime !== t.startTime || ["Z", "X"].includes(info.state);
+  });
 }
-
-async function freePort(port) {
-  const holders = listenersOf(port);
-  if (holders.length === 0) {
-    if (listeningInodes(port).size > 0) {
-      // Socket exists but holder is invisible (permissions). Nothing safe to do.
-      console.error(`free-ports: port ${port} is LISTENing but no owning process is visible.`);
-      return false;
-    }
-    return true; // no-op: port already free
-  }
-
-  const victims = new Set();
-  for (const holder of holders) {
-    if (PROTECTED.has(holder)) {
-      console.error(`free-ports: refusing to kill own ancestor pid ${holder} holding port ${port}.`);
-      return false;
-    }
-    if (!includeOwnTree && isOwnedByProtected(holder)) {
-      console.log(
-        `free-ports: port ${port} held by pid ${holder}, which belongs to this run's own process tree — leaving it alone.`,
-      );
-      continue;
-    }
-    const root = treeRootOf(holder);
-    for (const pid of subtreeOf(root)) {
-      if (!PROTECTED.has(pid)) victims.add(pid);
-    }
-  }
-
-  if (victims.size === 0) {
-    // Every holder belongs to this run's own process tree — nothing to kill.
-    return true;
-  }
-
-  console.log(
-    `free-ports: port ${port} held by pid(s) ${holders.join(", ")} — terminating tree (${victims.size} process(es)).`,
-  );
-  signalAll(victims, "SIGTERM");
-  if (await waitPortFree(port, 3_000)) return true;
-
-  console.log(`free-ports: port ${port} still bound after SIGTERM grace — escalating to SIGKILL.`);
-  signalAll(victims, "SIGKILL");
-  if (await waitPortFree(port, 5_000)) return true;
-
-  console.error(`free-ports: FAILED to free port ${port}.`);
-  return false;
+async function wait(ms) {
+  const until = Date.now() + ms;
+  do { if (stoppedAndFree()) return true; await sleep(50); } while (Date.now() < until);
+  return stoppedAndFree();
 }
-
-let ok = true;
-for (const port of ports) {
-  // Sequential on purpose: overlapping tree-kills could race on shared parents.
-  // eslint-disable-next-line no-await-in-loop
-  ok = (await freePort(port)) && ok;
-}
-process.exit(ok ? 0 : 1);
+try {
+  signalTargets("SIGTERM");
+  if (!await wait(3000)) {
+    signalTargets("SIGKILL");
+    if (!await wait(5000)) output("CLEANUP_FAILED", 1, { reason: "targets or listener survived" });
+  }
+  output("FREE", 0, { ports: wanted, verifiedTargetsStopped: true });
+} catch (e) { output("UNKNOWN", 4, { reason: e.message, requiresRecovery: true }); }

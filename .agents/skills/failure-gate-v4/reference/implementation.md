@@ -7,6 +7,10 @@ retention, or export, read the complete
 [evidence and recovery contract](evidence-and-recovery.md). Implement its eight
 capabilities through verified host equivalents; the optional-history and
 owner-directed closure exceptions remain intact.
+Installation and launch coordination also require the complete
+[execution monitoring contract](execution-monitoring.md): cooperative single-flight
+and resource guards, durable file telemetry, discoverability, and automatic lookup.
+Questions about overlap use its bounded read-only investigation route.
 
 ## Scope and migration
 
@@ -61,6 +65,9 @@ Create a capability manifest covering allocator, plan guards, planning discovery
 activation policy, tier registry, checked runner, diagnostics, results parser,
 configured approval-event/decision source, recorded approval route, local completion
 checker, final-write coordination, persistence, and recovery.
+Include monitor coverage/health, single-flight/resource locks, persistent file-log
+location and access, and automatic read/query mappings. These are required managed
+route capabilities, not assumed services or mandatory platform caller metadata.
 Map owner-directed closure separately, including retained decision evidence,
 completion mode, local reader semantics, safe terminal release, and any
 genuinely available Agent-native platform operation. Missing closure support
@@ -105,9 +112,16 @@ every tier or substitute focused diagnostics for the selected tier. Bootstrap
 is limited to implementing the gate, logs its actual checks, and cannot
 authorize ordinary tasks. Verify acceptance tests and a live local-ID checked
 command before enabling the new route; fixture-only tests do not prove a
-live cutover. Migrate existing plans explicitly;
-preserve historical task records without rewriting or retroactively approving
-them. Do not invent historical IDs, approval events, or task authorization.
+live cutover. Migrate existing plans explicitly; preserve historical task records
+without rewriting or retroactively approving them. Do not invent historical IDs,
+approval events, or task authorization.
+Acceptance coverage for all registry entries is not authorization to execute all
+tiers. Pin and compare definitions, use isolated instrumented contract fixtures,
+and run only live checks covered by this operation's selected tier or explicit
+bounded non-tier verification policy. A needed live run of another tier requires
+a separate authorized operation or approved atomic tier change, never a sweep.
+Missing live evidence blocks only the affected readiness claim; fixtures cannot
+stand in for required live caller, restore, or cutover proof.
 If a required approval source, writer lock, or adapter is missing, leave activation
 blocked rather than running two authorities or a fallback.
 
@@ -339,10 +353,111 @@ and write access.
 
 Use one registry for scaffold, guards, runner, and completion checker. Each tier
 defines argv-based commands, root/working directory, required steps, dependencies,
-permitted parameters/environment, diagnostics, timeouts, reports, discovery
-expectations, and coverage. Pin its canonical digest.
+permitted parameters/environment and required configuration inputs, each required
+input's verified source and validation rule, secret-handling classification, diagnostics, timeouts,
+reports, discovery expectations, and coverage. Record the expected command
+environment at the right boundary: a checked tier, an independent caller, or
+both, without turning task metadata into a new caller requirement. Pin its
+canonical digest.
 Preserve the host's existing registered commands, resource locks, report adapters,
 and baseline catalog during migration unless separately authorized to change them.
+
+### Agent initiation and transitive execution scope
+
+Authorization limits execution, not merely accepted evidence. For work on a task,
+the Agent may initiate its one assigned tier only through the checked runner.
+Every other Agent-initiated validation operation requires an applicable registered,
+bounded non-tier capability. Do not launch, request, trigger, delegate, or partition
+another tier under an independent/diagnostic/ad-hoc label. A separate non-tier
+policy cannot grant a second active tier; a different tier needs the normal
+approved atomic transition or a genuinely separate authorized operation.
+
+Pin a reviewable transitive execution manifest with the tier-definition digest:
+approved argv/working directories, wrappers, package/build pre/post hooks, nested
+scripts, dependencies, test discovery/config branches, subprocess/worker entry
+points, and scheduler or remote workflow targets when used. Include target versions,
+permitted arguments/environment, expected scope, reports, and relevant locks.
+Do not require a particular build tool or process-tracing implementation.
+An approved tier may reuse shared checks or an explicitly approved composition
+of other groups; that does not authorize their unrestricted dispatchers or a
+second task assignment. Expanding composition requires policy review and renewed
+affected authorization, not preservation of the tier name alone.
+
+Before launch, resolve the actual execution graph against this manifest and
+reject unknown, drifted, undeclared, or argument/config-selected expansion before
+the affected command starts. For dynamic dispatch, constrain branches through
+verified host adapters or isolation; if scope cannot be established, block that
+route rather than executing it to discover what it does. Observe actual steps
+and compare them with the approved scope; unexpected execution is a violation,
+not acceptable evidence merely because its output is discarded. Use authorized
+recovery to stop or quarantine task-owned work safely; report actual launches and
+effects. Do not claim that local code can prevent arbitrary shell/network bypass.
+
+Delegation does not create authority. Pass the exact local task/plan versions,
+authorization version, purpose, permitted transitive scope/parameters, shared
+budget reference, and report route to each child, subagent, background job, or
+scheduler request. Verify them at each cooperative dispatch boundary; workers
+cannot activate another task, select another tier, drop bindings, or refill
+budgets to validate the parent. Unverifiable forwarding blocks the route.
+Register and reconcile task-owned child lifetimes with the run lease so parent
+exit, timeout, cancellation, or tier transition cannot hide continuing work.
+Preserve existing unrelated independent callers and their safety/access policy.
+
+Caller origin is a semantic responsibility, not an agent-supplied security label.
+Inventory the actual initiator/trigger and governing authority where observable;
+an Agent invoking a shared script or requesting a CI job remains its initiator.
+Genuinely independent platform/CI/local caller execution retains its own existing
+authority and need not acquire a task ID. Do not require new caller flags or
+modify platform-owned dispatch to enforce this contract. Where a shared direct
+route cannot verify origin, report that cooperative enforcement limitation;
+ambiguity is not permission for the task Agent to launch extra checks.
+Apply the monitoring reference's atomic single-flight and shared-resource guards.
+Its event trail distinguishes requests/denials from confirmed execution and retains
+initiator, authority, parent lifetime, overlap, reason, and coverage uncertainty.
+
+### Required build/runtime configuration and ports
+
+Before invoking a command, resolve every required configuration value from a
+verified source and validate it against the command's actual contract. This
+includes build-time values as well as values consumed by a running service.
+Include any necessary inputs such as `PORT` or `BASE_PATH` only when the discovered
+host requires them; these are examples, not universal inputs or suggested values.
+Classify required values as non-secret or secret. Validate secret availability
+without printing, exporting to reports, or including its contents in manifests,
+digests, errors, or task logs. A secure reference or redacted presence/status is
+not the secret itself.
+
+Resolve stable deployment configuration, such as a build's `BASE_PATH`, from a
+verified project or deployment setting and check its format and applicability.
+Do not silently substitute `/`, an empty value, or an invented build target
+when the configured value is missing or invalid. If no authoritative source or
+default can be verified, report the affected command `BLOCKED` before launch;
+do not misattribute a setup defect to its product code.
+
+For a command that requires a port, first discover the existing registered
+listener/build convention, range, and allocation/serialization mechanism.
+Preserve a verified fixed project port where the command contract requires it;
+report conflicts through the authorized host recovery path rather than
+silently changing callers or deployment bindings. If the host requires dynamic
+allocation and no fixed project port exists, assign a valid port from the
+verified host range/allocator; do not guess a familiar default or silently
+change an existing fixed binding. Pass it as a validated environment value to
+the owning command. Coordinate the reservation with concurrent checked and
+independent callers and hold or hand off ownership through the consumer's
+documented lifecycle. A check-then-release free-port probe does not establish a
+race-free reservation; if the host cannot safely allocate, coordinate, or hand
+off a required port, block before execution instead of claiming availability.
+
+Distinguish socket-listener ports from values used only to configure generated
+build output. If a build only embeds a port/URL and does not bind that socket,
+use the verified stable build/deployment value; do not manufacture an ephemeral
+listener endpoint. Do not hard-code a universal numeric port, assume the
+container/deployment supplies one, run invasive scans, kill processes, or
+invent defaults. Record non-secret configuration provenance/version and safe
+resolved identifiers with run evidence, not credentials. Integrate preflight
+with the existing checked authorization gate without treating configuration
+failure as an owned product failure or dropping the independent-caller
+compatibility contract.
 
 ### Independent-caller compatibility
 
@@ -360,6 +475,10 @@ changes. Preserve their command strings, checks, coverage, timeouts, resource
 locks, reports, heavy-suite serialization where present, and shared workflow/
 Run-button definitions unless separately authorized to change them. Independent
 execution is not a newly authorized tier or a replacement task lifecycle.
+The compatibility guarantee does not authorize discretionary task-Agent launches
+through these routes. Initiating or deliberately broadening local, delegated,
+scheduled, platform, or CI checks for the task follows the execution-scope rules
+above; omitting metadata or discarding results cannot make that execution independent.
 
 Checked execution must resolve and verify the exact task/namespace, approved
 plan/version/digest, authorized tier/definition, and applicable current
@@ -453,9 +572,15 @@ Before launch:
 2. Validate active state, suspension, approval, version, tier digest, parameters,
    policy, referenced ignore eligibility, and absence of unresolved recovery.
    Expired records cannot authorize ignores but do not erase owned repair obligations.
+   Validate the transitive scope and any auxiliary command/selector allowlist,
+   policy applicability, cumulative budget, and inherited dispatch bindings.
+   Verify monitor/log health and any queued request against current bindings.
 3. Acquire a run lease against the current authorization version, atomically
    recording the run and its audit event. Coordinate with transition and host
-   resource/writer locks.
+   resource/writer locks and reserve applicable shared auxiliary budgets.
+   Acquire the atomic task/operation single-flight slot; handle duplicate/busy
+   requests without another launch. Persist decision/intent and its registered
+   durable file record before dispatch through the monitoring contract.
 4. Capture the tested snapshot/environment and launch only approved argv.
 
 Do not interpolate untrusted strings into a shell command. Validate diagnostic
@@ -496,18 +621,59 @@ bootstrap deadlock. They cannot invoke arbitrary tests. Baseline discovery is
 similarly narrow and records the pre-edit snapshot without activating work.
 
 Diagnostic retries remain subordinate to the current tier; they are not filtered
-substitutes for full validation. Comparison runs use isolated verified earlier
+substitutes for complete assigned-tier validation. Comparison runs use isolated verified earlier
 contents without resetting the user's working tree or touching production data.
+
+For every planning, discovery, diagnostic, comparison, additional-check, and
+maintenance/bootstrap capability, record the actual approval/policy source,
+version, exact applicable subject/scope, command and selector allowlist,
+transitive execution manifest, environment/safety constraints, and finite
+per-attempt plus cumulative limits. An additional check authorizes only its named
+non-tier obligation. No generic "extra confidence", arbitrary command passthrough,
+all-tier loop, or reconstruction of another tier through split commands is allowed.
+Planning/maintenance policies apply to their approved draft/operation identity,
+not a fabricated active task. Existing external caller obligations keep their own
+policy; this auxiliary accounting does not add task metadata to them.
+
+Use host-defined finite limits for attempts, coverage, elapsed time, and resources
+where applicable; count across purposes, equivalent paths, child workers, and
+concurrent launches for the same task/approved operation. Keep required-tier
+reruns distinct from auxiliary budgets: necessary same-tier validation after
+relevant edits remains authorized under its existing per-run limits.
+Bind diagnostic episodes to canonical failure identity and actual snapshots.
+Exactly three isolation retries are required when supported and safely authorized;
+inadequate remaining capacity blocks the dependent classification, not an
+automatic budget increase or a claim that fewer attempts meet the rule.
+Comparison/equivalent diagnostics may use only their pinned permitted scope;
+unknown selectors or broader/nested tier launches fail before launch.
+A whole assigned-tier comparison on an earlier snapshot is allowed only when
+explicitly registered and bounded; current-snapshot whole-tier reruns use the
+checked required-tier purpose. Neither diagnostic route becomes completion evidence.
+
+Reserve attempts and resource allowances atomically before cooperative dispatch,
+including concurrent children; record actual consumption and outcomes. Started
+failed, crashed, skipped, zero-test, or cancelled attempts still consume their
+attempt allowance. A denial before launch consumes no attempt; release unused
+reservations only after confirmed non-launch or safe run reconciliation.
+Retain counters across restarts, wrapper/run IDs, purpose changes, equivalent
+diagnostic routes, and authorization amendments. Changed snapshots may create
+new episodes only under the registered policy and never reset cumulative limits.
+No unbounded retries, renamed-failure resets, or new-task grants to evade the
+parent's limits. Missing safe accounting or exhaustion blocks further auxiliary
+launches; renewal requires the existing applicable approval route with exact
+new limits and retained consumption/history. Do not invent a renewal authority.
 
 The project-local completion checker is required for ordinary validated
 completion. Its result controls that local validation decision only.
 Explicit task-scoped owner direction may instead use the separate
 [administrative closure contract](owner-directed-closure.md); it requires an
 honest owner decision and safe terminal transaction, not passing validation.
-Replit Agent may perform its own checks and
+Independent platform-managed checks may still run, and Replit Agent may
 move its platform task to Ready or Done without invoking this checker; do not
 claim that a local test proves otherwise or modify platform-owned dispatch as
 a workaround.
+That platform limitation grants no task-Agent permission to initiate additional
+tiers. Follow the execution-scope contract and report independent outcomes separately.
 Return the local validation outcome and evidence for the user's normal
 review/merge-or-dismiss decision. Do not auto-merge or represent a failing or
 blocked local run as validation success. Project-local tooling cannot force
@@ -515,8 +681,11 @@ the platform to wait before offering that decision.
 Project code and CLI must not call, request, depend on, or present a result
 from platform-managed completion. Retire an existing managed-completion CLI
 operation during an approved migration; do not replace it with a hidden fallback.
-Existing direct tier commands remain diagnostic and cannot become local task
-completion evidence.
+Existing direct tier commands remain available to genuinely independent callers
+under their existing authority, but are not blanket task-Agent diagnostics.
+For task work, diagnostic execution needs a registered bounded capability;
+whole current-snapshot tier runs use the assigned tier's checked route. Direct
+passes cannot become local task completion evidence.
 This project-code/CLI restriction does not prohibit genuinely available
 Agent-native task operations on explicit owner direction. Do not proxy those
 operations through local tools. The reference governs authority, independent

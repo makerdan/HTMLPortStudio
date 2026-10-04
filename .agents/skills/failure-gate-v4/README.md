@@ -9,6 +9,8 @@ framework-, operating-system-, storage-, and provider-neutral.
 - `SKILL.md`: core operating instructions; read this first.
 - `reference/implementation.md`: registry, approvals, execution, storage, and lifecycle contract.
 - `reference/acceptance.md`: host implementation test matrix and paired skill confirmation.
+- `reference/execution-monitoring.md`: monitor, durable file trail, single-flight/
+  resource guards, automatic read-only investigation, and coverage boundaries.
 - `reference/owner-directed-closure.md`: explicit owner closure without
   claiming unresolved validation passed.
 - `reference/evidence-and-recovery.md`: evidence index, tested restore,
@@ -68,7 +70,7 @@ later relevant edits require another checked run. Report the local result for
 the user's normal merge-or-dismiss choice, never auto-merge. No automatic
 platform Active-state hook or platform merge gate is supplied by this package.
 An agent with write/shell access can bypass or alter local tooling.
-This package does not restrict arbitrary commands, authenticate local records
+This package cannot technically prevent arbitrary commands or authenticate local records
 against deliberate tampering, or control Replit Agent's Task Board transitions.
 It does not supply human review or baseline catalog-governance services. Missing
 required local approval blocks the affected change, not ordinary unrelated work.
@@ -121,6 +123,56 @@ The implementation reference and added acceptance cases cover this
 project-neutral compatibility amendment; actual host execution remains unverified
 here. A host's separately planned original installation/confirmation must retain
 its pinned source and record this amendment as a later distinct change.
+
+## Agent-initiated execution scope
+
+For task work, the Agent may initiate only the assigned tier through its checked
+route, plus explicitly approved bounded non-tier capabilities. This is a launch
+restriction, not merely an evidence filter. Independent, diagnostic, ad-hoc, or
+non-evidence labels do not grant extra execution permission. Genuine independent
+platform/CI/local callers retain their existing authority and unchanged invocations.
+
+The registry must bind transitive hooks/scripts/workers and dispatch targets;
+delegates inherit the same task bindings, permitted scope, shared budgets, and
+lease ownership. Approved shared checks remain valid. Diagnostics/comparisons
+need exact allowlists and finite cumulative accounting, not whole-tier commands
+renamed after launch or resettable counters. Separate policies cannot grant a
+second active tier or reconstruct it through split commands.
+
+Necessary same-tier reruns and properly approved atomic tier changes remain
+allowed. All-tier acceptance coverage uses definition inspection and instrumented
+fixtures where appropriate; it is not approval for an all-tier live sweep.
+Required live readiness evidence still needs its specific safe authorization.
+These are cooperative instructions and host implementation requirements, not
+proof that a local script prevents shell bypass or controls platform dispatch.
+
+## Execution monitoring and automatic lookup
+
+An authorized host installation must implement a monitor and durable structured
+file log outside `.local/`, indexed in the capability manifest/evidence index.
+It distinguishes requests/denials from confirmed launches and records initiator,
+parent, task/authorization bindings, scope, declared reason, policy decisions,
+start/finish evidence, overlap, and blind spots without inventing motive.
+
+One atomic single-flight guard prevents duplicate top-level managed validation
+for a task; shared-resource locks prevent conflicting cooperating runs across
+tasks. Approved parallel substeps remain valid. Queued work is revalidated and
+timeouts do not release live ownership. Required logging failures block managed
+dispatch/readiness, not genuine independent callers or owner-directed closure.
+
+When asked why multiple validations ran or overlapped, Agent must locate and
+consult the registered evidence automatically, without repeatedly requesting
+the file path. Investigation is bounded and read-only; unavailable or partial
+evidence produces an explicit gap, not a guessed cause or automatic repair.
+These are contract requirements, not a monitor/log installed by this package.
+
+## Build configuration readiness
+
+Each command's required configuration must come from verified project/deployment
+settings and pass preflight before execution. Missing values block before launch;
+do not assume `PORT`, guess a port, or invent `BASE_PATH`. Allocate a dynamic port
+only through the verified host mechanism and coordinate its lifecycle. Preserve
+secrets and keep independent callers' invocation contract intact.
 
 ## Evidence discovery and recovery
 

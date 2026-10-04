@@ -7,6 +7,10 @@ These are semantic host requirements, not supplied APIs or platform hooks.
 Map them to verified equivalents; unavailable required capabilities block the
 affected claim. Do not invent commands, approvals, locks, IDs, or passing tests.
 
+Read the complete [delivery reconciliation policy](delivery-reconciliation.md).
+Its two-phase method resolution is part of the pinned executable procedure,
+not an exception to authorization, payload comparison, or immutable obligations.
+
 ## 1. Resolve authority, mode, and dependencies
 
 Use minimal authorized read-only evidence to resolve the intended Project,
@@ -39,6 +43,12 @@ confirmation checks/repairs remain distinct from resource verification.
 
 ## 2. Record the immutable obligation baseline
 
+Record obligation, pre-install Project, and delivered implementation baselines
+separately as defined in the reconciliation policy. Installation is expected to
+change Project files and implementation snapshots; never compare the delivered
+implementation digest to the starting digest as a requirement of unchanged
+content. Contract/source parity remains a separate, explicitly scoped check.
+
 Capture immutable revisions, content digests, or verified immutable snapshots
 for every authoritative input: target SKILL.md, all required transitive
 contract/implementation/acceptance references, and any original specification
@@ -54,6 +64,9 @@ manifest, and compare it with the pinned specification and expected obligations.
 Initial source availability fills evidence; it does not change the duplicate
 key or authorize a different contract. Material obligation changes require
 explicit reconciliation and authorized plan renewal.
+Include explicitly authorized definition adaptations in the expected obligation
+manifest; never infer permission to edit a definition from an Apply request.
+Retain the original contract and acceptance coverage when resolving methods.
 
 Bind verifier results to the actual tested implementation snapshot, relevant
 transitive/configuration/environment inputs, contract manifest, and verifier
@@ -116,6 +129,12 @@ at report acceptance. Check the actual executable revision, not only an earlier
 readback. Verifier amendments during execution invalidate affected evidence
 and require authorized reconciliation; do not execute or accept a substituted
 payload merely because the primary still matches.
+The initial payload may contain explicitly pending method fields and a bounded
+post-delivery resolution procedure. Their authorized resolution must retain
+the pinned obligations and coverage, record the original/resolved matrix and
+revision, and use a verified permitted route. A method-only correction is an
+explicit logged amendment, not silent substitution. Rebind/read back revised
+executable payloads; absent a permitted route, block affected execution.
 Formatting changes may be ignored only through
 a documented semantics-preserving comparison. Check matrix completeness and
 meaning, not just a hash asserted by the task writer. Missing/truncated checks,
@@ -132,6 +151,10 @@ Use verified atomic version preconditions at linkage when supported. If absent,
 report the race boundary and use bracketing reads; do not claim atomic linkage.
 Observed changes invalidate the old payload and require reconciliation, not
 silent successful linkage or duplicate creation.
+Compare the authoritative primary plan representation, not its changing status
+or expected delivered Project contents. Unchanged obligations with resolved
+methods are handled by the reconciliation policy; an actual changed primary
+plan digest still requires explicit renewal and a renewed binding.
 
 Retain any verifier created during a mismatch as a stale/blocked obligation;
 record its real ID and request authorized repair. Do not delete, approve,
@@ -173,6 +196,13 @@ is delivered and accessible. Require the primary's actual delivered outputs
 and baseline obligations to be available in the verifier's environment.
 Planned inputs may remain pending during task creation, but the executable
 verifier plan must gate substantive checks on readiness.
+
+Once ready, independently inspect the actual delivered snapshot and installer
+handoff, classify differences, and resolve methods before substantive checks.
+Do not fail installation merely because a provisional method location changed;
+do not accept a weakened requirement as an implementation adaptation. Missing
+handoff handling follows the reconciliation policy, without waiving required
+delivery or evidence.
 
 If release semantics do not ensure delivery, use a verified readiness check and
 blocked/resume route. When delivery is missing, retain the task and report

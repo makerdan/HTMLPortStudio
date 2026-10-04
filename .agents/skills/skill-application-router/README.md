@@ -9,9 +9,11 @@ folder and no second `SKILL.md` inside the archive.
 ```text
 SKILL.md
 README.md
+CHANGELOG.md
 references/
   installation-verification-plan.md
   handoff-binding-and-recovery.md
+  delivery-reconciliation.md
   router-task-handoff-acceptance.md
   custom-skill-commands.md
   custom-skill-command-manifest.json
@@ -44,6 +46,24 @@ reuse, complete immutable specification/reference baselines, uncertain-write
 recovery, normalized key representations, and primary-revision checks at
 linkage and execution. Cancelled, failed, blocked, or stale verifiers do not
 satisfy required follow-ups merely because a record exists.
+
+Verification now has two phases: the pending dependent task pins authorized
+obligations and explicitly defers unresolved methods; after delivery it checks
+readiness, independently discovers actual wiring, classifies differences,
+resolves methods through the permitted route, and then verifies. Obligation,
+pre-install Project, and delivered implementation baselines are distinct.
+Expected implementation changes do not automatically count as contract drift.
+New primary plans include a tracked installer handoff; its claims are checked
+independently and cannot authorize weaker acceptance criteria.
+
+Method-only resolution/correction preserves the task key when primary plan and
+semantic scope stay unchanged, while revised executable instructions require
+authorized handling, revision records, and readback. Material changes require
+renewed binding and linked history; missing amendment routes block affected
+execution rather than silently changing tasks. The D-series acceptance cases
+cover this workflow; their presence is not evidence of live host execution.
+
+See `CHANGELOG.md` for the scope of this package update.
 
 The verification module preserves source/runtime, project implementation,
 and platform lifecycle as separate evidence tracks, along with read-only
