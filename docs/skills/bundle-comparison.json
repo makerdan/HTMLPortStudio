@@ -1,0 +1,164 @@
+{
+  "packages": [
+    {
+      "destination": "app-support-ops",
+      "fileCount": 2,
+      "sourceBytes": 23370,
+      "skillSha256": "de57d054bcd39880e741975f29a9cf0f38c300912f35791511a6b471d4d73983",
+      "authorizedDeltas": {}
+    },
+    {
+      "destination": "bug-audit",
+      "fileCount": 2,
+      "sourceBytes": 11774,
+      "skillSha256": "7d80ab854f6dff87b977fb735a10401f265e3621e72a1a848a56b0cbc651403c",
+      "authorizedDeltas": {}
+    },
+    {
+      "destination": "chunk-it",
+      "fileCount": 2,
+      "sourceBytes": 25803,
+      "skillSha256": "9a5c6f0d69ddf854318cb7a65bef1dca925027616490f5f464f9c3eeddece29a",
+      "authorizedDeltas": {}
+    },
+    {
+      "destination": "ci-validation-parity",
+      "fileCount": 1,
+      "sourceBytes": 12044,
+      "skillSha256": "0032fdb9a316a2912d0bc6b6a2d6d8a1fc4147df2df27a82878be0bb35dacecd",
+      "authorizedDeltas": {}
+    },
+    {
+      "destination": "clerk-for-dan",
+      "fileCount": 1,
+      "sourceBytes": 14712,
+      "skillSha256": "2c19950872440aefdb24d60996048d272f959ad332c274c0cf770d31b8b2c892",
+      "authorizedDeltas": {}
+    },
+    {
+      "destination": "failure-gate-v4",
+      "fileCount": 9,
+      "sourceBytes": 130840,
+      "skillSha256": "70e624776e9202062ed551d5f96042276f61f3be0e2e5987f0737c9a7358b418",
+      "authorizedDeltas": {}
+    },
+    {
+      "destination": "install-github-actions",
+      "fileCount": 1,
+      "sourceBytes": 23420,
+      "skillSha256": "d34cd47ccb669f562a110285c2f34a0edb576c956ff8b262e25a59d37da3ccf5",
+      "authorizedDeltas": {}
+    },
+    {
+      "destination": "list-skills",
+      "fileCount": 1,
+      "sourceBytes": 17413,
+      "skillSha256": "bf4f90ad1b975e246cf62fc4b30ec9103c746e3797f4dd4988ca23e7ecee30e6",
+      "authorizedDeltas": {}
+    },
+    {
+      "destination": "poe-setup",
+      "fileCount": 1,
+      "sourceBytes": 34302,
+      "skillSha256": "b33352c78df386b45f09439df6146f160ef717f0f596eb2e5c239462837e83f4",
+      "authorizedDeltas": {}
+    },
+    {
+      "destination": "port-authority",
+      "fileCount": 3,
+      "sourceBytes": 41752,
+      "skillSha256": "3f914380fa1d83f6dd2047b7042611677f364a6d14838042ed618ad034e4debd",
+      "authorizedDeltas": {}
+    },
+    {
+      "destination": "project-skill-inventory",
+      "fileCount": 1,
+      "sourceBytes": 10687,
+      "skillSha256": "56372179c71e18e783439d8d4dd06d5059a83512ab10890d9f17cea687a5e66c",
+      "authorizedDeltas": {}
+    },
+    {
+      "destination": "react-render-audit",
+      "fileCount": 1,
+      "sourceBytes": 25685,
+      "skillSha256": "88afa0883b5f63b8973fcc716b38a2cbda7a550c7cca3db696c4fec7fbcace23",
+      "authorizedDeltas": {}
+    },
+    {
+      "destination": "regression-guard",
+      "fileCount": 1,
+      "sourceBytes": 20467,
+      "skillSha256": "99b8edc59eeac835656b1098402d18b53525163fd763e18f832c6ebda2f91285",
+      "authorizedDeltas": {}
+    },
+    {
+      "destination": "skill-application-router",
+      "fileCount": 7,
+      "sourceBytes": 92689,
+      "skillSha256": "710a92d8347026ca8f3e0a928335f51e5114befb173a6785efd4b45d84599d19",
+      "authorizedDeltas": {
+        "references/custom-skill-command-manifest.json": {
+          "source": {
+            "bytes": 2164,
+            "sha256": "4b143695c17095a9321e024b540ebb0459088cb6851507e83a9322ae72d3644c"
+          },
+          "installed": {
+            "bytes": 2324,
+            "sha256": "4fb2426005eaa6b1b8148feff05503e4ebb8e88583530daaacb9abefa59cb529"
+          }
+        },
+        "references/custom-skill-commands.md": {
+          "source": {
+            "bytes": 23452,
+            "sha256": "b65b8d5ff288b289fc7ab0ca2d11cc9bd45ae7a0cc6d22045d73016208260bd2"
+          },
+          "installed": {
+            "bytes": 24529,
+            "sha256": "48a5b83dc07b2ce1cd541f00b3dfd37887b7cb8baa6cdb676c434d51949afa4d"
+          }
+        }
+      }
+    },
+    {
+      "destination": "skill-compression",
+      "fileCount": 1,
+      "sourceBytes": 23895,
+      "skillSha256": "0cfe4dfff5c8210bd5ebaf5de805350fac4fe623969a8bb77bdf896c9485bcf3",
+      "authorizedDeltas": {}
+    },
+    {
+      "destination": "skill-install-confirmation",
+      "fileCount": 1,
+      "sourceBytes": 4080,
+      "skillSha256": "d6ffd1d23ccba902f43098970739432689f54e88e134e321194fedd2160b972a",
+      "authorizedDeltas": {}
+    },
+    {
+      "destination": "skill-mirror-sync",
+      "fileCount": 1,
+      "sourceBytes": 7368,
+      "skillSha256": "fe85daf4e4cbcb5784d09cd5f5ad940054121c21685a954293ee8db58fc471dc",
+      "authorizedDeltas": {}
+    },
+    {
+      "destination": "task-triage",
+      "fileCount": 1,
+      "sourceBytes": 18008,
+      "skillSha256": "4cfb4b1255545083da2b8ca9f06de6c2b4ba5d637f5d8ba2d38c593e7855aae3",
+      "authorizedDeltas": {}
+    },
+    {
+      "destination": "ux-confirmation-audit",
+      "fileCount": 1,
+      "sourceBytes": 26562,
+      "skillSha256": "11d0a90773b8cd0baa4570c58b9b41b1946d23889908a6d322b40f24a01ac4b5",
+      "authorizedDeltas": {}
+    }
+  ],
+  "preservedPackages": [
+    "import-confirmation",
+    "import-source-bundle",
+    "validation-tiers"
+  ],
+  "independentSourceComparison": "passed"
+}

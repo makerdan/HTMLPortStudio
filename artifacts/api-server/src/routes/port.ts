@@ -390,7 +390,7 @@ export function isPoeModelConfirmed(models: readonly string[], requestedModel: s
 
 const SETUP_STEPS = [
   { name: "Port Authority", skillId: "port-authority" },
-  { name: "Failure Gate", skillId: "failure-gate" },
+  { name: "Failure Gate", skillId: "failure-gate-v4" },
   { name: "Regression Guard", skillId: "regression-guard" },
   { name: "Skill Mirror Sync", skillId: "skill-mirror-sync" },
   { name: "App Support Ops", skillId: "app-support-ops" },

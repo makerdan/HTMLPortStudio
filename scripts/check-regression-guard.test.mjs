@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -27,9 +28,68 @@ const checker = path.join(root, "scripts/check-regression-guard.mjs");
 const planner = path.join(root, "scripts/new-plan.mjs");
 const failureGateSkill = path.join(
   root,
-  ".agents/skills/failure-gate/SKILL.md",
+  "docs/validation/task-plan-guidance.md",
 );
 const projectGuidance = path.join(root, "replit.md");
+
+test("default guidance checks use project documents without reading or rewriting the canonical v4 skill", () => {
+  const canonicalPath = ".agents/skills/failure-gate-v4/SKILL.md";
+  const canonical = fs.readFileSync(path.join(root, canonicalPath));
+  assert.equal(
+    createHash("sha256").update(canonical).digest("hex"),
+    "70e624776e9202062ed551d5f96042276f61f3be0e2e5987f0737c9a7358b418",
+    "The canonical v4 definition must retain the approved upload bytes.",
+  );
+  assert.equal(fs.existsSync(path.join(root, ".agents/skills/failure-gate")), false);
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "project-guidance-v4-"));
+  const documents = ["docs/validation/task-plan-guidance.md", "replit.md"];
+  const reads = [];
+  const writes = [];
+  try {
+    for (const relative of [...documents, canonicalPath]) {
+      const destination = path.join(directory, relative);
+      fs.mkdirSync(path.dirname(destination), { recursive: true });
+      fs.copyFileSync(path.join(root, relative), destination);
+    }
+    const guidance = path.join(directory, documents[0]);
+    const stale = fs.readFileSync(guidance, "utf8").replace(
+      "The permitted exceptions are:", "The permitted exceptions have drifted:",
+    );
+    fs.writeFileSync(guidance, stale);
+    const options = {
+      root: directory,
+      readFile: (file, encoding) => {
+        reads.push(path.relative(directory, file));
+        return fs.readFileSync(file, encoding);
+      },
+      writeFile: (file, text) => {
+        writes.push(path.relative(directory, file));
+        fs.writeFileSync(file, text);
+      },
+      reportError: () => {},
+      reportOutput: () => {},
+    };
+    assert.equal(updateRegressionGuardGuidance({ ...options, checkOnly: true }), 1);
+    assert.deepEqual(reads, documents);
+    assert.deepEqual(writes, []);
+    assert.equal(fs.readFileSync(guidance, "utf8"), stale);
+    reads.length = 0;
+    assert.equal(updateRegressionGuardGuidance(options), 0);
+    assert.deepEqual(reads, documents);
+    assert.deepEqual(writes, [documents[0]]);
+    writes.length = 0;
+    assert.equal(updateRegressionGuardGuidance({ ...options, checkOnly: true }), 0);
+    assert.deepEqual(writes, []);
+    assert.deepEqual(fs.readFileSync(path.join(directory, canonicalPath)), canonical);
+    for (const relative of documents) {
+      assert.match(fs.readFileSync(path.join(directory, relative), "utf8"),
+        /\.agents\/skills\/failure-gate-v4\/SKILL\.md/);
+    }
+    assert.deepEqual(fs.readFileSync(path.join(root, canonicalPath)), canonical);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 const baseline = `## Pre-existing failures to ignore
 None known at plan time.
@@ -541,7 +601,7 @@ test("keeps guard examples synchronized across the planner and canonical guidanc
   );
 
   for (const [sourceLabel, file] of [
-    [".agents/skills/failure-gate/SKILL.md", failureGateSkill],
+    ["docs/validation/task-plan-guidance.md", failureGateSkill],
     ["replit.md", projectGuidance],
   ]) {
     const documentation = fs.readFileSync(file, "utf8");

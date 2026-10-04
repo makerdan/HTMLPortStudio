@@ -794,7 +794,7 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
       const setup = body as { skillId: string };
       const skillNames: Record<string, string> = {
         "port-authority": "Port Authority",
-        "failure-gate": "Failure Gate",
+        "failure-gate-v4": "Failure Gate",
         "regression-guard": "Regression Guard",
         "skill-mirror-sync": "Skill Mirror Sync",
         "app-support-ops": "App Support Ops",
@@ -803,7 +803,7 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
       const name = skillNames[setup.skillId];
       assert.ok(name);
       setupSkills.push({ name, slug: setup.skillId });
-      const shouldFail = setup.skillId === "failure-gate" && firstFailure;
+      const shouldFail = setup.skillId === "failure-gate-v4" && firstFailure;
       if (shouldFail) firstFailure = false;
       response.writeHead(200, { "Content-Type": "application/json" });
       response.end(JSON.stringify({
@@ -996,11 +996,11 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
     );
     assert.deepEqual(setupSkills, [
       { name: "Port Authority", slug: "port-authority" },
-      { name: "Failure Gate", slug: "failure-gate" },
+      { name: "Failure Gate", slug: "failure-gate-v4" },
     ]);
     assert.deepEqual(setupRequests, [
       { skillId: "port-authority" },
-      { skillId: "failure-gate" },
+      { skillId: "failure-gate-v4" },
     ]);
     assert.equal(operationPolls, 1);
     assert.deepEqual(createdProject?.["files"], [{ path: "index.html", content: source }]);
@@ -1041,14 +1041,20 @@ test("forwards source unchanged and resumes only the failed setup skill", async 
       setupSkills,
       [
         ["Port Authority", "port-authority"],
-        ["Failure Gate", "failure-gate"],
-        ["Failure Gate", "failure-gate"],
+        ["Failure Gate", "failure-gate-v4"],
+        ["Failure Gate", "failure-gate-v4"],
         ["Regression Guard", "regression-guard"],
         ["Skill Mirror Sync", "skill-mirror-sync"],
         ["App Support Ops", "app-support-ops"],
         ["Poe Setup", "poe-setup"],
       ].map(([name, slug]) => ({ name, slug })),
     );
+    assert.deepEqual(
+      setupRequests.filter((request) => request.skillId === "failure-gate-v4"),
+      [{ skillId: "failure-gate-v4" }, { skillId: "failure-gate-v4" }],
+      "The failed v4 setup must retry the same identity, not reinstall earlier steps.",
+    );
+    assert.equal(setupRequests.some((request) => request.skillId === "failure-gate"), false);
     assert.ok(
       setupRequests.every(
         (request) =>

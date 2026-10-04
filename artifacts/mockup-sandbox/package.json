@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "node ../../scripts/free-ports.mjs \"${PORT:?PORT is required}\" && vite dev",
-    "build": "vite build",
+    "build": "PORT=22 BASE_PATH=/__mockup vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

@@ -1,0 +1,351 @@
+{
+  "packages": [
+    {
+      "archive": "app-support-ops-skill_(08.29.2026)_1791076842111.zip",
+      "archiveSha256": "57c5dff65453c37d8756acd5d8a65f669bf3d497ed525d91d16cbc804d268699",
+      "sourceRoot": "app-support-ops/",
+      "destination": "app-support-ops",
+      "files": {
+        "evals/evals.json": {
+          "bytes": 9009,
+          "sha256": "2af729eca0d64dda30879e7eeef9d9bafd907a824730ae097b74f94b8b169204"
+        },
+        "SKILL.md": {
+          "bytes": 14361,
+          "sha256": "de57d054bcd39880e741975f29a9cf0f38c300912f35791511a6b471d4d73983"
+        }
+      },
+      "excluded": []
+    },
+    {
+      "archive": "bug-audit-skill_1791076850769.zip",
+      "archiveSha256": "ccf04df2d44c3d321989b8ac096b6c765fbc319df50c13b18ff79931d6042d89",
+      "sourceRoot": "bug-audit/",
+      "destination": "bug-audit",
+      "files": {
+        "SKILL.md": {
+          "bytes": 10552,
+          "sha256": "7d80ab854f6dff87b977fb735a10401f265e3621e72a1a848a56b0cbc651403c"
+        },
+        "report-template.md": {
+          "bytes": 1222,
+          "sha256": "820e191943c14ccce433d97d6438d498a34fde0ce5a0ac88baf4bb432262f90d"
+        }
+      },
+      "excluded": []
+    },
+    {
+      "archive": "chunk-it-skill_(08.27.2026)_1791076850769.zip",
+      "archiveSha256": "e34c7dd219f8cd686e5f415d71169d9258bd55e5bc5083f4167a95474a1a34c4",
+      "sourceRoot": "chunk-it/",
+      "destination": "chunk-it",
+      "files": {
+        "SKILL.md": {
+          "bytes": 17523,
+          "sha256": "9a5c6f0d69ddf854318cb7a65bef1dca925027616490f5f464f9c3eeddece29a"
+        },
+        "evals/evals.json": {
+          "bytes": 8280,
+          "sha256": "8bf89555b6d4ce9d2fa18bbd94f7790fcf4b98354c19a481a4f01409d1768036"
+        }
+      },
+      "excluded": []
+    },
+    {
+      "archive": "ci-validation-parity_(08.27.2026)_1791076901362.zip",
+      "archiveSha256": "afd85017d0001d5830db6614aee6af8114d28bc04908958415b4f0d5c358aa1b",
+      "sourceRoot": "ci-validation-parity/",
+      "destination": "ci-validation-parity",
+      "files": {
+        "SKILL.md": {
+          "bytes": 12044,
+          "sha256": "0032fdb9a316a2912d0bc6b6a2d6d8a1fc4147df2df27a82878be0bb35dacecd"
+        }
+      },
+      "excluded": []
+    },
+    {
+      "archive": "clerk-for-dan_(08.27.2026)_1791076901362.zip",
+      "archiveSha256": "59f60b13588e0f030b975b5da54f421eaac2081b6a77496b0ec416e938e09c5e",
+      "sourceRoot": "clerk-for-dan/",
+      "destination": "clerk-for-dan",
+      "files": {
+        "SKILL.md": {
+          "bytes": 14712,
+          "sha256": "2c19950872440aefdb24d60996048d272f959ad332c274c0cf770d31b8b2c892"
+        }
+      },
+      "excluded": []
+    },
+    {
+      "archive": "Failure_Gate_v4_(10.03.2026)_1791076901362.zip",
+      "archiveSha256": "3a1530fe0a5f618747f20302338ac455f82edacd4d775870b333b3c15d3655df",
+      "sourceRoot": "archive root",
+      "destination": "failure-gate-v4",
+      "files": {
+        "reference/implementation.md": {
+          "bytes": 34776,
+          "sha256": "ee3a928f15606e63a16b02a82b0c84e60fa3d6a31812336b8d17fe952a7d7b83"
+        },
+        "reference/evidence-and-recovery.md": {
+          "bytes": 10915,
+          "sha256": "b39367bfbda5f176804613e2aa5bc98d6ef72494f398a0893c9ae89fc8573e2c"
+        },
+        "reference/acceptance.md": {
+          "bytes": 26199,
+          "sha256": "44de7f5cededc5eaeeb1e12de09a75e20d50c99d44e020b9a54ed6b7af620e60"
+        },
+        "reference/owner-directed-closure.md": {
+          "bytes": 7706,
+          "sha256": "e4c22039b735919adf6502284a6920cb1ad8da2beeee7e256fe775fa39a56641"
+        },
+        "reference/adapters/posix-writer-lock/README.md": {
+          "bytes": 5471,
+          "sha256": "e4d30359e7436332b6f322ff116c9f3aec2f50b1667775b90dccc6fb96f766f1"
+        },
+        "reference/adapters/posix-writer-lock/writer_lock.py": {
+          "bytes": 6033,
+          "sha256": "3d4474496bf2019e58c35f8002b600275b06c35884f9d5407671c67e7e06f654"
+        },
+        "reference/adapters/posix-writer-lock/tests/test_writer_lock.py": {
+          "bytes": 6398,
+          "sha256": "777035d2a9ceae4c976734125869686b9d713f0dec008dba18692e119a8eedb8"
+        },
+        "README.md": {
+          "bytes": 9341,
+          "sha256": "b6bea4921bdc00ff194e0f0ec53c16218994183429a86eef241560179b2cc415"
+        },
+        "SKILL.md": {
+          "bytes": 24001,
+          "sha256": "70e624776e9202062ed551d5f96042276f61f3be0e2e5987f0737c9a7358b418"
+        }
+      },
+      "excluded": []
+    },
+    {
+      "archive": "install-github-actions-skill_(09.04.2026)_1791076918671.zip",
+      "archiveSha256": "61f3bcdf135c73d55093a9adcb10603e1e57480ddaba6a8f0039ad1f47776758",
+      "sourceRoot": "install-github-actions/",
+      "destination": "install-github-actions",
+      "files": {
+        "SKILL.md": {
+          "bytes": 23420,
+          "sha256": "d34cd47ccb669f562a110285c2f34a0edb576c956ff8b262e25a59d37da3ccf5"
+        }
+      },
+      "excluded": []
+    },
+    {
+      "archive": "list-skills-skill_(09.21.2026)_1791076918671.zip",
+      "archiveSha256": "5a9069b1754e4fb3db02f2a468fe333d2fb5e14e5596c62ee0f50849ec187bbc",
+      "sourceRoot": ".agents/skills/list-skills/",
+      "destination": "list-skills",
+      "files": {
+        "SKILL.md": {
+          "bytes": 17413,
+          "sha256": "bf4f90ad1b975e246cf62fc4b30ec9103c746e3797f4dd4988ca23e7ecee30e6"
+        }
+      },
+      "excluded": []
+    },
+    {
+      "archive": "poe-setup-skill_(09.21.2026).md_1791076918671.zip",
+      "archiveSha256": "70b5ccc9bd1f8923ca0eb3a11ac05fc29d570e290222dd05bef03daf964f9811",
+      "sourceRoot": "poe-setup/",
+      "destination": "poe-setup",
+      "files": {
+        "SKILL.md": {
+          "bytes": 34302,
+          "sha256": "b33352c78df386b45f09439df6146f160ef717f0f596eb2e5c239462837e83f4"
+        }
+      },
+      "excluded": []
+    },
+    {
+      "archive": "port-authority-skill_(08.29.2026)_1791076918671.zip",
+      "archiveSha256": "d430c74ae39fb99e7fdaaf1863d86ea80f770295ea165228bfd14b23c41668a5",
+      "sourceRoot": "Port-Authority/",
+      "destination": "port-authority",
+      "files": {
+        "scripts/free-ports.mjs": {
+          "bytes": 11954,
+          "sha256": "c728ebbcb853122451b3c615926e4d2b06e65772b696a7eb8affe3d81347ba60"
+        },
+        "scripts/validation-lock.mjs": {
+          "bytes": 13096,
+          "sha256": "1eea74d80d8529eef0fb9f67fead70c24141d7079a3437407a7a06376ad56627"
+        },
+        "SKILL.md": {
+          "bytes": 16702,
+          "sha256": "3f914380fa1d83f6dd2047b7042611677f364a6d14838042ed618ad034e4debd"
+        }
+      },
+      "excluded": []
+    },
+    {
+      "archive": "project-skill-inventory_(09.06.2026).md_1791076918672.zip",
+      "archiveSha256": "86d2e8992caf191b752dfdaf797c9dcc9347a9333385bf5c6c948776a62a0a37",
+      "sourceRoot": "archive root",
+      "destination": "project-skill-inventory",
+      "files": {
+        "SKILL.md": {
+          "bytes": 10687,
+          "sha256": "56372179c71e18e783439d8d4dd06d5059a83512ab10890d9f17cea687a5e66c"
+        }
+      },
+      "excluded": [
+        "__MACOSX/._SKILL.md"
+      ]
+    },
+    {
+      "archive": "react-render-audit_(08.28.2026)_1791076939748.zip",
+      "archiveSha256": "132074f0e90a226cae120fea72b6bc14c7db53c5c66cd389d1aad9d33337d0b7",
+      "sourceRoot": ".agents/skills/react-render-audit/",
+      "destination": "react-render-audit",
+      "files": {
+        "SKILL.md": {
+          "bytes": 25685,
+          "sha256": "88afa0883b5f63b8973fcc716b38a2cbda7a550c7cca3db696c4fec7fbcace23"
+        }
+      },
+      "excluded": []
+    },
+    {
+      "archive": "regression-guard-skill_(08.29.2026)_1791076939748.zip",
+      "archiveSha256": "530ec59b0848b9dcc3f4e19759280b8327e2501e2a82662e264357bd4a02c814",
+      "sourceRoot": "regression-guard/",
+      "destination": "regression-guard",
+      "files": {
+        "SKILL.md": {
+          "bytes": 20467,
+          "sha256": "99b8edc59eeac835656b1098402d18b53525163fd763e18f832c6ebda2f91285"
+        }
+      },
+      "excluded": []
+    },
+    {
+      "archive": "Skill_Application_Router_(10.03.2026)_1791076939748.zip",
+      "archiveSha256": "e2b859e487e45fd4d8658ea975235a0b7ef35127ae45908fafabfb90bde07b6d",
+      "sourceRoot": "archive root",
+      "destination": "skill-application-router",
+      "files": {
+        "README.md": {
+          "bytes": 3790,
+          "sha256": "8d568e7551a85e202c2fd9582726eb037c49083d590360dd92c82b9f98c340a1"
+        },
+        "SKILL.md": {
+          "bytes": 21711,
+          "sha256": "710a92d8347026ca8f3e0a928335f51e5114befb173a6785efd4b45d84599d19"
+        },
+        "references/custom-skill-command-manifest.json": {
+          "bytes": 2164,
+          "sha256": "4b143695c17095a9321e024b540ebb0459088cb6851507e83a9322ae72d3644c"
+        },
+        "references/custom-skill-commands.md": {
+          "bytes": 23452,
+          "sha256": "b65b8d5ff288b289fc7ab0ca2d11cc9bd45ae7a0cc6d22045d73016208260bd2"
+        },
+        "references/handoff-binding-and-recovery.md": {
+          "bytes": 11796,
+          "sha256": "1c8f4198af23d8c904520835c29062677da382b774baa2f850b2adbfa9198ce1"
+        },
+        "references/installation-verification-plan.md": {
+          "bytes": 19161,
+          "sha256": "6d9da115f654e26252d5c188c34b927d8787b1978546e70fb766ba8f0ad5223a"
+        },
+        "references/router-task-handoff-acceptance.md": {
+          "bytes": 10615,
+          "sha256": "eba142fb23788097745d6f31eaf23c65df41b843c8c453b3f3e49a07f6c24261"
+        }
+      },
+      "excluded": []
+    },
+    {
+      "archive": "skill-compression_(09.21.2026)_1791076939748.zip",
+      "archiveSha256": "ebe70f251312f14461ce2b0ebc45c83628e1856a1c806d01c711e91a0e102886",
+      "sourceRoot": "skill-compression/",
+      "destination": "skill-compression",
+      "files": {
+        "SKILL.md": {
+          "bytes": 23895,
+          "sha256": "0cfe4dfff5c8210bd5ebaf5de805350fac4fe623969a8bb77bdf896c9485bcf3"
+        }
+      },
+      "excluded": []
+    },
+    {
+      "archive": "skill-install-confirmation_(08.27.2026)_1791076939749.zip",
+      "archiveSha256": "fc8d202d2e3a857666c40103bb7cba11246db05b13e733176ec17397456b13f6",
+      "sourceRoot": "skill-install-confirmation/",
+      "destination": "skill-install-confirmation",
+      "files": {
+        "SKILL.md": {
+          "bytes": 4080,
+          "sha256": "d6ffd1d23ccba902f43098970739432689f54e88e134e321194fedd2160b972a"
+        }
+      },
+      "excluded": []
+    },
+    {
+      "archive": "skill-mirror-sync-workspace_(09.05.2026)_1791076939749.zip",
+      "archiveSha256": "735dd3554ac81bad34e2e0520ff170ab579b6e48b196ae8b79d1ad6f6231a0d4",
+      "sourceRoot": "skill-mirror-sync/",
+      "destination": "skill-mirror-sync",
+      "files": {
+        "SKILL.md": {
+          "bytes": 7368,
+          "sha256": "fe85daf4e4cbcb5784d09cd5f5ad940054121c21685a954293ee8db58fc471dc"
+        }
+      },
+      "excluded": []
+    },
+    {
+      "archive": "task-triage-skill_(09.21.2026)_1791076939749.zip",
+      "archiveSha256": "21a78e875b6ab6cca2eda0f89c475e2d8a68e0d87815744aa40c9daa685eaef2",
+      "sourceRoot": "task-triage/",
+      "destination": "task-triage",
+      "files": {
+        "SKILL.md": {
+          "bytes": 18008,
+          "sha256": "4cfb4b1255545083da2b8ca9f06de6c2b4ba5d637f5d8ba2d38c593e7855aae3"
+        }
+      },
+      "excluded": []
+    },
+    {
+      "archive": "UX_E2E_(08.08.2026)_1791076939749.zip",
+      "archiveSha256": "b65b36ab920469ddd87875cde3bfdf85fe5dbbade27b34ee9a8dae239b32e266",
+      "sourceRoot": "UX E2E/",
+      "destination": "ux-confirmation-audit",
+      "files": {
+        "SKILL.md": {
+          "bytes": 26562,
+          "sha256": "11d0a90773b8cd0baa4570c58b9b41b1946d23889908a6d322b40f24a01ac4b5"
+        }
+      },
+      "excluded": [
+        "__MACOSX/UX E2E/._SKILL.md"
+      ]
+    }
+  ],
+  "preservedPackages": {
+    "import-confirmation": {
+      "SKILL.md": {
+        "bytes": 11719,
+        "sha256": "0cb0dd7c5e76c4dd86d2df8195fe0b8d118a5124f3b4eeb806b423b716e40402"
+      }
+    },
+    "import-source-bundle": {
+      "SKILL.md": {
+        "bytes": 14743,
+        "sha256": "636c811ffe4b262fc0ab44339ebb369ae13f940b53637b05e4420c0e25cc4018"
+      }
+    },
+    "validation-tiers": {
+      "SKILL.md": {
+        "bytes": 589,
+        "sha256": "4374d79d1ce106a7d37f088ae483605f4b65ef55cb73a0cb367ef05e6942baf4"
+      }
+    }
+  }
+}

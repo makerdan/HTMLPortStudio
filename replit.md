@@ -98,7 +98,15 @@ Import pasted, single-file, or public GitHub HTML apps as normalized source bund
 
 ### Failure Gate
 
-Task-driven work follows the canonical `.agents/skills/failure-gate/SKILL.md`.
+The canonical skill definition is `.agents/skills/failure-gate-v4/SKILL.md`.
+The approved bundles are installed definitions, not an implementation of all
+their contracts. In particular, the v4 allocator, authorization registry,
+approval adapters, runner, and local completion machinery are not implemented
+by this installation. Existing project validation remains in force as described
+below and in `docs/validation/task-plan-guidance.md`; it does not establish full
+v4 enforcement. Installation evidence is in `docs/skills/bundle-installation.md`.
+
+Task-driven work follows the existing project validation contract.
 Before writing a plan, complete its discovery checklist: read relevant memory,
 inspect the validation baseline catalog, search recent task failures, run the
 backend spot-check when applicable, record pre-existing failures or explicitly

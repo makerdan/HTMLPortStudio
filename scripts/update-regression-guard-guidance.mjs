@@ -12,7 +12,7 @@ import {
 } from "./lib/regression-guard-guidance.mjs";
 import { ROOT } from "./lib/tier-lock-check.mjs";
 
-const files = [".agents/skills/failure-gate/SKILL.md", "replit.md"];
+const files = ["docs/validation/task-plan-guidance.md", "replit.md"];
 export const updaterCommand =
   "node scripts/update-regression-guard-guidance.mjs";
 const generatedBlocks = [
