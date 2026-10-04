@@ -11,6 +11,14 @@ framework-, operating-system-, storage-, and provider-neutral.
 - `reference/acceptance.md`: host implementation test matrix and paired skill confirmation.
 - `reference/execution-monitoring.md`: monitor, durable file trail, single-flight/
   resource guards, automatic read-only investigation, and coverage boundaries.
+- `reference/runtime-reclaim.md`: host attestation, authentic scoped reclaim
+  approval/claim, exact Port Authority protocol, uncertainty and acceptance cases.
+- `reference/validation-budgets.md`: mandatory finite limits on every validation
+  entry point, test/hook wiring, cumulative deadlines and independent supervision.
+- `tests/test_validation_budgets.py`: test-only policy models and conditional
+  local fixture watchdog checks; never a deployed supervisor or host authority.
+- `tests/test_runtime_reclaim_contract.py`: isolated policy simulations only;
+  not an approval service, protected runtime or deployable host adapter.
 - `reference/owner-directed-closure.md`: explicit owner closure without
   claiming unresolved validation passed.
 - `reference/evidence-and-recovery.md`: evidence index, tested restore,
@@ -24,6 +32,14 @@ source, or completion checker. No existing project's enforcement has been
 changed by authoring it.
 
 ## Adopt safely
+
+Every finite validation launch needs verified finite limits, including fast/direct
+scripts, hooks, diagnostics, nested work and recovery. Read the complete
+[budget contract](reference/validation-budgets.md). Required-tier evidence uses
+the real checked runner; direct commands inherit no registry deadline. Finite
+test/hook limits do not replace independent transitive outer supervision.
+Missing real approved budgets/supervision blocks the affected readiness claim.
+This definition amendment migrates no callers and activates no host route.
 
 For Replit and other `.agents`-compatible hosts, place this directory at
 `.agents/skills/failure-gate-v4/`. On other hosts use the supported canonical skill
@@ -191,6 +207,19 @@ artifacts or services created by installing the definition.
 
 ## Authoring verification
 
+The bundled budget suite separates standard-library policy/document tests from
+conditional Linux/installed-Node fixture probes. Each Node probe has an independent
+Python outer watchdog (900 ms), 200 ms TERM grace, 1000 ms KILL verification and
+500 ms capture bound; fixture tests/hooks explicitly use 100 ms where applicable.
+These are illustrative test-only limits, never approved host defaults.
+Run the combined authoring suite twice sequentially through an authorized finite
+supervisor with a 30-second suite bound, not a bare command presumed fast.
+In this authoring workspace, `artifacts/verify-failure-gate-validation-budgets.py`
+reproduces bounded suite/package checks; its current upload/preservation inputs
+and report are workspace artifacts, not part of this portable skill ZIP.
+Fixture process-group coverage is only the inspected static fixture scope.
+No registry, complete host/remote supervision, real caller or activation is proved.
+
 This package received a document-level review for the project-local scope,
 frontmatter structure, version consistency, Markdown fences, reference links,
 example JSON, and core length. Failed runs do not automatically terminate tasks,
@@ -202,3 +231,35 @@ was available for runtime verification. Runtime installation and all executable
 host acceptance tests therefore remain unperformed. The document test matrix
 is not a test-results report. The optional lock adapter's six primitive tests
 passed here; they are not host coordination or task-completion verification.
+
+## Runtime reclaim interoperability
+
+Trusted host/platform attests the runtime; Failure Gate authorizes and atomically
+claims the exact disruption; Port Authority performs ownership-guarded cleanup and
+reports actual outcomes. `runtime.process-reclaim` is a proposed distinct
+capability, not an installed endpoint or authorization to run another tier.
+Read [the complete reclaim contract](reference/runtime-reclaim.md) before
+integration. Missing authentic human approval, independent attestation, protected
+transport, registry/claim or evidence route blocks live reclaim. The ordinary
+Replit tier-approval event still needs no actor identity; reclaim's authentic
+approver requirement does not change that route or owner-directed closure.
+
+The current Port Authority `scripts/host-capabilities.mjs` intentionally throws
+unavailable. Its local manifest/reference and an editable adapter cannot become
+authority. Do not ship fixtures or unsigned local approval stores as integration.
+No Port Authority runtime scripts or application wiring are installed by this
+amendment. Documented, implemented, registered, deployed and successfully verified
+capabilities remain distinct; passing simulations cannot establish readiness.
+
+Run the bounded simulation suite with Python's standard library:
+
+```sh
+python -B -m unittest discover -s .agents/skills/failure-gate-v4/tests -v
+```
+
+It uses synthetic identities, a fake clock and in-memory records; it never opens
+application ports or signals processes. Host-language implementations may differ;
+Python is required only to run this optional authoring test suite, not to adopt
+Failure Gate. Actual JavaScript scope serialization is cross-checked separately
+by the authoring verifier when Node is available. Required real host activation
+evidence remains separate and unperformed here.

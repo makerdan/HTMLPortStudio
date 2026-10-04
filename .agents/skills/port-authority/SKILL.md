@@ -9,32 +9,29 @@ Apply this skill in **prevention** mode during project setup, or **repair**
 mode for an existing runtime problem. Both start with Phase 0: audit before
 changing anything.
 
-Phases are sequential. ALWAYS means inspect and apply relevant requirements;
-it does not authorize unrelated rewrites. CONDITIONAL phases state a gate:
-record whether it passes and skip the phase entirely when it does not.
-Never add conditional machinery speculatively.
+Phases are sequential. ALWAYS means relevant requirements, not unrelated rewrites.
+Record CONDITIONAL gates and skip unmet phases; never add machinery speculatively.
 
-This is one self-contained skill. Ordinary projects use the base phases.
-Projects with workflow pressure, multiple services, or conflicting heavy
-validation additionally use the gated heavy controls below. Do not install
-or require a separate `port-authority-heavy` skill.
+Ordinary projects use base phases; workflow pressure or conflicting validation
+may activate heavy controls. Never require a separate `port-authority-heavy`.
 
 ## Installation contract (ALWAYS)
 
-The bundle contains exactly five files under `port-authority/`:
+The bundle contains exactly seven files under `port-authority/`:
 
 - `SKILL.md` — all base and conditional heavy-project instructions.
 - `scripts/free-ports.mjs` — dependency-free port-cleanup template.
 - `scripts/validation-lock.mjs` — dependency-free serialization template.
+- `scripts/runtime-environment.mjs` — shared runtime-admission policy.
+- `scripts/host-capabilities.mjs` — unavailable-by-default authoritative adapters.
 - `reference/runtime-contract.md` — interfaces, limits, and acceptance matrix.
 - `tests/hardening.test.mjs` — executable isolated regression tests.
 
-There is no nested or companion Heavy skill, and no `serial-lock.mjs`.
-Both scripts are templates, not promises that the target project already
-has those paths.
+No companion Heavy skill or `serial-lock.mjs` exists. Runtime files are
+templates, not promises that the target project already has those paths.
 
 1. Inspect the archive before extraction. Extract into a fresh temporary
-   directory, never over a project. Verify the five files, valid skill
+   directory, never over a project. Verify the seven files, valid skill
    frontmatter, local script references, and executable smoke checks.
    Missing or renamed required files fail installation. If a trusted
    checksum manifest is supplied, verify it; do not invent an expected hash.
@@ -43,17 +40,17 @@ has those paths.
    rather than blindly replacing it.
 3. If a template is needed, copy it from the canonical
    `.agents/skills/port-authority/scripts/` source into the project's
-   `scripts/` directory and preserve its executable bit. Prefer documented
+   `scripts/` directory, including BOTH shared helpers beside either
+   consumer, and preserve executable bits. Prefer documented
    adaptation points; necessary safety/lifecycle changes are allowed only
    with applicable approval, interface documentation, and regression evidence.
-   Never use a `.local/custom_skills/`
-   mirror or another copied definition as an implementation source.
+    Never use a `.local/custom_skills/` mirror or another copied definition.
 4. Run invalid-input and no-op smoke checks in isolation. Never use a live
    application port or the workspace's actual validation lock directory.
    Failed smoke checks stop installation.
 5. Wire only audited needs. Templates do not know the project's package
    manager, service ports, workflow names, generated files, or database.
-   Do not copy application-specific paths, `--e2e` behavior, or assumptions.
+    Never copy application-specific paths, `--e2e` behavior, or assumptions.
 6. Keep skill sources, scripts, configuration, documentation, and reports
    outside `.local/`. The lock template's `.local/` defaults are disposable
    runtime lock/waiter state only; overrides can relocate that state.
@@ -86,8 +83,8 @@ or silently substitute a tier. If that capability or convention is absent,
 record it as not applicable and use existing executable validation commands,
 not fictional platform APIs. Missing optional checks must be explicit.
 
-Record the selected tier/command, its execution budget, queue-wait limit,
-and serialization coverage before accepting installation.
+Record every entry point's authorized route, enforced queue/execution/cleanup
+and cumulative budgets, Node test/hook limits, and serialization coverage.
 
 If Failure Gate v4 is active in the target project, its authorization,
 execution-scope, evidence, and completion rules govern these launches.
@@ -102,8 +99,8 @@ operation. Bundle authoring/testing in this conversation is not host validation.
 ### Installation acceptance
 
 Read [runtime-contract.md](reference/runtime-contract.md) before adapting or
-wiring either script. Run `node --test tests/hardening.test.mjs` from the
-skill directory twice sequentially, in isolation, before touching services.
+wiring either script. Run its bounded acceptance command from the skill
+directory twice sequentially, in isolation, before touching services.
 The adversarial acceptance matrix is mandatory, not optional smoke guidance.
 Map its assertions to the actual adapted implementation. Package tests prove
 only their isolated scope; require separate authorized host-wiring checks.
@@ -119,6 +116,18 @@ Verify applicable backend health, loud forced cleanup/reclaim, failed-child
 exit propagation, and lock release. If acceptance fails, preserve or restore
 the prior working implementation, report the blocker, and do not claim
 installation is complete.
+
+### Clean split — host / Failure Gate / Port Authority
+
+Host attests environment; Failure Gate authorizes reclaim; Port Authority acts.
+Discover and verify the actual authoritative sources and checked route first.
+No local reference, JSON record, domain, remembered guidance or draft task
+creates authority. Bundled host adapters intentionally block until integrated.
+Failure Gate owns approval, exact task/plan/run scope, atomic claim, revocation
+and evidence acceptance; Port Authority owns discovery, safe signaling and
+termination evidence. Missing sources block live reclaim/development exceptions,
+not unrelated read-only/prevention work. Never implement a substitute approval
+system here. This is a capability requirement, not permission to install a skill.
 
 ## Phase 0 (ALWAYS) — Audit first
 
@@ -150,12 +159,11 @@ Evaluate each control independently; a project need not satisfy all gates.
   generated files, DB state, ports, or demonstrated resource contention.
 - **Stale-counter handling:** creation rejected after removal, while the
   current inventory indicates available capacity.
-- **Heavy execution budgets:** long-running/heavy validation steps exist.
+- **Execution budgets (always):** every finite validation entry point.
 
 Multiple services alone do not justify serializing unrelated tests.
 An ordinary project with a real workflow-limit error may need budgeting.
-The former base and Heavy guides are fully contained here; no prerequisite
-companion installation or intermediate acceptance run is required.
+Base/Heavy guidance is included; no companion acceptance run is required.
 
 ## Phase 1 (ALWAYS) — Process discipline
 
@@ -215,13 +223,21 @@ bundled template is `scripts/free-ports.mjs`.
   because they share a wrapper name.
 - Preserve recursion/disable and production guards. Inspect actual
   deployment flags before wiring; do not weaken guards for convenience.
+- `NODE_ENV=production` or `REPLIT_DEPLOYMENT=1` always blocks. Only
+  `REPLIT_ENVIRONMENT=production` admits a verified development-workspace
+  exception: domain PLUS audited, fresh, root/boot/ancestor-bound evidence.
+  Require independent host attestation through the code-owned adapter.
+  Follow the runtime contract; a domain or remembered exception alone is
+  insufficient. Unknown context blocks. Both scripts use the shared helper.
 - Stop the owned stale supervising wrapper tree, not just its listening
   child, to prevent orphan wrappers or respawn.
-- Require an unexpired, host-authorized ownership manifest binding permitted
+- Require an unexpired, Failure Gate-authorized ownership manifest v2 binding
   ports, boot identity, and exact PID/start-time targets. A port, process name,
   local JSON field, or CLI action flag cannot establish human authorization.
   Default to dry-run inventory; require explicit action mode for signals.
   Never infer authorization for wrappers or descendants from ancestry alone.
+- Bind task/approved-plan/run; consume the checked grant, recheck each signal
+  batch and submit actual outcomes through its host-backed evidence route.
 - SIGTERM first, allow a grace period, then SIGKILL authorized survivors.
   Confirm the intended port and owned processes reach the expected state.
   Log forced actions loudly.
@@ -248,8 +264,7 @@ Gate: a browser/e2e harness exists.
   in each relevant `webServer` command, not `globalSetup`, where cleanup
   can kill freshly started servers. Config-load cleanup is acceptable only
   with explicit guards and verified startup order.
-- Pass values to `addInitScript` as explicit arguments, never captured
-  closures that serialization drops.
+- Pass `addInitScript` values explicitly, not through lost serialized closures.
 
 ## Phase 4 (CONDITIONAL) — Crash-safe validation serialization
 
@@ -259,7 +274,7 @@ database state, ports, or demonstrated resource contention.
 Use the existing audited lock or `scripts/validation-lock.mjs`:
 
 ```sh
-node scripts/validation-lock.mjs [--resource <name>] [--priority <1-9>] -- <command...>
+VALIDATION_LOCK_TIMEOUT_MS=<queue-ms> VALIDATION_LOCK_MAX_HOLD_MS=<execution-ms> node scripts/validation-lock.mjs [--resource <name>] -- <command...>
 ```
 
 ### Resource striping and priorities
@@ -280,20 +295,18 @@ The template supports **one resource per invocation**, not a list:
 | suites sharing database state | `test-db` |
 | independent lint/static checks | none, unless evidence shows a conflict |
 
-These are examples, not installed project paths or fixed mappings.
-For multiple resources, either ALL conflicting callers adopt the same shared
+These are examples, not installed paths. Either ALL conflicting callers use one
 composite/global lock, or ALL acquire their overlapping resource sets in one
 verified order. A composite lock does not conflict with its constituent names.
 One invocation acquires one resource. Names must be lowercase; reentry keys
 bind the canonical lock path, not a case-normalized name. Override paths are
 part of lock identity; different files do not coordinate despite equal names.
 
-Priority is 1 (highest) through 9 (lowest), default 5. Waiters write
-disposable manifests beside the selected lock (or an explicit override); higher-priority
-waiters influence acquisition after the grace period (default two seconds).
+Priority is 1 (highest) through 9 (lowest), default 5. Disposable waiter manifests
+live beside the lock or override; higher priority acts after a two-second grace.
 Priority is advisory, not a fairness or execution-time guarantee.
-Where tiers exist, recommended priorities are fast 1, standard/standard-plus
-2, and heavy 3. Do not wrap independent checks unnecessarily.
+Recommended tier priorities: fast 1, standard/standard-plus 2, heavy 3.
+Do not wrap independent checks unnecessarily.
 
 ### Reentrancy and crash safety
 
@@ -442,19 +455,26 @@ and idle behavior before claiming the symptom is fixed.
   results, selected tier, queue/execution budgets, and remaining blockers.
   Distinguish packaged-script smoke tests from actual host-project validation.
 
-## Independent gate — Heavy/long-running execution budgets
+## Independent gate — ALL validation execution budgets
 
-Evaluate this gate independently of Phase 4: heavy or long-running validation
-steps exist, even a SINGLE non-conflicting suite. A skipped serialization phase
-does not skip budgets.
-
-- Set explicit per-step and applicable parent execution budgets; start after
-  acquisition/dispatch, never while queued. Report queue limits separately.
-- Budget reports state observed concurrent load. Contention is a hypothesis
-  to investigate, not proof of a lock bug. Use an authorized bounded solo
-  diagnostic before tuning limits; fix demonstrated coverage defects.
-- A budget breach fails/blocks the run. Termination must be confirmed before
-  replacement. Keep forced cleanup/recovery incidents loud and in host evidence.
+Apply independently of Phase 4, even a SINGLE non-conflicting suite. Fast,
+direct package scripts, hooks, diagnostics, retries and comparisons are included.
+- Use the checked tier runner (e.g. audited `run-tier.mjs`) or a separately
+  authorized equivalent finite supervisor. Direct launch inherits no registry
+  timeout; a package name, workflow, shell/tool timeout or diagnostic label
+  proves neither transitive supervision nor authorization.
+- Enforce explicit queue, execution, cleanup and parent/cumulative budgets.
+  Never reset parent deadlines on reentry/retry or accept missing/unlimited
+  limits. The template requires queue/MAX_HOLD values; it cannot enforce host
+  registry approval. Read the runtime contract's all-entry-point acceptance.
+- Set finite Node test AND hook timeouts; report effective limits, including
+  disabled/missing ones. Node output does not advertise unlimited defaults.
+  Test timers do not stop blocked synchronous code or owned subprocesses:
+  require an independent outer watchdog and verified transitive termination.
+- Fail budget breaches even with raw exit zero; retain exclusion on uncertainty.
+  Bound error-path cleanup; confirm termination before replacement. Keep raw
+  outcomes/timeout incidents loud. Diagnose contention before tuning budgets;
+  never skip coverage, disable deadlines or silently widen authorized limits.
 
 ## Migration from the two-skill setup
 
@@ -469,8 +489,8 @@ do not reinstall scripts blindly. Never edit disposable platform mirrors.
 Replacing the workspace bundle does not by itself migrate every project's
 installed copy or prove its runtime validation passes.
 
-This hardening revision replaces both legacy scripts; they are NOT byte-identical
-to the uploaded originals. Migrate approved callers to the documented v2 lease
+This revision replaces legacy scripts and adds runtime/host-capability helpers.
+Migrate approved callers to the documented development-context, v2 lease,
 and ownership-manifest interfaces; legacy leases and PID-only reentry need
 verified safe cutover, not optimistic reuse. Preserve Failure Gate governance,
 coverage, independent caller compatibility, and real raw results. Templates

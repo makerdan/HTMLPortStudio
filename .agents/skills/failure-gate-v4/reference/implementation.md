@@ -11,6 +11,10 @@ Installation and launch coordination also require the complete
 [execution monitoring contract](execution-monitoring.md): cooperative single-flight
 and resource guards, durable file telemetry, discoverability, and automatic lookup.
 Questions about overlap use its bounded read-only investigation route.
+For runtime cleanup/reclaim, also read the complete
+[runtime reclaim contract](runtime-reclaim.md). Host attestation, authentic human
+approval, protected checked claims and outcome storage are additional scoped
+requirements, not inferred from ordinary tier activation or a resource lease.
 
 ## Scope and migration
 
@@ -78,6 +82,12 @@ Publish the contract's tracked evidence index and record its path in this
 manifest. Include actual backup/restore, evidence-health, lineage, retention,
 export, and completion-mode reporting routes and their availability states.
 The index is a locator, not a second authoritative task/allocator registry.
+For reclaim, map the independently trusted platform attester, authentic approver
+and active approval source, authoritative task/plan/run/operation registry,
+protected verifier/transport, atomic claim and conflict coverage, revocation
+clock, evidence journal and bounded uncertainty-recovery route. Distinguish
+documented/proposed, implemented, registered, deployed and successfully verified
+capability. Missing proof blocks live reclaim, not unrelated read-only work.
 
 Illustrative source layout for a file-based host using `.agents`; none of these
 paths is a universal runtime dependency. Map to existing host equivalents:
@@ -126,6 +136,12 @@ If a required approval source, writer lock, or adapter is missing, leave activat
 blocked rather than running two authorities or a fallback.
 
 ## Authority and approvals
+
+This section governs ordinary tier activation/change. Runtime reclaim instead
+requires the distinct authentic human disruption approval in
+[runtime-reclaim.md](runtime-reclaim.md); it cannot borrow a tier event or policy
+as process authority. That stricter scoped rule adds no actor/roster prerequisite
+to the ordinary Replit-event route and no second approval for owner closure.
 
 This workflow is a cooperative project control. A user approval may be recorded
 with a real conversation/task reference and exact approved change. Label its
@@ -350,6 +366,15 @@ This checked workflow cannot prevent out-of-band edits by an agent with shell
 and write access.
 
 ## Tier registry and checked execution
+
+Every finite launch additionally follows [validation-budgets.md](validation-budgets.md):
+actual finite limits on all entry points, independently approved dispatch budgets,
+shared parent/attempt accounting, finite tests/hooks and independent transitive
+outer supervision. Expected short duration or skipped serialization exempts none.
+Direct scripts inherit no registry deadline and cannot substitute for the real
+checked required-tier route. Preserve independent caller authority/metadata
+compatibility; unavailable supervision is a reported blocker, not an exemption
+or permission to migrate existing host callers during skill-only authoring.
 
 Use one registry for scaffold, guards, runner, and completion checker. Each tier
 defines argv-based commands, root/working directory, required steps, dependencies,
@@ -583,6 +608,13 @@ Before launch:
    durable file record before dispatch through the monitoring contract.
 4. Capture the tested snapshot/environment and launch only approved argv.
 
+Before every step also verify effective queue/step/startup/teardown/test/hook/
+cleanup/evidence limits and remaining original parent/attempt time against the
+current independently approved source. Reserve cleanup, reject invalid/enlarged
+caller values, and dispatch nothing when the remainder cannot cover it. All
+spawned work retains bounded supervision on cancellation/journal failure;
+late zero, unknown descendants and incomplete storage never pass.
+
 Do not interpolate untrusted strings into a shell command. Validate diagnostic
 selectors and neutralize coverage-reducing environment/config overrides without
 blindly removing runtime variables the host needs. Validate report paths and bound
@@ -615,6 +647,7 @@ Run purposes are explicit:
 | Provenance comparison | Registered comparison capability | No |
 | Additional project-local check | Separate explicit local check policy | Only its own obligation |
 | Maintenance/bootstrap | Explicit bounded maintenance approval | No |
+| Runtime process reclaim | Authentic exact disruption approval plus live host attestation and atomic checked claim | No |
 
 Planning guards operate on a reserved draft before activation, resolving the
 bootstrap deadlock. They cannot invoke arbitrary tests. Baseline discovery is
@@ -732,6 +765,12 @@ Run leases include coordinator/process identity, start time, heartbeat, and vers
 A timed-out poll or expired heartbeat does not prove process death. Confirm stop,
 cancel safely, or quarantine unresolved runs before authorizing replacement.
 Coordinate process groups carefully; never indiscriminately kill unrelated services.
+An already dispatched authorized workload retains its approved transitive
+supervision/cancellation/termination despite admission expiry. New work or reclaim
+of unrelated processes needs current authority; expired/revoked cleanup grants
+never permit new signals. Apply the reclaim contract to exact runtime reclaim,
+retaining exclusion on unknown claims or uncertain/surviving workload and using
+only separately authorized bounded recovery.
 
 Prevent authorization transitions racing with a launch or active run. Wait, safely
 cancel, or suspend; do not retroactively make stale runs acceptable.

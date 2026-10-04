@@ -26,6 +26,18 @@ restore, or cutover evidence; unavailable proof blocks the affected readiness cl
 
 ## Required host tests
 
+Every finite validation route additionally requires the full
+[finite-budget acceptance matrix](validation-budgets.md), including direct/fast
+entry points, tests/hooks, independent outer supervision and cumulative exhaustion.
+The bundled `tests/test_validation_budgets.py` contains labelled policy simulations
+and conditional local fixture watchdog checks, not real registry/host activation.
+
+Runtime cleanup/reclaim additionally requires the complete
+[runtime reclaim acceptance matrix](runtime-reclaim.md). Execute its real checked
+host cases only under separately approved safe integration scope. The bundled
+`tests/test_runtime_reclaim_contract.py` is a simulation suite, not proof of
+protected authorization, independent attestation or deployed activation.
+
 | Area | Prove |
 |---|---|
 | Portability | No example path, Node command, package manager, OS, framework, database, tier name, or companion skill is required implicitly. |
@@ -221,6 +233,11 @@ items must match the authoring task's items, including:
 
 List gaps before patching. Do not use skill confirmation as permission to implement
 project feature code, alter unrelated skills, or repair the broader repository.
+For this reclaim amendment, also read back the complete canonical reference and
+its links, compare exact interfaces to the current canonical Port Authority
+runtime contract and consumers, and preserve the ordinary actor-optional Replit
+tier-event route separately from authentic human reclaim approval. Confirm late
+evidence storage creates no new permission and raw cleanup cannot pass validation.
 If correcting the skill requires rewriting more than half, surface a replacement
 task instead of silently expanding scope. Review companion documents separately.
 

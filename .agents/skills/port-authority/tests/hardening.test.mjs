@@ -1,8 +1,9 @@
-import test from "node:test";
+import nodeTest from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync, mkdirSync,
+  chmodSync, symlinkSync, linkSync, realpathSync, copyFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve, join } from "node:path";
@@ -14,6 +15,8 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const cleanup = join(root, "scripts/free-ports.mjs");
 const lock = join(root, "scripts/validation-lock.mjs");
 const bootId = readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim();
+const TEST_TIMEOUT_MS = 30000, HOOK_TIMEOUT_MS = 5000;
+const test = (name, fn) => nodeTest(name, { timeout: TEST_TIMEOUT_MS }, fn);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 function identity(pid) {
   try {
@@ -31,11 +34,93 @@ async function until(fn, timeout = 5000) {
   do { const value = fn(); if (value) return value; await sleep(15); } while (Date.now() < end);
   throw new Error("fixture wait timed out");
 }
-function setup(t) {
+// Test-only authoritative fixture. NEVER copied into the delivered host adapter.
+// It simulates host attestation and FG approval/claim/evidence separately from
+// caller-written envelopes; it is not genuine platform or approval evidence.
+function fixtureHostModule(statePath) {
+  return `
+    import {readFileSync,writeFileSync,mkdirSync,appendFileSync,rmdirSync} from 'node:fs';
+    import {createHash} from 'node:crypto';
+    const path=${JSON.stringify(statePath)};
+    const load=()=>JSON.parse(readFileSync(path,'utf8'));
+    const digest=o=>createHash('sha256').update(JSON.stringify(o)).digest('hex');
+    const equal=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+    const journal=o=>appendFileSync(path+'.journal',JSON.stringify(o)+'\\n');
+    export async function attestRuntime({binding,developmentRecord}){
+      const s=load();if(!s.attestationAvailable)throw new Error('fixture attestation source unavailable');
+      if(s.attestationDelayMs)await new Promise(r=>setTimeout(r,s.attestationDelayMs));
+      if(binding.projectRoot!==s.projectRoot||binding.bootId!==s.bootId)throw new Error('fixture binding mismatch');
+      const record=developmentRecord?s.attestations[developmentRecord.attestationReference]:s.defaultAttestation;
+      if(!record||record.revoked||(developmentRecord&&record.digest!==digest(developmentRecord)))
+        throw new Error('fixture attestation unknown, revoked, or forged');
+      if(record.expiresAt<=Date.now())throw new Error('fixture attestation expired');
+      return {protocolVersion:1,attestationId:record.id,environment:'development',
+        projectRoot:s.projectRoot,bootId:s.bootId,expiresAt:record.expiresAt};
+    }
+    export async function beginReclaim(request){
+      const s=load();if(!s.authorizationAvailable)throw new Error('fixture Failure Gate source unavailable');
+      const approved=s.approvals[request.manifest.authorizationReference];
+      if(!approved||approved.revoked||approved.expiresAt<=Date.now()||
+        approved.manifestDigest!==digest(request.manifest)||
+        approved.scopeDigest!==request.scopeDigest||
+        digest(request.requestedScope)!==request.scopeDigest||
+        !equal(approved.runBinding,request.manifest.runBinding))
+        throw new Error('fixture approval missing, expired, revoked, or scope/run mismatch');
+      if(request.operation!=='runtime.process-reclaim'||request.binding.projectRoot!==s.projectRoot||
+        request.binding.bootId!==s.bootId||request.attestation.projectRoot!==s.projectRoot||
+        request.attestation.expiresAt<=Date.now())throw new Error('fixture operation binding mismatch');
+      const claim=path+'.claim-'+digest(request.manifest.authorizationReference);
+      mkdirSync(claim); // one atomic claim, permanent replay marker in this fixture
+      mkdirSync(path+'.active'); // conservative project-wide single-flight fixture
+      journal({event:'claim',operationId:request.operationId,reference:request.manifest.authorizationReference});
+      if(s.beginHang)await new Promise(()=>{});
+      return {protocolVersion:1,authorizationId:request.manifest.authorizationReference,
+        operationId:s.handleMismatch?'wrong-operation':request.operationId,scopeDigest:request.scopeDigest,
+        attestationId:request.attestation.attestationId,expiresAt:approved.expiresAt,runBinding:approved.runBinding,
+        async checkBeforeSignal(next){
+          const current=load(),a=current.approvals[request.manifest.authorizationReference];
+          if(!current.authorizationAvailable||!a||a.revoked||a.expiresAt<=Date.now()||
+            next.operationId!==request.operationId||next.scopeDigest!==request.scopeDigest||
+            next.attestation.attestationId!==request.attestation.attestationId||
+            next.attestation.expiresAt<=Date.now())throw new Error('fixture signal authority revoked or mismatched');
+          journal({event:'signal-intent',operationId:request.operationId,signal:next.signal});
+          if(current.revokeAfterTerm&&next.signal==='SIGTERM'){
+            current.approvals[request.manifest.authorizationReference].revoked=true;
+            writeFileSync(path,JSON.stringify(current));
+          }
+          return true;
+        },
+        async recordOutcome(result){
+          if(!load().evidenceAvailable)throw new Error('fixture authoritative evidence unavailable');
+          if(result.operationId!==request.operationId)throw new Error('fixture outcome operation mismatch');
+          journal({event:'outcome',...result});
+          if(result.rawOutcome.state==='FREE'&&result.rawOutcome.verifiedTargetsStopped)rmdirSync(path+'.active');
+          return true;
+        }
+      };
+    }`;
+}
+function updateHostState(s, fn) {
+  const state = JSON.parse(readFileSync(s.hostState, "utf8"));
+  fn(state); writeFileSync(s.hostState, JSON.stringify(state));
+}
+function setup(t, { host = true } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "port-authority-regression-"));
+  const scripts = join(dir, "runtime-fixture"); mkdirSync(scripts);
+  for (const name of ["free-ports.mjs", "validation-lock.mjs", "runtime-environment.mjs", "host-capabilities.mjs"]) {
+    copyFileSync(join(root, "scripts", name), join(scripts, name));
+  }
+  const hostState = join(dir, "fixture-host-state");
+  writeFileSync(hostState, JSON.stringify({
+    projectRoot: realpathSync(process.cwd()), bootId, attestations: {}, approvals: {},
+    attestationAvailable: true, authorizationAvailable: true, evidenceAvailable: true,
+    defaultAttestation: { id: "fixture-independent-development-attestation", expiresAt: Date.now() + 120000 },
+  }));
+  if (host) writeFileSync(join(scripts, "host-capabilities.mjs"), fixtureHostModule(hostState));
   const env = { ...process.env };
   for (const k of Object.keys(env)) if (k.startsWith("VALIDATION_LOCK_") || k.startsWith("FREE_PORTS_")) delete env[k];
   delete env.REPLIT_DEV_DOMAIN; delete env.REPLIT_DEPLOYMENT; delete env.REPLIT_ENVIRONMENT;
+  delete env.PORT_AUTHORITY_DEV_CONTEXT_FILE;
   Object.assign(env, {
     NODE_ENV: "test", VALIDATION_LOCK_FILE: join(dir, "lease"),
     VALIDATION_LOCK_WAITERS_DIR: join(dir, "waiters"),
@@ -46,6 +131,7 @@ function setup(t) {
   });
   const jobs = new Set(), extras = [];
   function launch(script, args = [], overrides = {}, options = {}) {
+    if (script === cleanup || script === lock) script = join(scripts, script.split("/").at(-1));
     const child = spawn(process.execPath, [script, ...args], {
       env: { ...env, ...overrides }, stdio: ["ignore", "pipe", "pipe"], ...options,
     });
@@ -71,8 +157,8 @@ function setup(t) {
     for (const p of extras) if (isAlive(p)) process.kill(p.pid, "SIGKILL");
     await Promise.allSettled([...jobs].map(j => j.done));
     rmSync(dir, { recursive: true, force: true });
-  });
-  return { dir, env, launch, run, wrapped, extras };
+  }, { timeout: HOOK_TIMEOUT_MS });
+  return { dir, env, launch, run, wrapped, extras, hostState, scripts };
 }
 async function listener(s, body = "") {
   const fixture = s.launch("-e", [
@@ -85,16 +171,53 @@ async function listener(s, body = "") {
 }
 function manifest(s, fixtures, edits = {}) {
   const path = join(s.dir, `manifest-${randomUUID()}.json`);
-  writeFileSync(path, JSON.stringify({
-    version: 1, bootId, expiresAt: Date.now() + 30000,
+  const record = {
+    version: 2, bootId, expiresAt: Date.now() + 30000,
     ports: fixtures.map(f => f.port), processes: fixtures.map(f => ({
       pid: f.identity.pid, startTime: f.identity.startTime,
-    })), authorizationReference: "isolated-test-fixture-authorization",
+    })), authorizationReference: `fixture-approved-${randomUUID()}`,
+    runBinding: { taskId: "isolated-task", approvedPlanBinding: "isolated-approved-plan", runId: randomUUID() },
     allowOwnTree: true, ...edits,
-  }));
+  };
+  writeFileSync(path, JSON.stringify(record));
+  const requestedScope = {
+    ports: [...new Set(record.ports)].sort((a, b) => a - b),
+    processes: record.processes.map(({ pid, startTime }) => ({ pid, startTime })).sort((a, b) => a.pid - b.pid),
+    allowOwnTree: record.allowOwnTree === true,
+    signals: ["SIGTERM", "SIGKILL"], graceMs: 3000, killVerificationMs: 5000,
+  };
+  updateHostState(s, state => {
+    state.approvals[record.authorizationReference] = {
+      manifestDigest: createHash("sha256").update(JSON.stringify(record)).digest("hex"),
+      scopeDigest: createHash("sha256").update(JSON.stringify(requestedScope)).digest("hex"),
+      runBinding: record.runBinding, expiresAt: record.expiresAt,
+    };
+  });
   return path;
 }
 const actionArgs = (m, port) => ["--ownership-manifest", m, "--include-own-tree", "--authorized-cleanup", String(port)];
+function developmentContext(s, edits = {}) {
+  const path = join(s.dir, `development-context-${randomUUID()}.json`);
+  const now = Date.now();
+  const record = {
+    version: 1, kind: "replit-development-workspace", bootId,
+    projectRoot: realpathSync(process.cwd()), devDomain: "isolated-development.example",
+    supervisor: identity(process.pid), issuedAt: now, expiresAt: now + 60000,
+    attestationReference: `fixture-attestation-${randomUUID()}`,
+    verificationReference: "isolated-fixture-audit-and-approval", ...edits,
+  };
+  writeFileSync(path, JSON.stringify(record), { mode: 0o600 });
+  updateHostState(s, state => {
+    state.attestations[record.attestationReference] = {
+      id: record.attestationReference, expiresAt: record.expiresAt,
+      digest: createHash("sha256").update(JSON.stringify(record)).digest("hex"),
+    };
+  });
+  return { path, record, env: {
+    REPLIT_ENVIRONMENT: "production", REPLIT_DEV_DOMAIN: record.devDomain,
+    PORT_AUTHORITY_DEV_CONTEXT_FILE: path,
+  } };
+}
 function seedLease(s, owner, edits = {}) {
   const record = {
     version: 2, bootId, token: randomUUID(), owner, baseFile: s.env.VALIDATION_LOCK_FILE,
@@ -124,13 +247,36 @@ function assertSerial(log) {
   assert.equal(count, 0);
 }
 
+if (process.argv.includes("--supervised")) {
+  // Authoring-only outer fixture, not a deployed host admission bypass. Do not
+  // mutate the caller's environment or shipped adapters. Only this private
+  // fixture subtree receives setup()'s explicitly simulated test environment.
+  const teardown = [], s = setup({ after: fn => teardown.push(fn) }, { host: false });
+  console.log(JSON.stringify({ scope: "isolated-bundle-fixture-only", testTimeoutMs: TEST_TIMEOUT_MS,
+    fixtureHookTimeoutMs: HOOK_TIMEOUT_MS, executionLimitMs: 180000,
+    hostActivationEvidence: false, stateDirectory: s.dir }));
+  const pattern = process.argv.find(arg => arg.startsWith("--test-name-pattern="));
+  const job = s.launch(lock, ["--", process.execPath, "--test", ...(pattern ? [pattern] : []), fileURLToPath(import.meta.url)], {
+    VALIDATION_LOCK_MAX_HOLD_MS: "180000", VALIDATION_LOCK_STOP_GRACE_MS: "3000",
+    VALIDATION_LOCK_STOP_KILL_MS: "5000",
+  });
+  const result = await job.done;
+  process.stdout.write(result.text);
+  if (existsSync(s.env.VALIDATION_LOCK_FILE)) {
+    console.error(JSON.stringify({ incident: "suite-fixture-lease-retained", stateDirectory: s.dir }));
+  } else {
+    for (const finish of teardown) await finish();
+  }
+  process.exit(result.code ?? 1);
+}
+
 test("skill: interfaces, independent budgets, conflict map, Failure Gate boundaries", () => {
   const skill = readFileSync(join(root, "SKILL.md"), "utf8");
   assert.match(skill, /^---\nname: port-authority\n/);
   assert(skill.split("\n").length < 500);
   assert(skill.split("\n")[2].slice("description: ".length).length <= 1024);
   for (let i = 0; i <= 9; i++) assert(skill.includes(`## Phase ${i} (`));
-  assert(skill.includes("## Independent gate — Heavy/long-running execution budgets"));
+  assert(skill.includes("## Independent gate — ALL validation execution budgets"));
   assert(skill.includes("even a SINGLE non-conflicting suite"));
   assert(skill.includes("caller-to-resource conflict map"));
   assert(skill.includes("A composite lock does not conflict with its constituent names."));
@@ -143,7 +289,11 @@ test("skill: interfaces, independent budgets, conflict map, Failure Gate boundar
   assert(skill.includes("both runs use its checked route"));
   assert(!skill.includes("preserved byte-for-byte"));
   for (const p of ["scripts/free-ports.mjs", "scripts/validation-lock.mjs",
-    "reference/runtime-contract.md", "tests/hardening.test.mjs"]) assert(existsSync(join(root, p)));
+    "scripts/runtime-environment.mjs", "scripts/host-capabilities.mjs", "reference/runtime-contract.md",
+    "tests/hardening.test.mjs"]) assert(existsSync(join(root, p)));
+  assert(skill.includes("exactly seven files"));
+  assert(skill.includes("NODE_ENV=production"));
+  assert(skill.includes("audited, fresh, root/boot/ancestor-bound evidence"));
 });
 
 test("invalid inputs and production flags win over development/disable markers", async t => {
@@ -163,6 +313,253 @@ test("invalid inputs and production flags win over development/disable markers",
     const result = await s.run(cleanup, ["12345"], { [k]: "1" });
     assert.equal(result.code, 3); assert.match(result.text, /SKIPPED/);
   }
+});
+
+test("valid audited-fixture development context admits both scripts without changing flags", async t => {
+  const s = setup(t), f = await listener(s), context = developmentContext(s);
+  const cleaned = await s.run(cleanup, actionArgs(manifest(s, [f]), f.port), context.env);
+  assert.equal(cleaned.code, 0, cleaned.text); assert(!isAlive(f.identity));
+  assert.match(cleaned.text, /verified-development-context-admission/);
+  const result = await s.wrapped(`if(process.env.REPLIT_ENVIRONMENT!=='production')
+    throw new Error('marker changed');console.log('AUTHORIZED_FIXTURE_CHILD')`, context.env).done;
+  assert.equal(result.code, 0, result.text);
+  assert.match(result.text, /AUTHORIZED_FIXTURE_CHILD/);
+  assert.match(result.text, /verified-development-context-admission/);
+  assert(!existsSync(s.env.VALIDATION_LOCK_FILE));
+});
+
+test("hard production and deployment markers reject even valid development evidence", async t => {
+  const s = setup(t), f = await listener(s), context = developmentContext(s);
+  for (const marker of [{ NODE_ENV: "production" }, { REPLIT_DEPLOYMENT: "1" }]) {
+    const env = { ...context.env, ...marker };
+    const cleaned = await s.run(cleanup, actionArgs(manifest(s, [f]), f.port), env);
+    assert.equal(cleaned.code, 2, cleaned.text); assert(isAlive(f.identity));
+    assert(!cleaned.text.includes("authorized-process-signal"));
+    const result = await s.wrapped("console.log('ILLEGAL_START')", env).done;
+    assert.equal(result.code, 2, result.text); assert(!result.text.includes("ILLEGAL_START"));
+    assert(!existsSync(s.env.VALIDATION_LOCK_FILE));
+  }
+});
+
+test("unconfigured bundled host adapters reject plausible attestation and reclaim records", async t => {
+  const s = setup(t, { host: false }), f = await listener(s), context = developmentContext(s);
+  const blockedContext = await s.wrapped("console.log('ILLEGAL_START')", context.env).done;
+  assert.equal(blockedContext.code, 2, blockedContext.text);
+  assert.match(blockedContext.text, /HOST_ATTESTATION_UNAVAILABLE/);
+  assert(!blockedContext.text.includes("ILLEGAL_START"));
+  const blockedAction = await s.run(cleanup, actionArgs(manifest(s, [f]), f.port));
+  assert.equal(blockedAction.code, 4, blockedAction.text); assert(isAlive(f.identity));
+  assert.match(blockedAction.text, /HOST_ATTESTATION_UNAVAILABLE/);
+  assert(!blockedAction.text.includes("authorized-process-signal"));
+});
+
+test("local development records without independent provider backing do not admit either script", async t => {
+  const s = setup(t), f = await listener(s), context = developmentContext(s);
+  updateHostState(s, state => { delete state.attestations[context.record.attestationReference]; });
+  const a = await s.run(cleanup, actionArgs(manifest(s, [f]), f.port), context.env);
+  const b = await s.wrapped("console.log('ILLEGAL_START')", context.env).done;
+  assert.equal(a.code, 2, a.text); assert.equal(b.code, 2, b.text);
+  assert(isAlive(f.identity)); assert(!a.text.includes("authorized-process-signal"));
+  assert(!b.text.includes("ILLEGAL_START"));
+});
+
+test("attestation alone cannot replace an unavailable Failure Gate authorization source", async t => {
+  const s = setup(t), f = await listener(s);
+  updateHostState(s, state => { state.authorizationAvailable = false; });
+  const result = await s.run(cleanup, actionArgs(manifest(s, [f]), f.port));
+  assert.equal(result.code, 4, result.text); assert.match(result.text, /Failure Gate source unavailable/);
+  assert(isAlive(f.identity)); assert(!result.text.includes("authorized-process-signal"));
+});
+
+test("forged references and altered approved plan/run/port/process scope cannot signal", async t => {
+  const s = setup(t), target = await listener(s), other = await listener(s);
+  const changes = [
+    r => { r.authorizationReference = "agent-written-approval"; },
+    r => { r.runBinding.taskId = "different-task"; },
+    r => { r.runBinding.approvedPlanBinding = "different-plan"; },
+    r => { r.runBinding.runId = "different-run"; },
+    r => { r.ports.push(other.port); },
+    r => { r.processes.push({ pid: other.identity.pid, startTime: other.identity.startTime }); },
+    r => { r.expiresAt += 1000; },
+  ];
+  for (const change of changes) {
+    const path = manifest(s, [target]), record = JSON.parse(readFileSync(path, "utf8"));
+    change(record); writeFileSync(path, JSON.stringify(record));
+    const result = await s.run(cleanup, actionArgs(path, target.port));
+    assert.equal(result.code, 4, result.text); assert(!result.text.includes("authorized-process-signal"));
+    assert(isAlive(target.identity)); assert(isAlive(other.identity));
+  }
+});
+
+test("legacy reclaim manifests cannot be upgraded by claiming authorization", async t => {
+  const s = setup(t), f = await listener(s);
+  for (const edits of [{ version: 1 }, { runBinding: null }]) {
+    const result = await s.run(cleanup, actionArgs(manifest(s, [f], edits), f.port));
+    assert.equal(result.code, 4, result.text); assert(isAlive(f.identity));
+    assert(!result.text.includes("authorized-process-signal"));
+  }
+});
+
+test("reclaim replay is rejected even after the target and listener stopped", async t => {
+  const s = setup(t), f = await listener(s), path = manifest(s, [f]);
+  const first = await s.run(cleanup, actionArgs(path, f.port));
+  assert.equal(first.code, 0, first.text); assert(!isAlive(f.identity));
+  const replay = await s.run(cleanup, actionArgs(path, f.port));
+  assert.equal(replay.code, 4, replay.text); assert(!replay.text.includes("authorized-process-signal"));
+  const events = readFileSync(`${s.hostState}.journal`, "utf8").trim().split("\n").map(JSON.parse);
+  assert.equal(events.filter(e => e.event === "claim").length, 1);
+});
+
+test("concurrent reclaim of one grant admits only one operation", async t => {
+  const s = setup(t);
+  const f = await listener(s, "process.on('SIGTERM',()=>server.close());setInterval(()=>{},1000);");
+  const path = manifest(s, [f]);
+  const results = await Promise.all([
+    s.run(cleanup, actionArgs(path, f.port)), s.run(cleanup, actionArgs(path, f.port)),
+  ]);
+  assert.deepEqual(results.map(r => r.code).sort(), [0, 4], results.map(r => r.text).join("\n"));
+  assert(!isAlive(f.identity));
+  const events = readFileSync(`${s.hostState}.journal`, "utf8").trim().split("\n").map(JSON.parse);
+  assert.equal(events.filter(e => e.event === "claim").length, 1);
+});
+
+test("Failure Gate revocation prevents escalation and records the partial outcome", async t => {
+  const s = setup(t);
+  const f = await listener(s, "process.on('SIGTERM',()=>server.close());setInterval(()=>{},1000);");
+  updateHostState(s, state => { state.revokeAfterTerm = true; });
+  const result = await s.run(cleanup, actionArgs(manifest(s, [f]), f.port));
+  assert.equal(result.code, 4, result.text); assert(isAlive(f.identity));
+  assert.match(result.text, /"signal":"SIGTERM"/); assert(!result.text.includes('"signal":"SIGKILL"'));
+  const events = readFileSync(`${s.hostState}.journal`, "utf8").trim().split("\n").map(JSON.parse);
+  const outcome = events.find(e => e.event === "outcome");
+  assert.equal(outcome.rawOutcome.state, "UNKNOWN");
+  assert.equal(outcome.signalOutcomes[0].signal, "SIGTERM");
+});
+
+test("different grants cannot concurrently reclaim conflicting project resources", async t => {
+  const s = setup(t);
+  const f = await listener(s, "process.on('SIGTERM',()=>server.close());setInterval(()=>{},1000);");
+  const results = await Promise.all([
+    s.run(cleanup, actionArgs(manifest(s, [f]), f.port)),
+    s.run(cleanup, actionArgs(manifest(s, [f]), f.port)),
+  ]);
+  assert.deepEqual(results.map(r => r.code).sort(), [0, 4], results.map(r => r.text).join("\n"));
+  assert(!isAlive(f.identity));
+  const events = readFileSync(`${s.hostState}.journal`, "utf8").trim().split("\n").map(JSON.parse);
+  assert.equal(events.filter(e => e.event === "claim").length, 1);
+});
+
+test("Failure Gate grant expiry prevents escalation even when the manifest remains fresh", async t => {
+  const s = setup(t);
+  const f = await listener(s, "process.on('SIGTERM',()=>server.close());setInterval(()=>{},1000);");
+  const path = manifest(s, [f]);
+  updateHostState(s, state => {
+    state.approvals[JSON.parse(readFileSync(path, "utf8")).authorizationReference].expiresAt = Date.now() + 2500;
+  });
+  const result = await s.run(cleanup, actionArgs(path, f.port));
+  assert.equal(result.code, 4, result.text); assert(isAlive(f.identity));
+  assert.match(result.text, /"signal":"SIGTERM"/); assert(!result.text.includes('"signal":"SIGKILL"'));
+});
+
+test("failure to record authoritative evidence preserves raw cleanup success but cannot pass", async t => {
+  const s = setup(t), f = await listener(s);
+  updateHostState(s, state => { state.evidenceAvailable = false; });
+  const result = await s.run(cleanup, actionArgs(manifest(s, [f]), f.port));
+  assert.equal(result.code, 4, result.text); assert(!isAlive(f.identity));
+  const outcome = result.text.trim().split("\n").filter(l => l.startsWith('{"tool":"free-ports"')).map(JSON.parse).at(-1);
+  assert.equal(outcome.evidenceRecorded, false); assert.equal(outcome.rawOutcome.state, "FREE", result.text);
+  assert.equal(outcome.rawOutcome.exitCode, 0); assert(outcome.rawOutcome.verifiedTargetsStopped);
+});
+
+test("timed-out claims and malformed handles cannot signal or be retried automatically", async t => {
+  const s = setup(t), f = await listener(s);
+  updateHostState(s, state => { state.beginHang = true; });
+  const result = await s.run(cleanup, actionArgs(manifest(s, [f]), f.port));
+  assert.equal(result.code, 4, result.text); assert.match(result.text, /deadline exceeded/);
+  assert(isAlive(f.identity)); assert(!result.text.includes("authorized-process-signal"));
+  const events = readFileSync(`${s.hostState}.journal`, "utf8").trim().split("\n").map(JSON.parse);
+  assert.equal(events.filter(e => e.event === "claim").length, 1);
+  assert.equal(events.filter(e => e.event === "signal-intent").length, 0);
+  const other = setup(t), target = await listener(other);
+  updateHostState(other, state => { state.handleMismatch = true; });
+  const invalid = await other.run(cleanup, actionArgs(manifest(other, [target]), target.port));
+  assert.equal(invalid.code, 4, invalid.text); assert(isAlive(target.identity));
+  assert(!invalid.text.includes("authorized-process-signal"));
+});
+
+test("missing, stale, unsafe, or unverified development evidence cannot authorize signals or dispatch", async t => {
+  const s = setup(t), f = await listener(s);
+  const now = Date.now();
+  const cases = [
+    developmentContext(s, { version: 2 }),
+    developmentContext(s, { kind: "deployment" }),
+    developmentContext(s, { expiresAt: now - 1 }),
+    developmentContext(s, { issuedAt: now + 60000, expiresAt: now + 90000 }),
+    developmentContext(s, { expiresAt: now + 3600000 }),
+    developmentContext(s, { bootId: "foreign-boot" }),
+    developmentContext(s, { projectRoot: s.dir }),
+    developmentContext(s, { verificationReference: "" }),
+    developmentContext(s, { attestationReference: "" }),
+    developmentContext(s, { supervisor: { pid: process.pid, startTime: "1" } }),
+    developmentContext(s, { supervisor: f.identity }),
+    developmentContext(s, { supervisor: { pid: process.pid, startTime: Number(identity(process.pid).startTime) } }),
+  ];
+  const noDomain = developmentContext(s); noDomain.env.REPLIT_DEV_DOMAIN = ""; cases.push(noDomain);
+  const wrongDomain = developmentContext(s); wrongDomain.env.REPLIT_DEV_DOMAIN = "other.example"; cases.push(wrongDomain);
+  const missing = developmentContext(s); rmSync(missing.path); cases.push(missing);
+  const malformed = developmentContext(s); writeFileSync(malformed.path, "{bad"); cases.push(malformed);
+  const writable = developmentContext(s); chmodSync(writable.path, 0o666); cases.push(writable);
+  const linked = developmentContext(s); symlinkSync(linked.path, `${linked.path}.link`);
+  linked.env.PORT_AUTHORITY_DEV_CONTEXT_FILE = `${linked.path}.link`; cases.push(linked);
+  const hardLinked = developmentContext(s); linkSync(hardLinked.path, `${hardLinked.path}.link`);
+  cases.push(hardLinked);
+  const relative = developmentContext(s); relative.env.PORT_AUTHORITY_DEV_CONTEXT_FILE = "relative.json"; cases.push(relative);
+  const directory = developmentContext(s); directory.env.PORT_AUTHORITY_DEV_CONTEXT_FILE = s.dir; cases.push(directory);
+  cases.push({ env: { REPLIT_ENVIRONMENT: "production", REPLIT_DEV_DOMAIN: "domain-alone.example" } });
+  for (const context of cases) {
+    const cleaned = await s.run(cleanup, actionArgs(manifest(s, [f]), f.port), context.env);
+    assert.equal(cleaned.code, 2, cleaned.text); assert(isAlive(f.identity));
+    assert(!cleaned.text.includes("authorized-process-signal"));
+    const result = await s.wrapped("console.log('ILLEGAL_START')", context.env).done;
+    assert.equal(result.code, 2, result.text); assert(!result.text.includes("ILLEGAL_START"));
+    assert(!existsSync(s.env.VALIDATION_LOCK_FILE));
+  }
+});
+
+test("development evidence expiring during queue wait blocks child dispatch", async t => {
+  const s = setup(t), context = developmentContext(s, { expiresAt: Date.now() + 2000 });
+  seedLease(s, identity(process.pid));
+  const job = s.wrapped("console.log('ILLEGAL_START')", context.env);
+  await until(() => job.text.includes("verified-development-context-admission"));
+  await until(() => Date.now() > context.record.expiresAt);
+  rmSync(s.env.VALIDATION_LOCK_FILE);
+  const result = await job.done;
+  assert.equal(result.code, 4, result.text); assert(!result.text.includes("ILLEGAL_START"));
+  assert.match(result.text, /runtime guard blocked before dispatch/);
+});
+
+test("expired admission evidence does not disable supervision of an already dispatched child", async t => {
+  const s = setup(t), context = developmentContext(s, { expiresAt: Date.now() + 1200 });
+  const pidFile = join(s.dir, "admitted-child");
+  const job = s.wrapped(`process.on('SIGTERM',()=>{});setInterval(()=>{},1000);
+    require('node:fs').writeFileSync(${JSON.stringify(pidFile)},String(process.pid));`,
+    { ...context.env, VALIDATION_LOCK_MAX_HOLD_MS: "1800" });
+  const p = await until(() => existsSync(pidFile) && identity(Number(readFileSync(pidFile, "utf8"))));
+  s.extras.push(p);
+  const result = await job.done;
+  assert.equal(result.code, 1, result.text); assert.match(result.text, /execution-budget/);
+  assert(Date.now() > context.record.expiresAt); assert(!isAlive(p));
+  assert(!existsSync(s.env.VALIDATION_LOCK_FILE));
+});
+
+test("expired development context prevents cleanup escalation and requires recovery", async t => {
+  const s = setup(t);
+  const f = await listener(s, "process.on('SIGTERM',()=>server.close());setInterval(()=>{},1000);");
+  const context = developmentContext(s, { expiresAt: Date.now() + 2500 });
+  const result = await s.run(cleanup, actionArgs(manifest(s, [f]), f.port), context.env);
+  assert.equal(result.code, 4, result.text); assert.match(result.text, /requiresRecovery/);
+  assert.match(result.text, /"signal":"SIGTERM"/); assert(!result.text.includes('"signal":"SIGKILL"'));
+  assert(isAlive(f.identity));
 });
 
 test("unreadable socket inventories fail UNKNOWN without signals", async t => {
@@ -403,4 +800,193 @@ test("execution budget stops owned work before replacement", async t => {
   const [a, b] = await Promise.all([first.done, next.done]);
   assert.equal(a.code, 1, a.text); assert.match(a.text, /execution-budget/);
   assert.equal(b.code, 0, b.text); assert(!isAlive(p));
+});
+
+test("all validation budgets are explicit, finite and timer-safe before dispatch", async t => {
+  const s = setup(t);
+  for (const name of ["TIMEOUT_MS", "MAX_HOLD_MS"]) {
+    for (const value of [undefined, "0", "-1", "Infinity", "NaN", "2147483648"]) {
+      const result = await s.wrapped("console.log('ILLEGAL_START')", { [`VALIDATION_LOCK_${name}`]: value }).done;
+      assert.equal(result.code, 2, result.text);
+      assert.match(result.text, /explicit finite timer-safe/);
+      assert(!result.text.includes("ILLEGAL_START")); assert(!existsSync(s.env.VALIDATION_LOCK_FILE));
+    }
+  }
+  const overflow = await s.wrapped("console.log('ILLEGAL_START')", { VALIDATION_LOCK_POLL_MS: "2147483648" }).done;
+  assert.equal(overflow.code, 2);
+  const normal = await s.wrapped("process.exit(0)").done;
+  assert.equal(normal.code, 0, normal.text);
+  for (const value of ['"queueLimitMs":5000', '"executionLimitMs":10000', '"clock":"monotonic"', "local-supervision-not-checked-approval"]) {
+    assert(normal.text.includes(value), normal.text);
+  }
+});
+
+test("direct package-script dispatcher fixture cannot bypass outer execution deadline", async t => {
+  const s = setup(t), packageFile = join(s.dir, "package.json"), script = join(s.dir, "hang.cjs");
+  writeFileSync(script, "process.on('SIGTERM',()=>{});setInterval(()=>{},1000);");
+  writeFileSync(packageFile, JSON.stringify({ scripts: { "test-direct": script } }));
+  const dispatcher = `const script=JSON.parse(require('node:fs').readFileSync(${JSON.stringify(packageFile)},'utf8')).scripts['test-direct'];
+    const c=require('node:child_process').spawn(process.execPath,[script],{stdio:'inherit'});
+    c.on('exit',(code,signal)=>process.exit(signal?1:code));`;
+  const result = await s.wrapped(dispatcher, { VALIDATION_LOCK_MAX_HOLD_MS: "400" }).done;
+  assert.equal(result.code, 1, result.text); assert.match(result.text, /execution-budget/);
+  assert.match(result.text, /"workloadStopped":true/); assert(!existsSync(s.env.VALIDATION_LOCK_FILE));
+});
+
+test("async test and hanging hook report finite timeout; outer wrapper stops remaining handles", async t => {
+  const s = setup(t);
+  const cases = [
+    `const test=require('node:test');setInterval(()=>{},1000);
+      test('async hang',{timeout:40},async()=>await new Promise(()=>{}));`,
+    `const test=require('node:test');setInterval(()=>{},1000);
+      test('hook hang',{timeout:200},t=>{
+        t.after(async()=>await new Promise(()=>{}),{timeout:40});});`,
+  ];
+  for (const code of cases) {
+    const result = await s.wrapped(code, { VALIDATION_LOCK_MAX_HOLD_MS: "400" }).done;
+    assert.notEqual(result.code, 0, result.text);
+    assert.match(result.text, /timed out after 40ms/); assert.match(result.text, /execution-budget/);
+    assert.match(result.text, /"workloadStopped":true/);
+    assert(!existsSync(s.env.VALIDATION_LOCK_FILE));
+  }
+});
+
+test("outer supervisor stops synchronous test despite its blocked per-test timer", async t => {
+  const s = setup(t);
+  const result = await s.wrapped(`require('node:test')('sync hang',{timeout:40},()=>{while(true){}});`,
+    { VALIDATION_LOCK_MAX_HOLD_MS: "250" }).done;
+  assert.equal(result.code, 1, result.text); assert.match(result.text, /execution-budget/);
+  assert.match(result.text, /"workloadStopped":true/); assert(!existsSync(s.env.VALIDATION_LOCK_FILE));
+});
+
+test("wall-clock reversal cannot extend queue or execution elapsed limits", async t => {
+  const s = setup(t);
+  const injected = `const realNow=Date.now;let calls=0;Date.now=()=>realNow()-(++calls>3?3600000:0);
+    process.argv=[process.execPath,${JSON.stringify(join(s.scripts, "validation-lock.mjs"))},'--',
+      process.execPath,'-e','setInterval(()=>{},1000)'];
+    import(${JSON.stringify(join(s.scripts, "validation-lock.mjs"))});`;
+  const execution = await s.run("-e", [injected], { VALIDATION_LOCK_MAX_HOLD_MS: "200" });
+  assert.equal(execution.code, 1, execution.text); assert.match(execution.text, /execution-budget/);
+  seedLease(s, identity(process.pid));
+  const queued = await s.run("-e", [injected], { VALIDATION_LOCK_TIMEOUT_MS: "150" });
+  assert.equal(queued.code, 3, queued.text); assert.match(queued.text, /queue timeout/);
+});
+
+test("late raw zero cannot win the execution deadline race", async t => {
+  const s = setup(t), marker = join(s.dir, "late-zero");
+  const injected = `const fs=require('node:fs'),original=fs.readdirSync;let delayed=false;
+    fs.readdirSync=function(path,...args){if(path==='/proc'&&!delayed&&fs.existsSync(${JSON.stringify(marker)})){
+      delayed=true;Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,250);}
+      return original.call(this,path,...args);};
+    require('node:module').syncBuiltinESMExports();
+    process.argv=[process.execPath,${JSON.stringify(join(s.scripts, "validation-lock.mjs"))},'--',
+      process.execPath,'-e',${JSON.stringify(`require('node:fs').writeFileSync(${JSON.stringify(marker)},'ready');setTimeout(()=>process.exit(0),30);`)}];
+    import(${JSON.stringify(join(s.scripts, "validation-lock.mjs"))});`;
+  const result = await s.run("-e", [injected], { VALIDATION_LOCK_MAX_HOLD_MS: "150" });
+  assert.equal(result.code, 1, result.text); assert.match(result.text, /"rawExitCode":0/);
+  assert.match(result.text, /execution-budget/); assert(!existsSync(s.env.VALIDATION_LOCK_FILE));
+});
+
+test("admission rechecks cannot dispatch after the execution budget has expired", async t => {
+  const s = setup(t), context = developmentContext(s);
+  updateHostState(s, state => { state.attestationDelayMs = 75; });
+  const result = await s.wrapped("console.log('ILLEGAL_START')", {
+    ...context.env, VALIDATION_LOCK_MAX_HOLD_MS: "40",
+  }).done;
+  assert.equal(result.code, 4, result.text);
+  assert.match(result.text, /execution-budget expired before launch/);
+  assert(!result.text.includes("ILLEGAL_START"));
+});
+
+test("post-spawn journal failure cleans owned work but retains lease and blocks replacement", async t => {
+  const s = setup(t), pidFile = join(s.dir, "journal-child");
+  const job = s.wrapped(`process.on('SIGTERM',()=>{});setInterval(()=>{},1000);
+    require('node:fs').writeFileSync(${JSON.stringify(pidFile)},String(process.pid));`);
+  const p = await until(() => existsSync(pidFile) && identity(Number(readFileSync(pidFile, "utf8"))));
+  s.extras.push(p);
+  await until(() => {
+    try { const r = JSON.parse(readFileSync(s.env.VALIDATION_LOCK_FILE, "utf8")); return r.phase === "running"; }
+    catch { return false; }
+  });
+  await until(() => {
+    try { mkdirSync(`${s.env.VALIDATION_LOCK_FILE}.transition`); return true; }
+    catch (e) { if (e.code !== "EEXIST") throw e; return false; }
+  });
+  const result = await job.done;
+  assert.equal(result.code, 4, result.text); assert.match(result.text, /supervision-error-owned-cleanup/);
+  assert.match(result.text, /"workloadStopped":true/); assert.match(result.text, /"leaseRetained":true/);
+  assert(!isAlive(p)); assert(existsSync(s.env.VALIDATION_LOCK_FILE));
+  const next = await s.wrapped("console.log('ILLEGAL_START')", { VALIDATION_LOCK_TIMEOUT_MS: "150" }).done;
+  assert.equal(next.code, 3, next.text); assert(!next.text.includes("ILLEGAL_START"));
+});
+
+test("descendant spawned on SIGTERM is discovered and receives termination", async t => {
+  const s = setup(t), rootPid = join(s.dir, "term-root"), latePid = join(s.dir, "term-late");
+  const late = `process.on('SIGTERM',()=>{});setInterval(()=>{},1000);`;
+  const parent = `let spawned=false;process.on('SIGTERM',()=>{if(!spawned){spawned=true;
+    const c=require('node:child_process').spawn(process.execPath,['-e',${JSON.stringify(late)}],{stdio:'ignore'});
+    const f=require('node:fs'),fields=f.readFileSync('/proc/'+c.pid+'/stat','utf8').split(') ')[1].split(' ');
+    f.writeFileSync(${JSON.stringify(latePid)},JSON.stringify({pid:c.pid,startTime:fields[19]}));}});
+    require('node:fs').writeFileSync(${JSON.stringify(rootPid)},String(process.pid));setInterval(()=>{},1000);`;
+  const job = s.wrapped(parent, { VALIDATION_LOCK_MAX_HOLD_MS: "300", VALIDATION_LOCK_STOP_GRACE_MS: "350" });
+  const rootIdentity = await until(() => existsSync(rootPid) && identity(Number(readFileSync(rootPid, "utf8"))));
+  s.extras.push(rootIdentity);
+  const lateIdentity = await until(() => existsSync(latePid) && JSON.parse(readFileSync(latePid, "utf8")));
+  s.extras.push(lateIdentity);
+  const result = await job.done;
+  assert.equal(result.code, 1, result.text); assert(!isAlive(rootIdentity)); assert(!isAlive(lateIdentity));
+  assert(result.text.includes(`"pid":${lateIdentity.pid}`)); assert(!existsSync(s.env.VALIDATION_LOCK_FILE));
+});
+
+test("FIFO and oversized JSON cannot hang manifest, lease or advisory waiter reads", async t => {
+  const s = setup(t);
+  const fifo = join(s.dir, "fifo");
+  assert.equal(spawnSync("mkfifo", [fifo], { timeout: 1000 }).status, 0);
+  const lease = await s.wrapped("console.log('ILLEGAL_START')", { VALIDATION_LOCK_FILE: fifo }).done;
+  assert.equal(lease.code, 4, lease.text); assert(!lease.text.includes("ILLEGAL_START"));
+  const f = await listener(s);
+  const busy = await s.run(cleanup, actionArgs(fifo, f.port));
+  assert.equal(busy.code, 4, busy.text); assert(isAlive(f.identity));
+  mkdirSync(s.env.VALIDATION_LOCK_WAITERS_DIR, { recursive: true });
+  assert.equal(spawnSync("mkfifo", [join(s.env.VALIDATION_LOCK_WAITERS_DIR, "bad.json")], { timeout: 1000 }).status, 0);
+  assert.equal((await s.wrapped("process.exit(0)").done).code, 0);
+  writeFileSync(s.env.VALIDATION_LOCK_FILE, " ".repeat(1024 * 1024 + 1));
+  assert.equal((await s.wrapped("console.log('ILLEGAL_START')").done).code, 4);
+});
+
+test("transient post-signal discovery is bounded and preserved in authoritative raw evidence", async t => {
+  const s = setup(t), f = await listener(s), path = manifest(s, [f]);
+  const args = actionArgs(path, f.port);
+  const injected = `const fs=require('node:fs'),original=fs.readdirSync,kill=process.kill;let signaled=false,failed=false;
+    process.kill=function(pid,signal){const result=kill.call(this,pid,signal);if(signal==='SIGTERM')signaled=true;return result;};
+    fs.readdirSync=function(path,...args){if(path==='/proc'&&signaled&&!failed){
+      failed=true;throw Object.assign(new Error('fixture process exited during discovery'),{code:'ESRCH'});}
+      return original.call(this,path,...args);};
+    require('node:module').syncBuiltinESMExports();
+    process.argv=[process.execPath,${JSON.stringify(join(s.scripts, "free-ports.mjs"))},...${JSON.stringify(args)}];
+    import(${JSON.stringify(join(s.scripts, "free-ports.mjs"))});`;
+  const result = await s.run("-e", [injected]);
+  assert.equal(result.code, 0, result.text); assert(!isAlive(f.identity));
+  assert.match(result.text, /transient-shutdown-discovery/);
+  const journal = readFileSync(s.hostState + ".journal", "utf8").trim().split("\n").map(JSON.parse);
+  const outcome = journal.find(row => row.event === "outcome");
+  assert.equal(outcome.rawOutcome.verificationObservations.length, 1);
+});
+
+test("persistent or permission-denied shutdown discovery cannot authorize escalation or success", async t => {
+  for (const code of ["ESRCH", "EACCES"]) {
+    const s = setup(t), f = await listener(s, "process.on('SIGTERM',()=>{});"), path = manifest(s, [f]);
+    const injected = `const fs=require('node:fs'),original=fs.readdirSync,kill=process.kill;let signaled=false;
+      process.kill=function(pid,signal){const result=kill.call(this,pid,signal);if(signal==='SIGTERM')signaled=true;return result;};
+      fs.readdirSync=function(path,...args){if(path==='/proc'&&signaled){
+        throw Object.assign(new Error('fixture unavailable discovery'),{code:${JSON.stringify(code)}});}
+        return original.call(this,path,...args);};
+      require('node:module').syncBuiltinESMExports();
+      process.argv=[process.execPath,${JSON.stringify(join(s.scripts, "free-ports.mjs"))},...${JSON.stringify(actionArgs(path, f.port))}];
+      import(${JSON.stringify(join(s.scripts, "free-ports.mjs"))});`;
+    const result = await s.run("-e", [injected]);
+    assert.equal(result.code, 4, result.text); assert(isAlive(f.identity));
+    assert(!result.text.includes('"signal":"SIGKILL"'), result.text);
+    if (code === "EACCES") assert(!result.text.includes("transient-shutdown-discovery"), result.text);
+  }
 });

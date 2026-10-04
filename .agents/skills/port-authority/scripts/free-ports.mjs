@@ -3,25 +3,30 @@
  * Linux-only, cooperative TCP cleanup. No PID is authorized by its port/name.
  * Usage: node free-ports.mjs [--dry-run] [--ownership-manifest FILE]
  *        [--authorized-cleanup] [--include-own-tree] PORT...
- * Ownership manifest v1: {version:1, bootId, expiresAt, ports:[...],
- *   processes:[{pid,startTime}], authorizationReference, allowOwnTree?:true}
- * A verified host must produce and authorize this manifest. A CLI flag, JSON
- * field, or local file cannot authenticate approval against a caller editing it.
+ * Ownership manifest v2 additionally binds task/approved-plan/run.
+ * Host attests runtime; Failure Gate verifies and claims reclaim authorization.
+ * Neither a local manifest nor an action flag authenticates approval.
  * States: FREE=0, failed=1, invalid/production=2, busy/skipped=3, unknown=4.
  * Adapt host wiring/manifest generation with approval; do not weaken guards.
  */
-import { readFileSync, readdirSync, readlinkSync, lstatSync } from "node:fs";
+import { readFileSync, readdirSync, readlinkSync } from "node:fs";
+import { performance } from "node:perf_hooks";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  classifyRuntimeEnvironment, runtimeBinding, verifiedHostAttestation, boundedHostCall, readBoundedJSON,
+} from "./runtime-environment.mjs";
+import { beginReclaim } from "./host-capabilities.mjs";
 
 const output = (state, code, details = {}) => {
   console.log(JSON.stringify({ tool: "free-ports", state, ...details }));
   process.exit(code);
 };
 if (process.platform !== "linux") output("UNKNOWN", 4, { reason: "Linux /proc required" });
-if (
-  process.env.NODE_ENV === "production" ||
-  process.env.REPLIT_DEPLOYMENT === "1" ||
-  process.env.REPLIT_ENVIRONMENT === "production"
-) output("PROHIBITED", 2, { reason: "production indicator takes precedence" });
+const admission = await classifyRuntimeEnvironment();
+if (!admission.allowed) output("PROHIBITED", 2, { reason: admission.reason });
+if (admission.classification === "verified-development") {
+  console.error(JSON.stringify({ tool: "free-ports", incident: "verified-development-context-admission" }));
+}
 if (process.env.FREE_PORTS_DISABLE === "1" || process.env.FREE_PORTS_RUNNING === "1") {
   output("SKIPPED", 3, { reason: "disabled/recursive; no free-port claim" });
 }
@@ -115,14 +120,16 @@ const holders = [...initial.holders].map(pid => initial.processes.get(pid));
 if (!manifestPath) output("PROTECTED_BUSY", 3, { reason: "ownership manifest required", ports: wanted, holders });
 let manifest, bootId;
 try {
-  if (lstatSync(manifestPath).isSymbolicLink()) throw new Error("manifest symlink rejected");
-  manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  manifest = readBoundedJSON(manifestPath);
   bootId = readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim();
-  if (manifest.version !== 1 || manifest.bootId !== bootId ||
+  if (manifest.version !== 2 || manifest.bootId !== bootId ||
       !Number.isFinite(manifest.expiresAt) || manifest.expiresAt <= Date.now() ||
       typeof manifest.authorizationReference !== "string" || !manifest.authorizationReference.trim() ||
       !Array.isArray(manifest.ports) || !wanted.every(p => manifest.ports.includes(p)) ||
-      !Array.isArray(manifest.processes)) throw new Error("invalid/expired manifest scope");
+      !Array.isArray(manifest.processes) ||
+      !["taskId", "approvedPlanBinding", "runId"].every(k =>
+        typeof manifest.runBinding?.[k] === "string" && manifest.runBinding[k].trim() &&
+        manifest.runBinding[k].length <= 512)) throw new Error("invalid/expired manifest scope or run binding");
 } catch (e) { output("UNKNOWN", 4, { reason: e.message }); }
 const targets = new Map();
 for (const target of manifest.processes) {
@@ -172,15 +179,45 @@ function preflight(current) {
 try { preflight(initial); } catch (e) { output("PROTECTED_BUSY", 3, { reason: e.message, holders }); }
 if (dryRun || !action) output("PROTECTED_BUSY", 3, { reason: "dry-run inventory; no signals sent", holders, targets: [...targets.values()] });
 process.env.FREE_PORTS_RUNNING = "1";
-function signalTargets(signal) {
+const binding = runtimeBinding();
+const operationId = randomUUID();
+const requestedScope = {
+  ports: [...wanted].sort((a, b) => a - b),
+  processes: [...targets.values()].map(({ pid, startTime }) => ({ pid, startTime })).sort((a, b) => a.pid - b.pid),
+  allowOwnTree: includeOwn && manifest.allowOwnTree === true,
+  signals: ["SIGTERM", "SIGKILL"], graceMs: 3000, killVerificationMs: 5000,
+};
+const scopeDigest = createHash("sha256").update(JSON.stringify(requestedScope)).digest("hex");
+let authorization, outcomeAttempted = false, signalsAttempted = false;
+const signalOutcomes = [];
+const verificationObservations = [];
+async function signalTargets(signal) {
+  const guard = await classifyRuntimeEnvironment();
+  if (!guard.allowed) throw new Error(`runtime guard blocked before signal: ${guard.reason}`);
+  const attestation = guard.attestation ?? await verifiedHostAttestation();
+  if (attestation.attestationId !== authorization.attestationId) throw new Error("operation attestation changed; renewed authorization required");
+  const permit = await boundedHostCall(authorization.checkBeforeSignal.bind(authorization), {
+    operationId, binding, requestedScope, scopeDigest, attestation, signal,
+  });
+  if (permit !== true) throw new Error("Failure Gate rejected signal intent");
   const current = inventory();
   preflight(current); // all-or-nothing scope check before each escalation
   for (const target of targets.values()) {
     const info = incarnation(target.pid);
     if (!info || ["Z", "X"].includes(info.state)) continue;
     if (info.startTime !== target.startTime) throw new Error("PID incarnation changed before signal");
+    if (authorization.expiresAt <= Date.now() || attestation.expiresAt <= Date.now()) {
+      throw new Error("authority or attestation expired before signal");
+    }
+    signalsAttempted = true;
     console.error(JSON.stringify({ incident: "authorized-process-signal", pid: target.pid, startTime: target.startTime, signal }));
-    try { process.kill(target.pid, signal); } catch (e) { if (e.code !== "ESRCH") throw e; }
+    try {
+      process.kill(target.pid, signal);
+      signalOutcomes.push({ pid: target.pid, startTime: target.startTime, signal, result: "delivered" });
+    } catch (e) {
+      signalOutcomes.push({ pid: target.pid, startTime: target.startTime, signal, result: e.code ?? "failed" });
+      if (e.code !== "ESRCH") throw e;
+    }
   }
 }
 function stoppedAndFree() {
@@ -192,15 +229,65 @@ function stoppedAndFree() {
   });
 }
 async function wait(ms) {
-  const until = Date.now() + ms;
-  do { if (stoppedAndFree()) return true; await sleep(50); } while (Date.now() < until);
+  const until = performance.now() + ms;
+  do {
+    try { if (stoppedAndFree()) return true; }
+    catch (e) {
+      // Read-only shutdown snapshots may race exiting processes. Re-observe
+      // only known transient discovery gaps within the existing finite budget.
+      // Never retry a claim/write/signal or escalate on an unknown final snapshot.
+      if (!["ENOENT", "ESRCH"].includes(e.code) && e.message !== "listener ownership unavailable") throw e;
+      const observation = { incident: "transient-shutdown-discovery", reason: e.message };
+      verificationObservations.push(observation);
+      console.error(JSON.stringify(observation));
+    }
+    await sleep(50);
+  } while (performance.now() < until);
+  // A known final snapshot is mandatory, including before deciding escalation.
   return stoppedAndFree();
 }
-try {
-  signalTargets("SIGTERM");
-  if (!await wait(3000)) {
-    signalTargets("SIGKILL");
-    if (!await wait(5000)) output("CLEANUP_FAILED", 1, { reason: "targets or listener survived" });
+async function finish(state, code, details) {
+  const rawOutcome = { state, exitCode: code, ...details, verificationObservations };
+  if (authorization && !outcomeAttempted) {
+    outcomeAttempted = true;
+    try {
+      const recorded = await boundedHostCall(authorization.recordOutcome.bind(authorization), {
+        operationId, rawOutcome, signalOutcomes, scopeDigest, binding,
+      });
+      if (recorded !== true) throw new Error("Failure Gate did not acknowledge operation evidence");
+    } catch (e) {
+      output("UNKNOWN", 4, { reason: e.message, rawOutcome, evidenceRecorded: false,
+        requiresRecovery: true, operationId });
+    }
   }
-  output("FREE", 0, { ports: wanted, verifiedTargetsStopped: true });
-} catch (e) { output("UNKNOWN", 4, { reason: e.message, requiresRecovery: true }); }
+  output(state, code, { ...details, verificationObservations, operationId, evidenceRecorded: Boolean(authorization) });
+}
+try {
+  const attestation = admission.attestation ?? await verifiedHostAttestation();
+  authorization = await boundedHostCall(beginReclaim, {
+    operationId, operation: "runtime.process-reclaim", manifest, binding,
+    requestedScope, scopeDigest, attestation,
+  });
+  if (authorization?.protocolVersion !== 1 ||
+      typeof authorization.authorizationId !== "string" || !authorization.authorizationId.trim() ||
+      authorization.operationId !== operationId || authorization.scopeDigest !== scopeDigest ||
+      authorization.attestationId !== attestation.attestationId ||
+      !Number.isSafeInteger(authorization.expiresAt) || authorization.expiresAt <= Date.now() ||
+      authorization.expiresAt > manifest.expiresAt ||
+      !["taskId", "approvedPlanBinding", "runId"].every(k =>
+        authorization.runBinding?.[k] === manifest.runBinding[k]) ||
+      typeof authorization.checkBeforeSignal !== "function" ||
+      typeof authorization.recordOutcome !== "function") {
+    authorization = null;
+    throw new Error("Failure Gate returned an invalid or mismatched operation handle; claim outcome uncertain");
+  }
+  await signalTargets("SIGTERM");
+  if (!await wait(3000)) {
+    await signalTargets("SIGKILL");
+    if (!await wait(5000)) await finish("CLEANUP_FAILED", 1, { reason: "targets or listener survived" });
+  }
+  await finish("FREE", 0, { ports: wanted, verifiedTargetsStopped: true });
+} catch (e) {
+  await finish("UNKNOWN", 4, { reason: e.message, requiresRecovery: true,
+    signalsAttempted, authorizationEstablished: Boolean(authorization) });
+}

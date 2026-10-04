@@ -6,7 +6,7 @@ description: >-
   unintended tier changes, classify failures using provenance, and require
   applicable recorded validation for completion. Use for task planning,
   task-driven validation, baseline ownership, Failure Gate installation, or
-  investigations of overlapping, duplicate, or unauthorized validation.
+  investigations of overlapping, duplicate, or unauthorized validation, or checked runtime reclaim.
 ---
 
 # Failure Gate v4
@@ -44,13 +44,11 @@ persistence, approval-event/decision source, final-write coordination, and avail
 project-local completion checks. No framework,
 package manager, database, cloud, CI provider, task service, or preinstalled
 companion skill is required.
-
 Map the semantic contract to verified host interfaces in a capability manifest.
 All example names, paths, tiers, and commands are illustrative, not dependencies.
 Use existing equivalents rather than introducing a second project structure.
 On hosts using `.agents`, keep canonical skill sources there; other instruction
 files such as `replit.md` are discovery candidates only when present.
-
 Classify each required capability as present, missing, or unavailable. Do not
 assume named scripts or platform APIs exist. Read
 [implementation.md](reference/implementation.md) for installation or changes to
@@ -62,18 +60,27 @@ not optional recommendations or supplied host implementations.
 Read [execution-monitoring.md](reference/execution-monitoring.md) for installation,
 launch coordination, or overlapping/duplicate/unauthorized validation questions.
 Its monitor, durable file log, guard, and automatic lookup are required host contracts.
+Read [validation-budgets.md](reference/validation-budgets.md) for every finite
+validation launch, including direct scripts, tests/hooks and nested/recovery work.
+Finite approved limits and verified outer supervision are mandatory even for
+fast checks or skipped serialization; missing capabilities block that route.
+Read [runtime-reclaim.md](reference/runtime-reclaim.md) for runtime cleanup/reclaim.
+Trusted host attests environment; Failure Gate verifies authentic scoped approval
+and claims one exact operation; Port Authority applies ownership guards and acts.
+This distinct capability grants no validation tier, waiver, or administrative closure.
+Its independently attested development context and protected authorization/evidence
+routes must be verified before signals; missing capabilities block live reclaim.
+Authoring this contract neither registers nor activates those routes.
 
 - **Operate:** use verified host commands and interfaces.
 - **Install:** implement the missing pieces only when installation is requested;
   preserve existing validation coverage and update canonical sources, not mirrors.
 - **Unavailable:** report the exact blocker. Do not invent infrastructure or
   silently downgrade an already active gate.
-
 Documentation-only authoring and non-project conversation are not project
 validation runs. For project tasks, use the registered docs/no-op tier only when
 its policy explicitly covers the work; never invent a passing validation result.
 Keep deliverables outside `.local/`. Disposable archives are not durable plans.
-
 An implemented installation publishes one tracked evidence index linked from
 the capability manifest, identifying actual stores/access procedures and
 availability without secrets. Prove allocator restore readiness in an authorized

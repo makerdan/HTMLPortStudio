@@ -15,30 +15,35 @@
  */
 import {
   readFileSync, readdirSync, mkdirSync, rmdirSync, unlinkSync, openSync,
-  closeSync, writeFileSync, fsyncSync, renameSync, lstatSync, realpathSync,
+  closeSync, writeFileSync, fsyncSync, renameSync, realpathSync,
 } from "node:fs";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID, createHash } from "node:crypto";
 import { spawn } from "node:child_process";
+import { performance } from "node:perf_hooks";
+import { classifyRuntimeEnvironment, readBoundedJSON } from "./runtime-environment.mjs";
 
-const fail = (message, code = 4) => {
-  console.error(JSON.stringify({ tool: "validation-lock", state: "BLOCKED", reason: message }));
+const fail = (message, code = 4, details = {}) => {
+  console.error(JSON.stringify({ tool: "validation-lock", state: "BLOCKED", reason: message, ...details }));
   process.exit(code);
 };
 if (process.platform !== "linux") fail("Linux process-incarnation discovery required", 2);
-if (process.env.NODE_ENV === "production" || process.env.REPLIT_DEPLOYMENT === "1" ||
-    process.env.REPLIT_ENVIRONMENT === "production") fail("production indicator takes precedence", 2);
+const admission = await classifyRuntimeEnvironment();
+if (!admission.allowed) fail(admission.reason, 2);
+if (admission.classification === "verified-development") {
+  console.error(JSON.stringify({ tool: "validation-lock", incident: "verified-development-context-admission" }));
+}
 function ms(name, fallback) {
   const n = Number(process.env[`VALIDATION_LOCK_${name}`] ?? fallback);
-  if (!Number.isSafeInteger(n) || n <= 0) fail(`invalid ${name}`, 2);
+  if (!Number.isSafeInteger(n) || n <= 0 || n > 2147483647) fail(`invalid ${name}: explicit finite timer-safe milliseconds required`, 2);
   return n;
 }
 const pollMs = ms("POLL_MS", 100);
-const queueMs = ms("TIMEOUT_MS", 3 * 60 * 60 * 1000);
+const queueMs = ms("TIMEOUT_MS");
 const heartbeatMs = ms("HEARTBEAT_MS", 1000);
 const staleMs = ms("STALE_HEARTBEAT_MS", 10000);
-const maxHoldMs = ms("MAX_HOLD_MS", 2 * 60 * 60 * 1000);
+const maxHoldMs = ms("MAX_HOLD_MS");
 const graceMs = ms("STOP_GRACE_MS", 3000);
 const killMs = ms("STOP_KILL_MS", 5000);
 const priorityGraceMs = ms("PRIORITY_GRACE_MS", 2000);
@@ -90,8 +95,7 @@ function ancestor(identity) {
 }
 function readLease(path) {
   try {
-    if (lstatSync(path).isSymbolicLink()) throw new Error("lease symlink rejected");
-    const r = JSON.parse(readFileSync(path, "utf8"));
+    const r = readBoundedJSON(path, 1024 * 1024);
     if (r.version !== 2 || r.bootId !== bootId ||
         !/^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(r.token) ||
         !Number.isInteger(r.owner?.pid) || r.owner.pid <= 1 ||
@@ -148,7 +152,7 @@ function guarded(fn) {
     // Never steal an abandoned mutex: uncertain interrupted transitions require
     // an authorized host recovery with contenders stopped, not a timed unlink.
     try {
-      const owner = JSON.parse(readFileSync(join(transitionDir, "owner.json"), "utf8"));
+      const owner = readBoundedJSON(join(transitionDir, "owner.json"), 8192);
       if (owner.token === transitionToken) {
         unlinkSync(join(transitionDir, "owner.json"));
         rmdirSync(transitionDir);
@@ -176,13 +180,14 @@ const waitersDir = resolve(process.env.VALIDATION_LOCK_WAITERS_DIR ??
 mkdirSync(waitersDir, { recursive: true, mode: 0o700 });
 const waiterFile = join(waitersDir, `${process.pid}-${self.startTime}.json`);
 const enqueuedAt = Date.now();
+const enqueuedMono = performance.now();
 writeFileSync(waiterFile, JSON.stringify({ owner: self, priority, enqueuedAt, lockFile }), { mode: 0o600 });
 const deregister = () => { try { unlinkSync(waiterFile); } catch { /* absent */ } };
 function yieldPriority() {
   for (const file of readdirSync(waitersDir)) {
     if (!file.endsWith(".json")) continue;
     try {
-      const w = JSON.parse(readFileSync(join(waitersDir, file), "utf8"));
+      const w = readBoundedJSON(join(waitersDir, file), 8192);
       if (w.lockFile === lockFile && w.priority < priority &&
           Date.now() - w.enqueuedAt > priorityGraceMs && alive(w.owner)) return true;
     } catch { /* priority is advisory; manifests never grant ownership */ }
@@ -190,13 +195,63 @@ function yieldPriority() {
   return false;
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-let lease, child, stopReason, cancelled = false, released = false;
+let lease, child, stopReason, acquiredMono, cancelled = false, released = false;
+const delivered = new Set();
+function discover() {
+  const processes = allProcesses();
+  const known = new Set(lease.observed.filter(alive).map(p => p.pid));
+  let added = true;
+  while (added) {
+    added = false;
+    for (const p of processes) if (!["Z", "X"].includes(p.state) &&
+        ((lease.group && p.pgrp === lease.group && p.session === lease.group) || known.has(p.ppid))) {
+      if (!lease.observed.some(old => same(old, p))) { lease.observed.push(p); added = true; }
+      known.add(p.pid);
+    }
+  }
+  return processes;
+}
+function signalOwned(signal, processes) {
+  for (const old of lease.observed) {
+    const now = processes.find(p => same(p, old));
+    if (!now || ["Z", "X"].includes(now.state)) continue;
+    const key = `${signal}:${old.pid}:${old.startTime}`;
+    if (delivered.has(key)) continue;
+    const fresh = proc(now.pid);
+    if (!same(fresh, old)) throw new Error("process incarnation changed before signal");
+    console.error(JSON.stringify({ incident: "owned-workload-signal", pid: old.pid, startTime: old.startTime, signal }));
+    try { process.kill(old.pid, signal); delivered.add(key); } catch (e) { if (e.code !== "ESRCH") throw e; }
+  }
+}
+async function stopAfterFailure() {
+  if (!child?.pid || !lease?.group) return { cleanupAttempted: false };
+  const started = performance.now();
+  let discoveryComplete = true, lastError = null;
+  console.error(JSON.stringify({ incident: "supervision-error-owned-cleanup", token: lease.token }));
+  do {
+    let processes;
+    try { processes = discover(); }
+    catch (e) {
+      discoveryComplete = false; lastError = e.message;
+      // Partial discovery cannot prove quiescence; only previously owned exact
+      // incarnations may receive best-effort signals. Never release this lease.
+      processes = lease.observed.map(p => proc(p.pid)).filter(Boolean);
+    }
+    if (!workloadAlive(lease, processes)) {
+      return { cleanupAttempted: true, workloadStopped: discoveryComplete, cleanupError: lastError, leaseRetained: true };
+    }
+    try { signalOwned(performance.now() - started < graceMs ? "SIGTERM" : "SIGKILL", processes); }
+    catch (e) { lastError = e.message; }
+    await sleep(Math.min(pollMs, 50));
+  } while (performance.now() - started < graceMs + killMs);
+  return { cleanupAttempted: true, workloadStopped: false, cleanupError: lastError, leaseRetained: true };
+}
 for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
   process.on(signal, () => { cancelled = true; stopReason ??= signal; });
 }
 process.on("exit", deregister);
 try {
-  while (!cancelled && Date.now() - enqueuedAt < queueMs) {
+  while (!cancelled && performance.now() - enqueuedMono < queueMs) {
     if (yieldPriority()) { await sleep(pollMs); continue; }
     const result = guarded(() => {
       const old = readLease(lockFile);
@@ -209,6 +264,7 @@ try {
       lease = { version: 2, bootId, token: randomUUID(), owner: self, baseFile, resource,
         acquiredAt: Date.now(), heartbeatAt: Date.now(), phase: "reserved", group: null, observed: [] };
       durableWrite(lockFile, lease, true);
+      acquiredMono = performance.now();
       return true;
     });
     if (result.value) break;
@@ -225,12 +281,12 @@ try {
     if (!current || current.token !== entry.token || !alive(entry.owner)) throw new Error("parent lease changed while queued");
   }
   const transition = async fn => {
-    const until = Date.now() + Math.max(1000, graceMs);
+    const until = performance.now() + Math.max(1000, graceMs);
     do {
       const r = guarded(fn);
       if (!r.busy) return r.value;
       await sleep(Math.min(pollMs, 25));
-    } while (Date.now() < until);
+    } while (performance.now() < until);
     throw new Error("transition interrupted/busy; lifecycle cannot be recorded");
   };
   const mutate = () => transition(() => {
@@ -243,13 +299,25 @@ try {
   const legacyKey = `VALIDATION_LOCK_HELD_PID_${resource.toUpperCase().replaceAll("-", "_")}`;
   delete env[legacyKey];
   if (resource === "global") delete env.VALIDATION_LOCK_HELD_PID;
+  const dispatchAdmission = await classifyRuntimeEnvironment();
+  if (!dispatchAdmission.allowed) throw new Error(`runtime guard blocked before dispatch: ${dispatchAdmission.reason}`);
   lease.phase = "launching"; await mutate(); // crash in launch gap must remain blocked
   console.log(JSON.stringify({ tool: "validation-lock", state: "ACQUIRED", resource,
-    nested: Boolean(context), token: lease.token, queueWaitMs: Date.now() - enqueuedAt }));
+    nested: Boolean(context), token: lease.token, queueWaitMs: Math.round(performance.now() - enqueuedMono),
+    queueLimitMs: queueMs, executionLimitMs: maxHoldMs, stopGraceMs: graceMs,
+    stopVerificationMs: killMs, clock: "monotonic", authority: "local-supervision-not-checked-approval" }));
+  const launchAdmission = await classifyRuntimeEnvironment();
+  if (!launchAdmission.allowed) throw new Error(`runtime guard blocked before launch: ${launchAdmission.reason}`);
+  if (cancelled || performance.now() - acquiredMono >= maxHoldMs) {
+    throw new Error(cancelled ? "cancelled before launch" : "execution-budget expired before launch");
+  }
   child = spawn(command[0], command.slice(1), { detached: true, stdio: "inherit", env });
   let exitCode = null, childSignal = null, spawnError = null, ended = false;
   child.on("error", e => { spawnError = e; ended = true; });
-  child.on("exit", (code, signal) => { exitCode = code; childSignal = signal; ended = true; });
+  child.on("exit", (code, signal) => {
+    exitCode = code; childSignal = signal; ended = true;
+    if (performance.now() - acquiredMono >= maxHoldMs) stopReason ??= "execution-budget";
+  });
   if (Number.isInteger(child.pid)) {
     lease.group = child.pid;
     const identity = proc(child.pid);
@@ -261,48 +329,23 @@ try {
     if (!spawnError) throw new Error("launch outcome unknown");
     lease.phase = "finished"; await mutate();
   }
-  let lastHeartbeat = Date.now(), stoppingAt = null, killedAt = null;
-  function discover() {
-    const processes = allProcesses();
-    const known = new Set(lease.observed.filter(alive).map(p => p.pid));
-    let added = true;
-    while (added) {
-      added = false;
-      for (const p of processes) if (!["Z", "X"].includes(p.state) &&
-          ((lease.group && p.pgrp === lease.group && p.session === lease.group) || known.has(p.ppid))) {
-        if (!lease.observed.some(old => same(old, p))) { lease.observed.push(p); added = true; }
-        known.add(p.pid);
-      }
-    }
-    return processes;
-  }
-  function signalOwned(signal, processes) {
-    for (const old of lease.observed) {
-      const now = processes.find(p => same(p, old));
-      if (!now || ["Z", "X"].includes(now.state)) continue;
-      const fresh = proc(now.pid);
-      if (!same(fresh, old)) throw new Error("process incarnation changed before signal");
-      console.error(JSON.stringify({ incident: "owned-workload-signal", pid: old.pid, startTime: old.startTime, signal }));
-      try { process.kill(old.pid, signal); } catch (e) { if (e.code !== "ESRCH") throw e; }
-    }
-  }
+  let lastHeartbeat = performance.now(), stoppingAt = null, killedAt = null;
   while (true) {
     const processes = discover(), active = workloadAlive(lease, processes);
-    if (Date.now() - lastHeartbeat >= heartbeatMs || active) {
-      lease.heartbeatAt = Date.now(); await mutate(); lastHeartbeat = Date.now();
+    if (performance.now() - lastHeartbeat >= heartbeatMs || active) {
+      lease.heartbeatAt = Date.now(); await mutate(); lastHeartbeat = performance.now();
     }
+    if (performance.now() - acquiredMono >= maxHoldMs) stopReason ??= "execution-budget";
     if (ended && !active) break;
-    if (Date.now() - lease.acquiredAt >= maxHoldMs) stopReason ??= "execution-budget";
     if (ended && active) stopReason ??= "surviving-descendant";
     if (stopReason && stoppingAt === null) {
-      stoppingAt = Date.now();
-      signalOwned("SIGTERM", processes);
+      stoppingAt = performance.now();
     }
-    if (stoppingAt !== null && killedAt === null && Date.now() - stoppingAt >= graceMs) {
-      killedAt = Date.now();
-      signalOwned("SIGKILL", processes);
+    if (stoppingAt !== null && killedAt === null && performance.now() - stoppingAt >= graceMs) {
+      killedAt = performance.now();
     }
-    if (killedAt !== null && Date.now() - killedAt >= killMs && active) {
+    if (stoppingAt !== null) signalOwned(killedAt === null ? "SIGTERM" : "SIGKILL", processes);
+    if (killedAt !== null && performance.now() - killedAt >= killMs && active) {
       throw new Error("owned workload not confirmed stopped; lease retained");
     }
     await sleep(Math.min(pollMs, 50));
@@ -323,5 +366,8 @@ try {
   // A malformed or interrupted lease remains for verified recovery. Do not
   // turn an evidence/lifecycle gap into an unlocked successful validation.
   deregister();
-  fail(e.message);
+  let cleanup;
+  try { cleanup = await stopAfterFailure(); }
+  catch (cleanupError) { cleanup = { cleanupAttempted: true, workloadStopped: false, cleanupError: cleanupError.message, leaseRetained: Boolean(lease) }; }
+  fail(e.message, 4, cleanup);
 }

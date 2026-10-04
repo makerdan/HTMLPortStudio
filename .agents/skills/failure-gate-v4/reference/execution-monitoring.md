@@ -87,8 +87,20 @@ Timeout, stale heartbeat, parent exit, missing finish event, or PID alone cannot
 establish death; use verified process incarnation/job identity and lifecycle proof.
 Never replace a live run, auto-unlock uncertain work, or kill unrelated processes.
 Tier changes and terminal transitions reconcile these slots with existing leases.
+Runtime reclaim follows [runtime-reclaim.md](runtime-reclaim.md): claim the exact
+operation and conflicting resources in the authoritative coordinator, within its
+verified parent run when applicable. Do not make a registered cleanup suboperation
+reacquire its parent's exclusive top-level slot or invent a new validation run.
+A local Port Authority resource lease is not this checked claim or task authority.
 
 ## 3. Record decisions and actual execution separately
+
+Apply [validation-budgets.md](validation-budgets.md) even to fast/direct routes or
+skipped serialization. Record approved budget source, effective queue/step/parent/
+attempt/test/hook/cleanup/evidence limits, monotonic elapsed time and remainder,
+deadline reason, raw exit, termination proof, retained exclusion and storage
+acknowledgement. Post-spawn journal failure triggers bounded owned cleanup without
+requiring healthy writes; it cannot release uncertainty or allow a late zero PASS.
 
 Log safe, versioned events for requests, authorization/guard decisions,
 queued/deduplicated/denied requests, persisted launch intents, confirmed starts,
@@ -206,6 +218,9 @@ production change, or repair task creation is implied by an overlap question.
 The monitor/log does not create tier authorization or accepted validation.
 Owner-directed closure retains its existing exception and safe run handling
 without requiring a healthy log, passing tests, or a second owner confirmation.
+Inspection does not authorize runtime reclaim. Link claim/operation/attestation
+IDs and truthful partial signal outcomes into existing indexed telemetry when
+applicable; do not promote local copied reports into authoritative approval.
 
 ## 6. Installation and proof
 

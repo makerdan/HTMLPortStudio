@@ -38,6 +38,12 @@ the path. Unknown or lost telemetry stays explicit, not invented history.
 Never assert that an illustrative repository path contains the live store.
 Protected stores may live outside the repository; document safe access rather
 than committing database binaries or exposing secrets.
+For runtime reclaim, index the actual independent host-attestation source,
+authentic approval, claimed operation/run/scope, intent/outcome journal and
+uncertainty-recovery access described in [runtime-reclaim.md](runtime-reclaim.md).
+Record partial signals, observed termination/port checks and missing storage
+acknowledgement separately from validation assessment. Local logs and copied
+references locate evidence; they never authenticate or renew live grants.
 
 ## 2. Define and prove allocator recovery
 
@@ -108,6 +114,12 @@ a pass. No evidence index or health check becomes a new prerequisite for
 owner-directed closure beyond its existing identity/run-safety requirements.
 
 ## 5. Provide read-only evidence-health inspection
+
+Include applicable effective-limit/deadline lineage, cumulative exhaustion,
+termination uncertainty and missing authoritative acknowledgements under
+[validation-budgets.md](validation-budgets.md). Evidence capture and recovery jobs
+are finite too; neither a local abort nor copied raw zero resolves missing evidence
+or renews a parent/attempt budget. Preserve original identities and exclusion.
 
 Discover or implement an authorized read-only inspection route covering
 broken/inaccessible artifact references, missing reports, namespace/task binding
