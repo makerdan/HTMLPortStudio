@@ -55,7 +55,7 @@ Choose the mode from the request:
 
 Use the host project's native approach and conventions. Read an installed
 specialist skill only when its subject is in scope: for runtime work read
-`.agents/skills/Port-Authority/SKILL.md` and, only when its stated heavy-project
+`.agents/skills/port-authority/SKILL.md` and, only when its stated heavy-project
 gate applies, `.agents/skills/Port-Authority-Heavy/SKILL.md`; for a server-side
 AI help surface read `.agents/skills/poe-setup/SKILL.md` only if it is the
 relevant provider guidance. Do not copy a specialist's product, provider, or
