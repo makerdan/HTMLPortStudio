@@ -99,6 +99,103 @@ is tested only when that capability is authorized and genuinely enabled; a
 blocked reclaim feature is neither a prerequisite for unrelated staging nor an
 excuse to accept a dependent caller. State the exact verified/blocked controls.
 
+### Project-specific implementation and acceptance
+
+When the user authorizes project implementation/acceptance rather than only
+staging, use this sequence within the actual approved scope. Updating this skill
+does not authorize changing a project. Source/archive parity proves integrity,
+not trusted authorization integration, installed lock wiring or API health.
+Do not finish a project implementation task at file placement when approved
+integration and acceptance remain actionable.
+
+1. Audit the current project: canonical authorization/Failure Gate sources and
+   policy status; actual host runtime configuration and trust boundaries;
+   existing cleanup/locks; package aliases, pre/post hooks, tier/diagnostic
+   runners, workflows, nested callers; shared ports, generated outputs and DB
+   state; backend health contract, browser routing and existing test harness.
+   Treat reported findings as leads and verify current behavior read-only.
+   Do not assume a Studio frontend, framework, provider, route or package manager.
+2. Plan the permitted implementation with a Regression Guard, explicit validation
+   and per-control acceptance criteria. Distinguish inert staging, non-reclaim
+   controls and live reclaim. Preserve approved task/plan/run bindings, coverage,
+   production guards, budgets and retained leases. Do not reinterpret a stricter
+   task or draft plan as approval. Obtain exact disruption authorization before
+   signaling active services, changing live callers or performing a disruptive
+   cutover. Do not change production without its separate explicit authorization.
+3. Implement actual independently trusted provider integration where in scope.
+   Adapt the code-owned host boundary to the verified platform attestation and
+   checked reclaim/claim/recheck/outcome routes, reusing genuine existing
+   protected infrastructure. A local manifest, boolean, mock or invented API is
+   not a trusted authorization integration. Do not install the fixture adapter
+   or weaken guards. If a capability is absent, identify the exact authoritative
+   provider/route/permission dependency and keep dependent cleanup BLOCKED.
+   Continue only independently authorized work; transitive cleanup dependencies
+   remain blockers. Never claim interface documentation implemented a provider.
+4. Adopt the audited existing lock or adapt the canonical template only where
+   actual conflicts require serialization. Install the project implementation
+   and wire actual conflicting callers under approved cutover; a staged lock
+   file is not installed lock wiring. Map every conflicting alias, hook, nested
+   runner and workflow to the same canonical lock identity or verified common
+   acquisition order. `global` is not hierarchical, and a composite lock does
+   not conflict with constituent names. Check finite queue/execution/cleanup
+   limits, admission and raw failure propagation. Non-conflicting callers need
+   no invented lock but still need finite transitive supervision.
+5. Repair the actual health probe under the API health acceptance below.
+   For browser callers, including a Studio probe when present, test the browser's
+   real routed request rather than just a direct backend curl or a fixture-only
+   helper. Use existing project infrastructure; do not add an unnecessary API.
+6. Execute applicable authorized acceptance twice consecutively on current
+   inputs without manual port/process/lock cleanup between runs. Retain real
+   route, scope, limits, revision, raw outcomes and assessment evidence. Active
+   Failure Gate requires its checked routes; verified inactivity uses existing
+   host policy; unknown applicability blocks the affected decision. Isolated
+   bundle tests cannot replace these real project runs.
+
+For live reclaim being enabled, acceptance must prove authorization denials
+cannot signal and exact approved operations use genuine providers and persist
+acknowledged outcomes. For applicable serialization, prove wired conflicting
+callers cannot overlap. An uncovered/unwrapped conflicting alias or alternate
+lock path fails wiring acceptance. Test positive/skip/rejection
+paths applicable to that project; do not trigger live reclaim merely to prove
+the template is installed. Live tests require the separate exact authorization.
+
+Report named controls/callers as STAGED, NON_RECLAIM_VERIFIED or
+LIVE_RECLAIM_ENABLED only with their existing required evidence. Record failed,
+blocked and not-run checks separately, with exact missing dependencies and
+unchanged caller inventory. Source parity is not operational readiness. Do not
+close the project task as validation passed with incomplete applicable proof.
+
+### API health acceptance
+
+For a backend/API project, discover its actual health endpoint and code-owned
+response contract; `/api/healthz` is an example, not a required new route.
+Require the expected successful HTTP status, JSON media type (`application/json`
+or a documented JSON-compatible `+json` type), successful JSON parsing and the
+exact required fields/types/values indicating healthy service. Check service
+identity/version when the existing contract supplies it. Do not invent universal
+`ok:true` or `status:"ok"` fields or assume JSON alone proves health.
+
+Reject HTML with HTTP 200, SPA/login fallback, missing or incorrect content type,
+malformed JSON, unexpected redirects, unhealthy values and wrong-shape/wrong-service
+responses. Use the actual proxy/base URL/path and applicable request method/
+authentication. Never log credentials or sensitive diagnostic bodies. A non-JSON
+legacy probe cannot satisfy this JSON API acceptance: use an existing verified
+JSON endpoint or perform a separately approved compatible endpoint/probe change.
+Record a blocker if that contract change is outside the approved scope.
+Static-only projects need no invented backend; record that applicability rather
+than pretending a frontend document is API health.
+
+Require automated positive and negative regressions against the actual probe.
+Include valid healthy JSON; HTML with HTTP 200 through the same frontend routing;
+missing/wrong media type; malformed JSON; wrong fields/types or service identity;
+unhealthy JSON; unexpected redirects; HTTP failure; and network failure/timeout.
+Discover approved finite request/cumulative limits and verify abort/cancellation;
+a hanging health request cannot pass or outlive its authorized boundary.
+Exercise browser/proxy behavior where applicable, using isolated supported
+route/browser fixtures for outage/negative cases. Do not disrupt production or
+stop a live service just to generate a negative response. Fixture passes are
+regression evidence, not proof that a genuine backend is healthy.
+
 ### Live reclaim activation gate
 
 All existing independent host attestation, exact Failure Gate task/plan/run scope,
@@ -557,6 +654,9 @@ acceptance only through its separately authorized verified route.
 | Retained errors | transient journal/discovery faults block ordinary replacement even without an abandoned sidecar; missing recovery disposition blocks legacy auto-recovery |
 | Independent watchdog | stalled/dead owner and original-group timeout leave no known owned fixture survivors; no command dispatch before independent registration |
 | Manifest members | null/primitive/array/malformed process entries return structured INVALID and send no signals |
+| Project integration | file parity is not activation; genuine providers and real checked acceptance are verified or dependent controls remain BLOCKED |
+| Lock wiring | conflicting actual entry points share verified lock identity/order; uncovered aliases fail acceptance; independent callers retain finite budgets |
+| API health | actual browser/API path validates expected status, JSON media type/body and healthy fields; HTML-200 and other malformed/unhealthy responses cannot pass |
 
 Map each assertion to adapted code, not only to the bundled implementation.
 Check approved host callers, exact scope, resource conflict map, real ports,

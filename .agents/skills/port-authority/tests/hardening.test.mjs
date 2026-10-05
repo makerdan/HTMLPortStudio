@@ -324,6 +324,66 @@ test("policy text: staging is separate without weakening approval or activation 
   assert(!contract.includes("Required-tier runs use Failure Gate's checked"));
 });
 
+test("policy: project implementation requires genuine integration rather than source parity", () => {
+  const guide = readFileSync(join(root, "SKILL.md"), "utf8").replace(/\s+/g, " ");
+  const contract = readFileSync(join(root, "reference/runtime-contract.md"), "utf8").replace(/\s+/g, " ");
+  assert(guide.includes("before staging/adapting or project-specific implementation/acceptance"));
+  for (const text of [
+    "Source/archive parity proves integrity, not trusted authorization integration",
+    "Updating this skill does not authorize changing a project.",
+    "Do not finish a project implementation task at file placement",
+    "A local manifest, boolean, mock or invented API is not a trusted authorization integration.",
+    "keep dependent cleanup BLOCKED",
+    "Continue only independently authorized work",
+    "For live reclaim being enabled",
+    "Isolated bundle tests cannot replace these real project runs.",
+    "unknown applicability blocks the affected decision",
+    "without manual port/process/lock cleanup between runs",
+  ]) assert(contract.includes(text), text);
+  const adapter = readFileSync(join(root, "scripts/host-capabilities.mjs"), "utf8");
+  assert(adapter.includes("HOST_ATTESTATION_UNAVAILABLE"));
+  assert(adapter.includes("FAILURE_GATE_AUTHORIZATION_UNAVAILABLE"));
+});
+
+test("policy: lock adoption wires conflicts without imposing locks on independent callers", () => {
+  const contract = readFileSync(join(root, "reference/runtime-contract.md"), "utf8").replace(/\s+/g, " ");
+  for (const text of [
+    "only where actual conflicts require serialization",
+    "a staged lock file is not installed lock wiring",
+    "Map every conflicting alias, hook, nested runner and workflow",
+    "same canonical lock identity or verified common acquisition order",
+    "Non-conflicting callers need no invented lock but still need finite transitive supervision.",
+    "For applicable serialization, prove wired conflicting callers cannot overlap.",
+    "uncovered/unwrapped conflicting alias or alternate lock path fails wiring acceptance",
+    "Do not change production without its separate explicit authorization.",
+  ]) assert(contract.includes(text), text);
+});
+
+test("policy: health acceptance rejects HTML-200 and validates actual API/browser JSON contract", () => {
+  const guide = readFileSync(join(root, "SKILL.md"), "utf8").replace(/\s+/g, " ");
+  const contract = readFileSync(join(root, "reference/runtime-contract.md"), "utf8").replace(/\s+/g, " ");
+  for (const text of ["JSON media type, parseable JSON and healthy fields",
+    "Reject HTML", "even with HTTP 200", "Browser callers must test their actual routed request path",
+    "positive/negative regressions", "Static-only apps do not need an invented backend endpoint"]) {
+    assert(guide.includes(text), text);
+  }
+  for (const text of [
+    "including a Studio probe when present",
+    "rather than just a direct backend curl or a fixture-only helper",
+    "exact required fields/types/values indicating healthy service",
+    "Do not invent universal",
+    "JSON alone proves health",
+    "Reject HTML with HTTP 200",
+    "missing or incorrect content type",
+    "malformed JSON, unexpected redirects, unhealthy values and wrong-shape/wrong-service",
+    "separately approved compatible endpoint/probe change",
+    "Require automated positive and negative regressions against the actual probe.",
+    "HTML with HTTP 200 through the same frontend routing",
+    "network failure/timeout", "verify abort/cancellation",
+    "Do not disrupt production or stop a live service just to generate a negative response.",
+  ]) assert(contract.includes(text), text);
+});
+
 test("invalid inputs and production flags win over development/disable markers", async t => {
   const s = setup(t);
   for (const args of [[], ["0"], ["65536"], ["--bad"], ["abc"]]) assert.equal((await s.run(cleanup, args)).code, 2);

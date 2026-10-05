@@ -95,7 +95,7 @@ operation. Bundle authoring/testing in this conversation is not host validation.
 
 ### Staged installation and separate activation acceptance
 
-Read [runtime-contract.md](reference/runtime-contract.md) before staging/adapting.
+Read [runtime-contract.md](reference/runtime-contract.md) before staging/adapting or project-specific implementation/acceptance.
 Report per-control states, not an unqualified “installed and operational”:
 - `STAGED`: canonical files verified and placed inertly under applicable approval;
   no live callers changed. Record isolated checks PASSED/FAILED/BLOCKED/NOT_RUN.
@@ -425,10 +425,12 @@ and idle behavior before claiming the symptom is fixed.
 
 ## Phase 8 (ALWAYS) — Health checks and restarts
 
-- For a backend app, health probes must genuinely reach the backend, such
-  as `/api/healthz`, and validate the expected response. SPA HTML fallback
-  can return a misleading 200 while the API is down. Static-only apps do
-  not need an invented backend endpoint.
+- For backend apps, probes must reach the real API and verify its expected
+  status, JSON media type, parseable JSON and healthy fields. Reject HTML,
+  malformed JSON, unexpected redirects and unhealthy/wrong-shape bodies even
+  with HTTP 200. Browser callers must test their actual routed request path.
+  Follow the contract's API health acceptance and positive/negative regressions.
+  Static-only apps do not need an invented backend endpoint.
 - After dependency/config changes, restart affected managed workflows
   rather than assuming hot reload applied everything.
 
@@ -488,10 +490,8 @@ Replacing the workspace bundle does not by itself migrate every project's
 installed copy or prove its runtime validation passes.
 
 This revision replaces legacy scripts and adds runtime/host-capability helpers.
-Migrate approved callers to the documented development-context, v2 lease,
-  and ownership-manifest interfaces, including recovery disposition; old leases
-  and PID-only reentry need
-verified safe cutover, not optimistic reuse. Preserve Failure Gate governance,
-coverage, independent caller compatibility, and real raw results. Templates
-remain cooperative adaptation points with explicitly documented limits.
-No separate Heavy installation is necessary.
+Migrate approved callers to the documented development-context, v2 lease and
+ownership-manifest interfaces, including recovery disposition. Old leases and
+PID-only reentry need verified safe cutover, not optimistic reuse. Preserve
+Failure Gate governance, coverage, independent caller compatibility and raw results.
+Templates retain documented cooperative limits; no separate Heavy is necessary.
