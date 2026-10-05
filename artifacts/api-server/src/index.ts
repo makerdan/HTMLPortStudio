@@ -1,27 +1,16 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { createServer } from "node:http";
+import { listen, parsePort, startupErrorMessage } from "./lib/listen";
 
-const rawPort = process.env["PORT"];
+const port = parsePort(process.env["PORT"]);
+const server = createServer(app);
 
-if (!rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
-}
-
-const port = Number(rawPort);
-
-if (!Number.isInteger(port) || port < 1 || port > 65535) {
-  throw new Error(
-    `Invalid PORT value: "${rawPort}". Expected an integer from 1 to 65535.`,
-  );
-}
-
-app.listen(port, (err) => {
-  if (err) {
-    logger.error({ err }, "Error listening on port");
-    process.exit(1);
-  }
-
+try {
+  await listen(server, port);
   logger.info({ port }, "Server listening");
-});
+} catch (error) {
+  const err = error as NodeJS.ErrnoException;
+  logger.error({ err, port }, startupErrorMessage(err, port));
+  process.exit(1);
+}

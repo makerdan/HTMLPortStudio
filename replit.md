@@ -10,6 +10,11 @@ Import pasted, single-file, or public GitHub HTML apps as normalized source bund
   `artifacts/mockup-sandbox: Component Preview Server` (`8081`). Use those
   named workflows to start or restart services instead of background shells.
 - `PORT=8080 pnpm --filter @workspace/api-server run dev` — run the API server; its health route is `/api/healthz`
+- API startup never reclaims an occupied port. If it reports `EADDRINUSE`,
+  use managed workflow status and Networking to establish the listener's owner.
+  Stop/restart only an identified service with authorization; invisible ownership
+  is not permission to kill. Keep the API `PORT` and artifact `localPort` at
+  `8080` unless routing is deliberately reconfigured together.
 - `PORT=23332 BASE_PATH=/ pnpm --filter @workspace/html-port-studio run dev` — run the HTML Port Studio web app
 - `PORT=8081 BASE_PATH=/__mockup pnpm --filter @workspace/mockup-sandbox run dev` — run the Canvas component preview
 - `PLAYWRIGHT_PORT=5173 pnpm --filter @workspace/html-port-studio run test:browser` — run browser tests on the same configurable port used by their web server and URL
