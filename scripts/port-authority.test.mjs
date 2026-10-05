@@ -169,6 +169,33 @@ test("reports the tracked port contract and startup cleanup wiring", () => {
     assert.equal(typeof packageJson.scripts[name], "string");
   }
   const replit = readFileSync(new URL("../.replit", import.meta.url), "utf8");
+  assert.match(replit, /^\[workflows\]\s*runButton = "Project"$/m);
+  const workflowBlocks = replit
+    .split(/(?=^\[\[workflows\.workflow\]\]$)/m)
+    .filter((block) => /^\[\[workflows\.workflow\]\]\s*$/m.test(block));
+  const workflowBlock = (name) => {
+    const block = workflowBlocks.find((candidate) => new RegExp(`^name = "${name}"$`, "m").test(candidate));
+    assert.ok(block, `Expected the ${name} workflow to remain defined`);
+    return block;
+  };
+  const projectBlock = workflowBlock("Project");
+  const projectTasks = [...projectBlock.matchAll(/^\s*task = "([^"]+)"\s*\n\s*args = "([^"]+)"\s*$/gm)]
+    .map(([, task, args]) => [task, args])
+    .sort(([leftTask, leftArgs], [rightTask, rightArgs]) =>
+      `${leftTask}:${leftArgs}`.localeCompare(`${rightTask}:${rightArgs}`),
+    );
+  assert.deepEqual(projectTasks, [
+    ["workflow.run", "artifacts/api-server: API Server"],
+    ["workflow.run", "artifacts/html-port-studio: web"],
+  ]);
+  assert.doesNotMatch(projectBlock, /test-standard|api-validation|Canvas|mockup-sandbox/);
+  for (const [name, command] of [
+    ["test-standard", "pnpm run test-standard"],
+    ["api-validation", "pnpm run validate:api"],
+  ]) {
+    const block = workflowBlock(name);
+    assert.match(block, new RegExp(`task = "shell\\.exec"\\s*\\n\\s*args = "${command.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`));
+  }
   for (const name of ["test-fast", "test-standard", "test-standard-plus", "test-heavy", "production-build"]) {
     assert.match(replit, new RegExp(`name = "${name}"[\\s\\S]*?args = "pnpm run ${name}"`));
   }
