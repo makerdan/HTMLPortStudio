@@ -1,5 +1,16 @@
 # Owner-directed task closure
 
+Verified ACTIVE Failure Gate governance uses this separate administrative route;
+verified INACTIVE uses its actual existing host closure policy, not imaginary
+Failure Gate APIs. UNKNOWN never implies approval or validation success; a genuinely
+available authorized native owner-closure interface remains independent.
+Explicit checked requests do not fall back. Read
+[staging-and-lifecycle.md](staging-and-lifecycle.md) for retained-error recovery:
+local quiescence does not clear true/unfinalized/missing-field leases or unknown
+authoritative claim/write exclusion. Use existing separately authorized bounded
+exact recovery and durable acknowledgement, never false insertion or blind unlink.
+This adds no passing-test, second-approval or new activation condition to closure.
+
 This is an explicit exception to validation-required completion, not a way to
 turn failing, missing, blocked, or stale evidence into validation success.
 It authorizes administrative closure of the particular task the owner names.

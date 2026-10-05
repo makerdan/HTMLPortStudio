@@ -10,6 +10,13 @@ not a universal dependency of the skill.
 
 ## Host implementation checklist
 
+For verified ACTIVE Failure Gate governance or separately approved installation,
+apply its checked writer/completion requirements below. Verified INACTIVE uses
+verified existing host policy and equivalent finite supervision, not imaginary
+Failure Gate APIs; UNKNOWN blocks dependent acceptance. Invalid explicit checked
+requests never fall back. See [staging/lifecycle](../../staging-and-lifecycle.md)
+before staging or recovery; primitive fixtures do not activate a host control.
+
 1. **Discover and authorize.** Inventory the host's canonical writer entry
    points, background workers, generators, formatters, project checkout/plan
    projections, and local completion checker. Identify which inputs the final
@@ -60,14 +67,26 @@ not a universal dependency of the skill.
    capability is absent, leave ordinary-task activation/completion blocked
    and name the gap.
 
-Examples (replace paths and commands with verified host mappings):
+The `--timeout` is **acquisition-only**, not an execution deadline. Once acquired,
+the wrapper waits for the foreground command; its final child wait is unbounded.
+An external interruption starts escalation, not an automatic execution timeout.
+Every finite writer/completion launch therefore requires a separately verified
+outer supervisor with finite execution, transitive termination, verification and
+capture budgets. It must retain exclusion on unknown work; killing this wrapper
+alone does not prove its child stopped. Do not change lock retention to unlock
+living work. This primitive is not that supervisor or an approved budget source.
+
+Examples below are the **inner invocation only**, never a complete launch recipe.
+Place them inside the host's actual verified finite supervisor using its approved
+bindings/budgets. No universal host supervisor command or endpoint is supplied.
+Replace paths and commands with verified host mappings:
 
 ```sh
 python3 writer_lock.py --lock /absolute/trusted/path/writers.lock --timeout 30 -- your-foreground-writer arg1
 python3 writer_lock.py --lock /absolute/trusted/path/writers.lock --timeout 30 -- your-single-step-local-completion-command
 ```
 
-The wrapper passes the child's exit status through; timeout exits 75 and
+The wrapper passes the child's exit status through; acquisition timeout exits 75 and
 unavailable/invalid locking exits 69. On interruption it forwards the signal
 and waits for its foreground child (killing after five seconds if necessary).
 The foreground child inherits the descriptor, so a killed wrapper does not
@@ -76,13 +95,21 @@ on the final descriptor close. A daemonized or detached writer is outside the
 contract. A caller with shell/write access can bypass or alter the adapter:
 these checks are cooperative, not tamper-proof or reviewer authentication.
 
-Run the bundled adapter tests from this directory:
+Run the bundled adapter tests through the Linux-only finite authoring launcher
+from the project root (30-second suite execution bound, 200 ms TERM grace,
+1-second verification and 500 ms bounded capture):
 
 ```sh
-python3 -m unittest discover -s tests -v
+python3 -B .agents/skills/failure-gate-v4/scripts/run-authoring-tests.py --suite writer
 ```
 
 They check serialization, timeout, failure release, symlink rejection, a
 cooperating final-check/write race, and wrapper-kill lock retention. Passing
 them verifies only this adapter in the test environment; **it does not prove
 any project's final-write coordination**.
+
+The launcher supervises only the inspected owned static fixture tree, including
+new sessions/adopted descendants. It signals no application processes and is not
+a checked host tier, authority, adversarial pidfd containment or deployment proof.
+If Linux/subreaper support is unavailable, use a separately verified equivalent
+authoring supervisor; do not fall back to a bare test command.

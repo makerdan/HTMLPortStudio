@@ -20,7 +20,12 @@ Pure definition inspection is not tier execution; its reads remain bounded.
 
 Map actual command/route identity, initiator, transitive graph and installed
 definitions to the independently approved tier/capability and budget source.
-Required-tier evidence must use the real checked task/approved-plan runner;
+When Failure Gate is verified ACTIVE, required-tier evidence must use the real
+checked task/approved-plan runner; diagnostics need their separate bounded capability.
+When verified INACTIVE, use verified existing host policy and equivalent finite
+supervision; UNKNOWN blocks dependent dispatch, not proof of inactivity.
+Explicit checked requests never fall back. Read
+[staging-and-lifecycle.md](staging-and-lifecycle.md) for the full policy/stage matrix.
 `scripts/run-tier.mjs` is only an illustrative path, not a discovered endpoint.
 Direct package commands inherit no registry deadline. A task Agent may use them
 only under an applicable separately authorized bounded capability AND a verified
@@ -67,7 +72,8 @@ approved limit. Any permitted narrower value must satisfy the policy, mandatory
 steps and cleanup feasibility; smaller timeout is not permission to skip coverage.
 
 Record selected/effective values and their authoritative source/version, not just
-configuration presence. Missing real checked routes, budget authority, independent
+configuration presence. Missing applicable routes (checked for ACTIVE, verified
+host equivalents for INACTIVE), budget authority, independent
 outer supervision or bounded evidence transport are concrete blockers. An
 agent-writable local implementation alone cannot provide protected authority.
 
@@ -98,6 +104,11 @@ new work. Cumulative exhaustion stops new attempts; never retry until lucky,
 disable deadlines, increase limits, change coverage or replenish counters without
 applicable approval. Exactly three required isolation retries remain required;
 insufficient budget blocks classification, not permission for fewer or a refill.
+
+Use the actual effective parent lineage, including previously selected narrowing,
+not merely a root registry maximum. Narrowing persists for children and reentry
+within that operation; a caller-supplied inherited timestamp cannot extend it.
+Genuinely new authorized top-level runs retain their distinct real policy/accounting.
 
 Admission expiry after authorized dispatch must not orphan already owned work.
 Its approved transitive supervision/cancellation/termination and finite reserved
@@ -157,7 +168,8 @@ termination clocks are monotonic. It rejects a late raw zero as deadline success
 signals newly observed owned descendants and performs bounded supervision-error
 cleanup with retained error-path lease. These are local mechanisms, NOT verification
 of authoritative host limits or a protected cumulative task deadline.
-The real checked host route must enforce current approved maxima, original parent/
+The verified ACTIVE checked route or verified INACTIVE host equivalent must enforce
+current approved maxima, original parent/
 attempt budgets, independent outer oversight and authoritative evidence.
 
 Manifest/lease/waiter/transition/development-context JSON reads use nonblocking,
@@ -173,6 +185,25 @@ Callers relying on old defaults need separately approved migration to explicitly
 supplied checked limits and proper supervision. Do not copy old values as presumed
 approval or alter Port Authority sources during Failure Gate-only authoring.
 
+The v2 lease's mandatory boolean recoveryRequired is true from reservation; only
+healthy verified completion/release writes false. Ordinary dead-owner recovery
+requires compatible finalized false AND known quiescence. True, unfinalized or
+missing-field records retain exclusion even after local cleanup; no legacy
+false insertion, age-based unlink or abandoned-sidecar deletion is authorized.
+Read the exact separately approved recovery binding/acknowledgement contract in
+[staging-and-lifecycle.md](staging-and-lifecycle.md). Unknown claims/writes retain
+authoritative exclusion regardless of local lease eligibility.
+
+The private IPC gate is journaled and independently watchdog-registered before
+user dispatch. Its own-session watchdog watches remaining monotonic time and exact
+owned incarnations; two-second registration failure blocks dispatch. Host callers
+must prove owner stall/death and original-group timeout, not only hung children.
+Watchdog loss or uncertain discovery/termination blocks healthy release and retains
+error evidence; bounded known-owned cleanup does not grant replacement authority.
+Linux /proc polling is cooperative, not cgroup/pidfd, hostile-code, kernel-stall or
+remote containment. The applicable ACTIVE checked route or INACTIVE verified host
+equivalent must establish stronger boundaries where transitive escape is possible.
+
 ## 6. Report and accept actual outcomes
 
 Capture route/command identity and approved source, effective queue/step/parent/
@@ -183,6 +214,15 @@ Index these in the existing persistent file trail and real evidence stores;
 local logs/report copies do not become authoritative by being copied.
 
 Deadline breach wins over a late zero exit, even when termination is confirmed.
+Check the absolute monotonic execution deadline at the completion observation,
+including late successful returns/scheduling pauses; raw zero cannot bypass it.
+Keep execution observation separate from separately reserved cleanup/capture time.
+Validate structured observation types and affirmative authoritative evidence:
+truthy strings/objects such as "unknown" or "false" are not successful stop,
+report or storage acknowledgment. Unknown/malformed evidence retains exclusion.
+Enforce aggregate stdout/stderr bounds during streaming or bounded spooling,
+not after an unbounded `communicate`/read has accumulated output. Overflow,
+truncation or incomplete capture remains non-success with original evidence.
 Reject pipeline-masked/swallowed timeouts, cancelled tests, missing reports,
 unknown descendant state, post-spawn journal gaps and incomplete/timed-out evidence
 as PASS. Preserve raw status separately from checked FAIL/BLOCKED/INCOMPLETE;
@@ -204,13 +244,19 @@ Do not trigger remote jobs or a real tier sweep to prove denial.
 | Case | Required assertion |
 |---|---|
 | All entry points/direct bypass | Fast/static, scripts/aliases/pre/post hooks, tiers, dry runs, smoke, diagnostics, isolation, baseline, nesting/recovery are bounded even without serialization; direct commands need authority plus equivalent supervision and cannot replace tier evidence. |
+| Policy applicability | ACTIVE requires checked task/plan tiers and separate diagnostics; INACTIVE requires verified host policy/bounded equivalents; UNKNOWN blocks. Invalid explicit checked requests never fall back in any state. |
 | Invalid/changed limits | Missing, zero, negative, NaN, Infinity, disabled, overflow or unauthorized larger caller budgets deny dispatch; installed definitions/overrides match approved source. |
 | Cumulative dispatch | Expired/insufficient pre-dispatch remainder prevents work; nested resources/reentry/retries/recovery share original accounting and cannot replenish attempts/deadlines. |
+| Narrowed lineage | A nested/reentry deadline above an already narrowed effective parent denies dispatch, even below the root maximum; valid narrower children remain possible and cannot reset counters. |
+| Structured evidence/capture | Truthy malformed stop/report/acknowledgment values retain exclusion; combined stdout/stderr is capped during collection and controlled overflow cannot pass or exhaust the supervisor. |
+| Phase expiry | Queue/startup/teardown/cancellation/verification/capture expiry is recorded and cannot become successful validation; cleanup remains owned and bounded. |
 | Clock/admission | Wall-clock changes cannot extend monotonic budgets; queue rechecks authority/remainder; admission expiry retains finite owned supervision without new launch/reclaim. |
 | Test/hook wiring | Effective test/suite inheritance AND hooks are explicit/finite and supported on installed runtime; disabled overrides/ordinary TAP output cannot establish coverage. |
 | Async/sync/hooks/subprocesses | Deliberately hung cases are bounded by independent outer supervision; verified exact owned children/workers cannot survive accepted completion. |
 | Late zero/masking | Zero after deadline, swallowed or pipeline-masked timeout and test cancellation remain non-success with raw evidence. |
 | Post-spawn journal failure | Bounded owned cleanup does not depend on journal writes; original uncertainty/exclusion retained; no replacement or forged finish. |
+| Retained disposition | True/unfinalized/missing-field leases block ordinary replacement even with quiescent known work/no sidecar; finalized false additionally requires known quiescence and no authoritative unresolved claim. |
+| Independent startup/loss | Registration before user dispatch; failed/missing registration cannot start work; owner stall/death and original-group timeout are supervised; watchdog loss retains error/exclusion. |
 | New termination descendants | Newly observed owned incarnations receive current authorized termination; no early release; discovery gaps remain explicit. |
 | Watch/remote misuse | Persistent watches cannot become finite tier checks; local client abort cannot prove remote termination; unverified provider deadline/cancellation blocks. |
 | Evidence/recovery deadlines | Evidence-capture timeout or missing acknowledgement prevents acceptance and retains original outcomes; recovery stays bounded/separately authorized and cannot reconsume a claim. |

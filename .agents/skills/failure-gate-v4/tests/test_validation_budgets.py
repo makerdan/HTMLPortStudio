@@ -10,6 +10,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import subprocess
@@ -17,6 +18,7 @@ import sys
 import tempfile
 import time
 import unittest
+from authoring_supervision import supervise_static
 
 
 MAX_TIMER_MS = 2147483647
@@ -54,6 +56,7 @@ class BudgetSimulation:
         self.approved = copy.deepcopy(fixture_limits() if limits is None else limits)
         self.parent_origin = self.clock.elapsed
         self.parent_deadline = self.clock.elapsed + self.approved.get("parent", 0)
+        self.effective_parent_deadline = self.parent_deadline
         self.reserved_attempt_ms = 0
         self.attempts = 0
         self.max_attempts = 3
@@ -70,7 +73,7 @@ class BudgetSimulation:
                  provider_supervision=False, inputs=True, inherited_deadline=None):
         if self.unresolved:
             raise Denied("unresolved original work/evidence retains exclusion")
-        if not source or not inputs:
+        if source is not True or inputs is not True:
             raise Denied("missing authoritative source or bounded inputs")
         if set(self.approved) != set(fixture_limits()) or not all(
                 valid_ms(v) for v in self.approved.values()):
@@ -80,9 +83,11 @@ class BudgetSimulation:
             if name not in values or not valid_ms(value) or value > values[name]:
                 raise Denied("invalid or enlarged caller budget")
             values[name] = value
-        if mode != "finite" or not supervisor:
+        if mode != "finite" or supervisor is not True:
             raise Denied("watch misuse or independent supervision unavailable")
-        if remote and not provider_supervision:
+        if type(remote) is not bool or type(node) is not bool:
+            raise Denied("malformed execution-mode observation")
+        if remote and provider_supervision is not True:
             raise Denied("local abort is not remote supervision")
         if route == "direct" and (purpose == "required_tier" or
                                   capability != "fixture-bounded-diagnostic"):
@@ -93,13 +98,15 @@ class BudgetSimulation:
                      test_limit > values["test"] or hook_limit > values["hook"]):
             raise Denied("missing/disabled or unauthorized test/hook inheritance")
         if inherited_deadline is not None and (
-                not valid_ms(inherited_deadline) or inherited_deadline > self.parent_deadline):
+                not valid_ms(inherited_deadline) or
+                inherited_deadline > self.effective_parent_deadline):
             raise Denied("invalid inherited deadline or nested parent renewal")
         cleanup = sum(values[k] for k in ("teardown", "cancel", "termination", "evidence"))
         if cleanup > MAX_TIMER_MS:
             raise Denied("aggregate overflow")
-        parent = min(self.parent_deadline, self.parent_origin + values["parent"],
-                     self.parent_deadline if inherited_deadline is None else inherited_deadline)
+        parent = min(self.effective_parent_deadline, self.parent_origin + values["parent"],
+                     self.effective_parent_deadline
+                     if inherited_deadline is None else inherited_deadline)
         remaining = parent - self.clock.elapsed
         if remaining <= cleanup:
             raise Denied("pre-dispatch parent exhausted/cleanup cannot fit")
@@ -109,6 +116,9 @@ class BudgetSimulation:
             raise Denied("cumulative authorized attempts exhausted")
         self.attempts += 1
         self.reserved_attempt_ms += allocation
+        # This object is one synthetic approved operation, not every future task run.
+        # Narrowing persists across its children/reentry; caller records cannot renew it.
+        self.effective_parent_deadline = parent
         record = dict(purpose=purpose, route=route, source="synthetic-approved-record",
                       values=values, parent=parent, remaining=remaining,
                       deadline=self.clock.elapsed + allocation,
@@ -119,18 +129,33 @@ class BudgetSimulation:
         return record
 
     def finish(self, raw=0, known_stopped=True, acknowledged=True, reports=True,
-               journal=True, cancelled=False, masked_timeout=False, capture_ms=0):
+               journal=True, cancelled=False, masked_timeout=False, capture_ms=0,
+               phase_ms=None):
         run = self.launches[-1]
         deadline = self.clock.elapsed >= run["deadline"]
-        evidence_timeout = capture_ms >= run["values"]["evidence"]
-        incomplete = not all((known_stopped, acknowledged, reports, journal)) or evidence_timeout
+        valid_capture = type(capture_ms) is int and 0 <= capture_ms <= MAX_TIMER_MS
+        evidence_timeout = not valid_capture or capture_ms >= run["values"]["evidence"]
+        phase_ms = {} if phase_ms is None else phase_ms
+        valid_phases = isinstance(phase_ms, dict) and all(
+            key in ("queue", "startup", "teardown", "cancel", "termination", "evidence")
+            and type(value) is int and 0 <= value <= MAX_TIMER_MS
+            for key, value in phase_ms.items())
+        phase_timeout = valid_phases and any(
+            value >= run["values"][key] for key, value in phase_ms.items())
+        evidence_timeout = evidence_timeout or (
+            valid_phases and phase_ms.get("evidence", 0) >= run["values"]["evidence"])
+        incomplete = (not all(v is True for v in
+                              (known_stopped, acknowledged, reports, journal))
+                      or evidence_timeout or not valid_phases
+                      or type(raw) is not int
+                      or type(cancelled) is not bool or type(masked_timeout) is not bool)
         self.excluded = incomplete
         self.unresolved = incomplete
-        if not journal:
+        if journal is not True:
             self.supervision = True  # cleanup independent of failed writes
         return dict(raw=raw, deadline=deadline,
                     assessment="INCOMPLETE" if incomplete else
-                    "FAIL" if raw != 0 or deadline or cancelled or masked_timeout else "PASS",
+                    "FAIL" if raw != 0 or deadline or phase_timeout or cancelled or masked_timeout else "PASS",
                     exclusion=self.excluded, acknowledged=acknowledged)
 
     def stop_observed(self, identities, signal_name):
@@ -141,6 +166,64 @@ class BudgetSimulation:
 
 
 class BudgetPolicyTests(unittest.TestCase):
+    def test_narrowed_parent_rejects_larger_child_and_reentry(self):
+        for purpose in ("nested", "recovery", "new-wrapper", "new-run"):
+            with self.subTest(purpose=purpose):
+                p = BudgetSimulation()
+                p.dispatch(caller={"parent": 100, "step": 20})
+                with self.assertRaises(Denied):
+                    p.dispatch(purpose=purpose, inherited_deadline=200)
+                p.clock.advance(101)
+                with self.assertRaises(Denied):
+                    p.dispatch(purpose=purpose)
+                self.assertEqual(len(p.launches), 1)
+
+    def test_multilevel_narrowing_is_sticky_and_valid_child_can_pass(self):
+        p = BudgetSimulation()
+        p.dispatch(caller={"parent": 200, "step": 20})
+        p.dispatch(inherited_deadline=160, caller={"step": 20})
+        child = p.dispatch(inherited_deadline=120, caller={"step": 20})
+        self.assertEqual(child["parent"], 120)
+        p.clock.advance(10)
+        self.assertEqual(p.finish()["assessment"], "PASS")
+        with self.assertRaises(Denied):
+            p.dispatch(inherited_deadline=130)
+
+    def test_malformed_evidence_never_passes_or_releases_exclusion(self):
+        for name in ("known_stopped", "acknowledged", "reports", "journal"):
+            for value in ("false", "unknown", 1, {}, [True], None):
+                with self.subTest(name=name, value=value):
+                    p = BudgetSimulation()
+                    p.dispatch()
+                    outcome = p.finish(**{name: value})
+                    self.assertEqual(outcome["assessment"], "INCOMPLETE")
+                    self.assertTrue(outcome["exclusion"])
+                    with self.assertRaises(Denied):
+                        p.dispatch()
+
+    def test_malformed_source_or_supervision_denies_dispatch(self):
+        for name in ("source", "inputs", "supervisor"):
+            for value in ("false", 1, None):
+                with self.subTest(name=name, value=value):
+                    with self.assertRaises(Denied):
+                        BudgetSimulation().dispatch(**{name: value})
+
+    def test_phase_deadlines_and_invalid_observations_are_nonpass(self):
+        for phase in ("queue", "startup", "teardown", "cancel", "termination", "evidence"):
+            for extra in (0, 1):
+                with self.subTest(phase=phase, extra=extra):
+                    p = BudgetSimulation()
+                    p.dispatch()
+                    r = p.finish(phase_ms={phase: fixture_limits()[phase] + extra})
+                    self.assertEqual(r["assessment"],
+                                     "INCOMPLETE" if phase == "evidence" else "FAIL")
+                    if phase == "evidence":
+                        self.assertTrue(r["exclusion"])
+        for phases in ({"unknown": 1}, {"startup": "false"}, {"queue": -1}, []):
+            p = BudgetSimulation()
+            p.dispatch()
+            self.assertEqual(p.finish(phase_ms=phases)["assessment"], "INCOMPLETE")
+
     def test_all_finite_entry_point_kinds_need_outer_supervision(self):
         for purpose in ("fast", "static", "package", "alias", "pre-hook", "post-hook",
                         "required_tier", "dry-run", "smoke", "diagnostic", "isolation",
@@ -360,105 +443,72 @@ class BudgetPolicyTests(unittest.TestCase):
         self.assertEqual(p.finish()["assessment"], "FAIL")
 
 
-def fixture_members(group):
-    """Known static same-UID fixture session only; not hostile escape detection."""
-    found = []
-    for name in os.listdir("/proc"):
-        if not name.isdigit():
-            continue
-        try:
-            root = Path("/proc") / name
-            text = (root / "stat").read_text()
-            fields = text[text.rindex(")") + 2:].split()
-            if (int(fields[2]) == group and int(fields[3]) == group and
-                    fields[0] not in ("Z", "X") and root.stat().st_uid == os.getuid()):
-                found.append((int(name), fields[19]))
-        except FileNotFoundError:
-            continue  # exited between read-only fixture snapshots
-    return found
+def node_test_arguments(help_text):
+    """Installed support only; explicit fixture test/hook options are the fallback."""
+    for flag in ("--test", "--test-reporter"):
+        if not re.search(r"(?m)^\s*" + flag + r"(?:[ =]|$)", help_text):
+            raise unittest.SkipTest("installed Node lacks required " + flag)
+    args = ["--test", "--test-reporter=spec"]
+    if re.search(r"(?m)^\s*--test-timeout(?:[ =]|$)", help_text):
+        args.append("--test-timeout=100")
+    return args
 
 
-def supervised_node_fixture(body, as_test=False, hook_ms=None):
-    """Finite fixture supervisor, never a copied real runtime/authority adapter."""
+_node_help = None
+
+
+def installed_node_help():
+    global _node_help
+    if _node_help is None:
+        result = supervise_static([shutil.which("node"), "--help"],
+                                  execution=2, max_bytes=131072)
+        if not result["pass_"]:
+            raise unittest.SkipTest("bounded installed Node support probe failed")
+        _node_help = result["output"]
+    return _node_help
+
+
+def supervised_node_fixture(body, as_test=False, hook_ms=None, on_spawn=None):
+    """Owned static fixtures only; never a runtime/authority adapter."""
+    if not isinstance(body, str) or len(body.encode()) > 16384:
+        raise ValueError("bounded code-owned fixture body required")
+    argv = [shutil.which("node")]
+    if as_test:
+        argv += node_test_arguments(installed_node_help())
     directory = Path(tempfile.mkdtemp(prefix="failure-gate-budget-fixture-"))
     path = directory / ("probe.test.mjs" if as_test else "probe.mjs")
     path.write_text(body)
-    argv = [shutil.which("node")]
-    if as_test:
-        argv += ["--test", "--test-timeout=100", "--test-reporter=spec"]
     argv.append(str(path))
-    process = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                               text=True, start_new_session=True)
-    started = time.monotonic()
-    deadline = False
-    deliveries = []
-    known_stopped = False
-    output = ""
-    try:
-        try:
-            out, err = process.communicate(timeout=0.9)
-            output = out + err
-        except subprocess.TimeoutExpired:
-            deadline = True
-        # Also reject a raw-zero leader with an observed live owned child.
-        if deadline or fixture_members(process.pid):
-            deadline = True
-            grace_end = time.monotonic() + 0.2
-            kill_end = grace_end + 1.0
-            sent = set()
-            while time.monotonic() < kill_end:
-                members = fixture_members(process.pid)
-                if not members:
-                    break
-                signum = signal.SIGTERM if time.monotonic() < grace_end else signal.SIGKILL
-                for identity in members:
-                    key = (identity, signum)
-                    if key in sent:
-                        continue
-                    # Re-observe incarnation, session and UID immediately before signal.
-                    if identity in fixture_members(process.pid):
-                        try:
-                            os.kill(identity[0], signum)
-                            sent.add(key)
-                            deliveries.append((identity, signum.name))
-                        except ProcessLookupError:
-                            pass
-                time.sleep(0.01)
-        known_stopped = not fixture_members(process.pid)
-        out, err = process.communicate(timeout=0.5)
-        output = out + err
-        if len(output.encode()) > 65536:
-            raise AssertionError("fixture output exceeded bound")
-        result = dict(raw_exit=process.returncode, deadline=deadline,
-                    elapsed=time.monotonic() - started, output=output,
-                    known_stopped=known_stopped, exclusion=not known_stopped,
-                    pass_=(not deadline and process.returncode == 0 and known_stopped),
-                    signals=deliveries, outer_ms=900, grace_ms=200,
-                    verification_ms=1000, capture_ms=500,
-                    node_test_ms=100 if as_test else None, node_hook_ms=hook_ms,
-                    scope="local static fixture session; no host readiness")
-        print("FG_LOCAL_FIXTURE_RESULT " + json.dumps(result))
-        return result
-    finally:
-        # Emergency exact-known fixture cleanup, never application/name/group sweep.
-        for pid, start in fixture_members(process.pid):
-            if (pid, start) in fixture_members(process.pid):
-                try:
-                    os.kill(pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-        try:
-            process.communicate(timeout=0.5)
-        except subprocess.TimeoutExpired:
-            pass
-        if not fixture_members(process.pid):
-            shutil.rmtree(directory)
-        # Unknown work retains disposable fixture evidence; never age-unlock it.
+    result = supervise_static(argv, on_spawn=on_spawn)
+    result.update(node_test_ms=100 if as_test else None, node_hook_ms=hook_ms,
+                  fixture_evidence_path=str(directory))
+    summary = {**result, "output": result["output"][:8192]}
+    print("FG_LOCAL_FIXTURE_RESULT " + json.dumps(summary))
+    if result["known_stopped"] and not result["exclusion"]:
+        shutil.rmtree(directory)
+    # Retain the exact original fixture and evidence on uncertain cleanup/capture.
+    return result
 
 
 @unittest.skipUnless(sys.platform == "linux" and shutil.which("node"),
                      "conditional local watchdog probes require Linux + Node")
 class LocalOuterWatchdogTests(unittest.TestCase):
+    def test_small_output_overflow_is_bounded_and_nonpass(self):
+        r = supervised_node_fixture("process.stdout.write('x'.repeat(70000));setInterval(()=>{},1000);")
+        self.assertFalse(r["pass_"])
+        self.assertTrue(r["output_overflow"])
+        self.assertLessEqual(r["output_bytes_kept"], 65536)
+        self.assertTrue(r["known_stopped"])
+
+    def test_post_spawn_journal_error_still_stops_owned_work(self):
+        def fail_journal(process):
+            raise OSError("synthetic journal unavailable")
+        r = supervised_node_fixture("setInterval(()=>{},1000);", on_spawn=fail_journal)
+        self.assertFalse(r["pass_"])
+        self.assertTrue(r["known_stopped"])
+        self.assertTrue(r["exclusion"])
+        self.assertIn("synthetic journal unavailable", r["error"])
+
     def assert_bounded_nonpass(self, result, marker):
         self.assertIn(marker, result["output"])
         self.assertFalse(result["pass_"])
@@ -551,6 +601,16 @@ test('finite-test', {timeout:100}, ()=>console.log('finite-test'));
 
 
 class BudgetDocumentTests(unittest.TestCase):
+    def test_writer_timeout_and_supervised_recipes_are_explicit(self):
+        root = Path(__file__).resolve().parents[1]
+        for name in ("README.md", "reference/adapters/posix-writer-lock/README.md"):
+            text = (root / name).read_text()
+            self.assertIn("run-authoring-tests.py", text)
+            self.assertNotIn("never opens\napplication ports or signals processes", text)
+        adapter = (root / "reference/adapters/posix-writer-lock/README.md").read_text()
+        self.assertIn("acquisition-only", adapter)
+        self.assertIn("not an execution deadline", adapter)
+
     def test_core_and_all_required_references_link_budget_contract(self):
         root = Path(__file__).resolve().parents[1]
         for name in ("SKILL.md", "README.md", "reference/implementation.md",

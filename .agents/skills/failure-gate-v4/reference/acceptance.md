@@ -26,6 +26,15 @@ restore, or cutover evidence; unavailable proof blocks the affected readiness cl
 
 ## Required host tests
 
+Verify policy applicability before this matrix: ACTIVE requires checked task/plan
+tiers and separately authorized diagnostics; INACTIVE uses verified existing host
+policy with equivalent finite supervision, not imaginary APIs; UNKNOWN blocks
+dependent assertions. The task/tier implementation cases below concern ACTIVE or
+separately approved installation. An invalid explicit checked request never falls
+back in any state. Also require the full
+[staging/lifecycle matrix](staging-and-lifecycle.md), including separate fixture
+PASSED/FAILED/BLOCKED/NOT_RUN and actual host acceptance; absence is not “not applicable.”
+
 Every finite validation route additionally requires the full
 [finite-budget acceptance matrix](validation-budgets.md), including direct/fast
 entry points, tests/hooks, independent outer supervision and cumulative exhaustion.
@@ -40,6 +49,14 @@ protected authorization, independent attestation or deployed activation.
 
 | Area | Prove |
 |---|---|
+| Policy states | Verified ACTIVE uses checked tiers/separate diagnostics; verified INACTIVE retains actual host policy/bounds; UNKNOWN blocks. Missing route/file/draft does not establish inactivity; explicit checked rejection has no fallback. |
+| Staging states | Per-control STAGED is inert canonical placement under applicable permission; NON_RECLAIM_VERIFIED and LIVE_RECLAIM_ENABLED need genuine scoped evidence and two real authorized caller runs. Fixtures never activate or complete installation. |
+| Task-wide staging gate | A task gating every edit/test on missing authority stays blocked until authorized revision. Missing reclaim alone does not block unrelated permitted staging/fixtures; labels do not waive task gates/coverage/repairs. |
+| Implicit reclaim | Inspect aliases/pre/post/startup dependencies before non-reclaim activation; dependent reclaim or attested development admission still blocks without real capability. Preserve active callers and unresolved unsafe legacy risk. |
+| Retained lifecycle | Mandatory boolean recoveryRequired:true from reservation, false only on healthy verified release. True/unfinalized/missing-field leases block ordinary next caller after local quiescence even without a sidecar. Compatible finalized false still needs known quiescence and no authoritative uncertainty. |
+| Exact recovery | Separate bounded authentic approval binds task/plan/run/operation, host/root/boot, exact lease/token/incarnations and incident; reconcile contenders/unknown commits and acknowledge durable outcome before new work. No false insertion/unlink/retry/age-based revision refresh. |
+| Gate and watchdog | Journal private gate and independently register before user dispatch; missing/failed registration prevents it. Owner stall/death/original-group timeout and watchdog loss require bounded exact owned-tree proof and retained error/exclusion. |
+| Manifest shapes | Validate untrusted envelopes/members before access; null/primitive/array/malformed/duplicate identities and invalid bindings yield structured INVALID/UNKNOWN, no TypeError, intent or delivery, listeners preserved. |
 | Portability | No example path, Node command, package manager, OS, framework, database, tier name, or companion skill is required implicitly. |
 | Project adapters | Verify actual local mappings for task/plan, execution, storage, evidence, recorded approvals, and local completion. Do not claim Agent platform task identity. |
 | Missing optional features | Absent memory/history/catalog does not block otherwise valid execution or create invented ignore authority. |
@@ -63,7 +80,7 @@ protected authorization, independent attestation or deployed activation.
 | Approved shared composition | An explicitly approved selected-tier composition containing shared checks remains executable with its existing coverage and locks; sharing does not permit a different unrestricted dispatcher. Composition expansion requires renewed applicable authorization. |
 | Actual scope violation | An instrumented unexpected child launch produces a violation, honest actual-step report, and authorized stop/quarantine handling, not acceptance by dropping its output. Fixtures do not claim to prevent arbitrary out-of-band execution. |
 | Delegated authority | Children, subagents, background jobs, and scheduler requests retain exact task/plan/authorization bindings, purpose, allowlists, shared budgets, reports, and lease ownership. Dropped/stale/borrowed bindings or new grants for the parent's validation deny cooperative dispatch; continuing children cannot disappear at parent exit/timeout/tier transition. |
-| Direct diagnostic restriction | No direct whole-tier command is blanket diagnostic permission. Current-snapshot whole-tier runs use the checked assigned-tier route; unknown selectors and unregistered diagnostic argv launch no commands. Authorized focused diagnostics remain usable but cannot satisfy required-tier evidence. |
+| Direct diagnostic restriction | No direct whole-tier command is blanket diagnostic permission. Verified ACTIVE current-snapshot tiers use the checked route; INACTIVE uses verified bounded host policy; UNKNOWN blocks. Unknown selectors/unregistered diagnostic argv launch nothing; focused diagnostics cannot replace tier evidence. |
 | Comparison scope | A verified earlier snapshot uses the registered bounded comparison commands without altering the working tree or production state. A whole assigned-tier comparison requires explicit bounded capability; another-tier or unapproved equivalent fallback is denied before launch. |
 | Cumulative auxiliary budgets | Concurrent workers and cross-purpose/equivalent routes atomically reserve shared finite limits before launch. Denied non-launches use no attempt; started failed/crashed/skipped/zero-test/cancelled attempts consume it. No oversubscription or unlimited comparison chain is permitted. |
 | Budget reset resistance | Restart, new wrapper/run IDs, renamed failures, purpose changes, snapshots, or authorization amendments do not reset retained cumulative consumption. New episodes follow policy; exhausted or unverifiable accounting blocks auxiliary launches. Explicit applicable renewal records new limits and prior history without self-approval. |
@@ -130,11 +147,14 @@ protected authorization, independent attestation or deployed activation.
 | Ownership | An owned repair cannot be discharged by reclassification, expiry, skipped/deleted/renamed tests, or unapproved plan amendments. |
 | Completeness | Ignored failures followed by missing required steps, reports, discovery, or runner crashes remain incomplete/unacceptable. |
 | Results | Raw nonzero statuses are preserved under acceptable-with-ignored-failures; diagnostic results cannot stand in for complete assigned-tier runs. |
+| Uncatalogued default | A proven pre-existing failure with no exact catalog ignore and no separately approved task-local acceptance decision stays blocked; provenance alone cannot manufacture waiver authority. |
+| Task-local positive | A current pinned independently verified policy decision exactly binds task/plan/run/failure/environment/snapshot, provenance and policy/authorization versions, scope and expiry; complete results and owned repairs are satisfied. Assess acceptable-with-ignored-failures, preserve raw failure and do not promote a catalog record. |
+| Task-local negative | Forged/caller labels, missing source/decision, stale/mismatched bindings, expiry/revocation, missing corroboration/reports, owned repairs, typecheck waivers, harness failure and incomplete runs cannot gain task-local acceptance. Independent callers and owner closure gain no new metadata/approval prerequisite. |
 | Evidence acceptance | Unknown/stale snapshots, invalidated plans, and missing required external checks prevent local success. |
 | Capability boundary | Missing required external checks remain blocked; a local check cannot impersonate an unavailable service. |
 | Local dispatch | The checked project entry point resolves one authorized tier from the supplied local task and plan; it does not sweep all tiers. Missing report adapters and not-reached steps cannot produce accepted runs. |
-| Ordinary-task route | A live local-ID plan can be activated through a verified approval event, configured human route, or preapproved policy decision and run its selected tier as checked evidence. A draft/review-request-only CLI, nonexistent activation/run entry point, or direct test route cannot supply this route; diagnostics require their explicit bounded capability. Reruns do not reactivate unchanged plans. |
-| Active-phase sequence | Task-agent guidance explicitly calls local activation when Draft/Plan work enters Active, then performs work and checked validation on the changed inputs. Edits after a passing run require a fresh checked run. Missing activation or validation is reported as blocked, not treated as a pass; a project-level test does not prove a platform Active-state event hook. |
+| Ordinary-task route | For verified ACTIVE governance, a live local-ID plan activates through a verified event/human/preapproved policy decision and runs its selected checked tier; draft/review-only or direct routes cannot replace it. Diagnostics require explicit bounded capability; reruns do not reactivate unchanged plans. INACTIVE uses verified host policy; UNKNOWN blocks. |
+| Active-phase sequence | Verified ACTIVE task guidance calls local activation at Draft/Plan-to-Active, works and validates changed inputs; relevant edits need fresh checked validation. INACTIVE uses verified bounded host policy; UNKNOWN blocks. Missing applicable activation/validation is not a pass; fixture tests prove no platform event hook. |
 | User review boundary | Local completion outcome and evidence are reported for the user's usual merge-or-dismiss choice; no local operation automatically merges or claims to control when the platform offers that choice. |
 | Workflow separation | A Replit Workflow or other scheduler launch is neither plan approval nor completion evidence by itself; the checked runner stores the actual run, tested inputs, raw results, and the local checker makes its separate completion decision. |
 | No managed completion | No project code or CLI dispatches, requests, depends on, or presents a result from platform-managed completion; any old managed-completion CLI operation is retired. Direct tier commands retain genuine independent availability but are not blanket task-Agent diagnostics or completion evidence. |
@@ -170,6 +190,10 @@ protected authorization, independent attestation or deployed activation.
 When creating project tasks to install this skill definition, create a dependent
 confirmation task scoped to `SKILL.md`, after the authoring task. Its acceptance
 items must match the authoring task's items, including:
+The following task/tier implementation items are conditional on verified ACTIVE
+governance or separately approved installation; INACTIVE uses its actual verified
+bounded host equivalents, UNKNOWN blocks dependent proof. Definition confirmation
+does not claim these host implementations exist.
 
 - Valid frontmatter names `failure-gate-v4`; title and identifiers consistently use v4.
 - Core skill remains below 500 lines with resolvable local reference links.
@@ -181,16 +205,16 @@ items must match the authoring task's items, including:
 - A verified explicit Replit plan-approval action is trusted authorization without requiring an approver identity or reviewer roster; deterministic policy is usable only after separate prior approval.
 - A once-approved deterministic policy may authorize matching plans without per-task human review, but records a new exact-bound decision for each task/change.
 - An approved Replit task plan is input only with verified project-local binding, never standalone authorization.
-- An ordinary-task activation and checked-run route is required; a draft/review-only CLI cannot supply it.
-- Active work explicitly invokes the local activation/checked-validation path, reruns after relevant edits, and leaves the merge-or-dismiss choice to the user.
+- Under verified ACTIVE governance an ordinary-task activation and checked-run route is required; a draft/review-only CLI cannot supply it.
+- Verified ACTIVE work invokes local activation/checked-validation and reruns after relevant edits; INACTIVE uses verified existing host policy/finite equivalents, UNKNOWN blocks. Leave merge-or-dismiss to the user.
 - A configured source supplies checkable real approval events/decisions; caller assertions and status/merge actions alone cannot activate.
 - Final input/evidence checking and terminal write are coordinated with relevant writers, or local completion stays blocked.
 - No project entry point invokes or reports platform-managed completion.
-- The local completion checker is implemented and does not pretend to control the platform task lifecycle.
+- For verified ACTIVE activation, prove the local checker is implemented without claiming control of the platform lifecycle; inactive hosts use their actual verified acceptance policy.
 - Explicit owner-directed closure has a separate recorded decision/mode,
   preserves unresolved validation, and does not require a second approval or
   Agent self-authorization. Ordinary validated completion remains protected.
-- Local validation uses the supplied local task and plan to run one authorized tier.
+- Verified ACTIVE validation uses the supplied local task/plan for one authorized tier; INACTIVE uses verified bounded host policy, UNKNOWN blocks.
 - Execution permission, not merely evidence acceptance, constrains task-Agent
   direct, indirect, delegated, background, scheduled, and remote-triggered launches.
 - Genuine independent callers keep existing authority and invocations; a task
@@ -240,6 +264,12 @@ tier-event route separately from authentic human reclaim approval. Confirm late
 evidence storage creates no new permission and raw cleanup cannot pass validation.
 If correcting the skill requires rewriting more than half, surface a replacement
 task instead of silently expanding scope. Review companion documents separately.
+Also read the complete staging/lifecycle reference and executable simulations:
+confirm all parallel instructions/examples/checklists qualify ACTIVE/INACTIVE/
+UNKNOWN, preserve task-wide staging gates and implicit reclaim dependencies,
+mandatory recovery disposition, exact acknowledged recovery and independent
+registration-before-dispatch/owner stall/death/watchdog loss. Report structured
+malformed-input denials and fixture results separately from two real host runs.
 
 ## Reporting
 

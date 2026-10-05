@@ -37,18 +37,23 @@ Direct-command availability is not permission for a task Agent to launch them;
 diagnostics need the explicit bounded capability defined below.
 
 ## 1. Discover, then install or operate
-
 Discover the host's canonical instructions, languages/runtimes, operating system,
 build and validation commands, project-local plan/task format, baseline storage,
 persistence, approval-event/decision source, final-write coordination, and available
-project-local completion checks. No framework,
-package manager, database, cloud, CI provider, task service, or preinstalled
-companion skill is required.
+project-local completion checks. No framework, package manager, database, cloud,
+CI provider, task service, or preinstalled companion skill is required.
 Map the semantic contract to verified host interfaces in a capability manifest.
 All example names, paths, tiers, and commands are illustrative, not dependencies.
 Use existing equivalents rather than introducing a second project structure.
 On hosts using `.agents`, keep canonical skill sources there; other instruction
 files such as `replit.md` are discovery candidates only when present.
+Verify governance as ACTIVE, INACTIVE or UNKNOWN with authoritative evidence:
+ACTIVE uses checked task/plan tiers and separately authorized diagnostics; INACTIVE
+uses verified existing host policy and equivalent finite supervision; UNKNOWN blocks
+dependent decisions, never implies inactivity. Explicit checked requests cannot fall back.
+Read [staging-and-lifecycle.md](reference/staging-and-lifecycle.md) for per-caller
+STAGED/NON_RECLAIM_VERIFIED/LIVE_RECLAIM_ENABLED states, separate fixture results,
+approved task-wide staging gates, retained-error recovery and gated watchdog/input rules.
 Classify each required capability as present, missing, or unavailable. Do not
 assume named scripts or platform APIs exist. Read
 [implementation.md](reference/implementation.md) for installation or changes to
@@ -78,7 +83,7 @@ Authoring this contract neither registers nor activates those routes.
 - **Unavailable:** report the exact blocker. Do not invent infrastructure or
   silently downgrade an already active gate.
 Documentation-only authoring and non-project conversation are not project
-validation runs. For project tasks, use the registered docs/no-op tier only when
+validation runs. For verified ACTIVE tasks, use the registered docs/no-op tier only when
 its policy explicitly covers the work; never invent a passing validation result.
 Keep deliverables outside `.local/`. Disposable archives are not durable plans.
 An implemented installation publishes one tracked evidence index linked from
@@ -89,7 +94,8 @@ Optional history/catalog absence blocks only claims depending on it, not
 unrelated work or explicit owner-directed closure.
 
 ## 2. Core invariants
-
+These task/tier controls apply when Failure Gate is verified ACTIVE or to its
+separately approved installation, not imaginary APIs on a verified INACTIVE host.
 - Allocate IDs transactionally in a verified project-local namespace. Never
   reuse a committed ID, including after cancellation or deletion. A supplied
   Replit Agent task number is not a local Failure Gate authorization.
@@ -127,8 +133,7 @@ unrelated work or explicit owner-directed closure.
 - A retry pass establishes intermittency, not pre-existing provenance.
 
 ## 3. Plan and activate
-
-Reserve the ID through the authoritative allocator. Read available project memory,
+For verified ACTIVE governance, reserve the ID through the authoritative allocator. Read available project memory,
 recent task evidence, and the discovered baseline catalog. Missing optional memory
 or history is not a setup failure. No catalog means no catalog-authorized ignores;
 it does not by itself prevent validation or evidence-based task-local classification.
@@ -211,15 +216,14 @@ Activate atomically with its audit event and announce only the observed result.
 If the plan, selected tier, tier definition, permitted parameters, or governing
 policy changes, invalidate the old decision and require a new bound decision;
 do not carry approval forward.
-When a Replit task moves from Draft/Plan to Active, the task agent must
+When a verified ACTIVE-governed Replit task moves from Draft/Plan to Active, the agent must
 invoke this project-local activation route with its verified local ID and
 approved plan. A platform status change alone does not activate the local
 record; if invocation fails or is unavailable, report blocked. Do not claim
 an automatic Active-state hook without a verified adapter.
 
 ## 4. Execute under the task ID
-
-Use the verified checked runner with local task ID and approved plan reference.
+For verified ACTIVE governance, use the checked runner with local task ID and approved plan reference.
 Ordinary-task tooling must support activation and checked runs under the same
 local ID and plan; subsequent reruns use existing authorization. Drafting a
 plan or requesting review alone cannot authorize a required-tier run. If
@@ -237,7 +241,6 @@ The runner resolves the single authorized tier from the registry and validates
 the entire authorization before starting its commands.
 
 ### Constrain all task-Agent-initiated execution
-
 Decide permission before launch, not only when accepting results. Do not run,
 request, trigger, or delegate another tier without an approved atomic tier change.
 Do not partition another tier into auxiliary commands to reproduce it. The
@@ -253,7 +256,7 @@ purpose, permitted commands/selectors, and shared budgets; they cannot choose
 another tier, borrow another task's grant, or invent independent authority.
 Use only verified host interfaces; process labels cannot attest caller identity.
 
-Whole-tier reruns on current inputs use the checked required-tier route. Diagnostics
+Under verified ACTIVE governance, whole-tier reruns use the checked required-tier route. Diagnostics
 and earlier-snapshot comparisons use registered, bounded capabilities, not a direct
 tier command relabeled after launch. Record their exact command/selector allowlist,
 approved transitive scope, failure/snapshot applicability, and per-attempt plus
@@ -266,8 +269,7 @@ These auxiliary limits do not prohibit necessary authorized same-tier reruns.
 Read the implementation's execution-scope contract for policy and accounting details.
 
 ### Monitor execution and prevent overlapping launches
-
-Require a verified monitor and durable structured file trail outside `.local/`,
+For verified ACTIVE managed routes, require a monitor and durable file trail outside `.local/`,
 linked from the capability manifest and evidence index. Record attempted versus
 confirmed launches, parent/initiator, task/run/authorization bindings, actual scope,
 declared reason, decision/reason code, start/finish evidence, and coverage gaps;
@@ -288,7 +290,6 @@ authority, supported causes, and missing coverage; do not start tests or mutate
 processes/policy just to investigate. The reference defines durability and proof.
 
 ### Preserve independent validation callers
-
 Discover existing validation callers: platform final checks, CI, local tools,
 and other host integrations when present. Keep their independent invocations
 working without new task/plan metadata or caller changes. `TASK_PLAN_FILE` and
@@ -306,7 +307,8 @@ in shared check commands. Checked requests lacking valid identity, approved plan
 tier, or authorization fail before launch; never downgrade them to independent
 execution. Independent checks remain subject to their existing safety/access
 policy, preserve real failures/incomplete results, and cannot supply accepted
-required-tier evidence. Ordinary task work must still use its checked route.
+required-tier evidence. Verified ACTIVE task work must still use its checked route;
+verified INACTIVE work uses existing host policy and finite supervision; UNKNOWN blocks.
 An existing plan-file-only ordinary-task route may remain in force until its
 approved cutover; preserving independent callers does not require changing or
 replacing that route. Do not run other task tiers using a fast-only task plan.
@@ -318,7 +320,6 @@ authorized to change them. Verify both execution paths and evidence separation
 through the host acceptance cases; do not claim platform integration from fixtures.
 
 ### Verify required command configuration before launch
-
 For each registered command, identify required environment/configuration inputs,
 their verified source, validation rule, and whether the value is secret. Check
 them before launching the affected command; a missing, invalid, or unavailable
@@ -352,7 +353,7 @@ task's authorization, or relabel required validation as ad hoc.
 Record run identity, purpose, authorization version, actual arguments, snapshot,
 environment/configuration identity, raw results, and complete report references.
 Launching a command via Replit Workflows or another scheduler is execution,
-not evidence of tier approval or project-local completion; only the checked
+not evidence of tier approval or project-local completion; for verified ACTIVE governance only the checked
 runner's verified records can supply task validation evidence.
 Do not stop a multi-step tier merely because an ignored failure appeared;
 account for every required step. Unsafe dependent steps may stop, but the run
@@ -363,9 +364,7 @@ tested inputs, not just the commit ID of a dirty tree. Isolate runs from concurr
 edits; if snapshot integrity is unknown, reject the evidence.
 
 ## 5. Classify failures without expanding scope
-
-Apply in order:
-
+For verified ACTIVE governance, apply in order:
 1. **Owned repair:** verify the declared obligation and fix it within task scope.
    Expiry or reclassification cannot erase ownership. A deleted, skipped,
    filtered, renamed, or undiscovered test is not proof of repair.
@@ -379,9 +378,9 @@ Apply in order:
 4. **Provenance:** classify as pre-existing only with direct evidence of the same
    failure on a verified earlier, task-unaffected snapshot plus independent
    corroboration. Match environment applicability as well as failure identity.
-5. **Insufficient evidence:** report an unresolved potential regression and block
-   completion. Investigate within authorization; do not automatically fix
-   unrelated code or label unknown ownership as proven task causation.
+   Classification is not a waiver: provenance alone cannot authorize acceptance.
+5. **Insufficient evidence:** report an unresolved potential regression and block completion.
+   Investigate within authorization; do not automatically fix unrelated code or label unknown ownership as proven task causation.
 
 Direct evidence is a verified comparison run or a trustworthy earlier run.
 Corroboration may be independently sourced task/memory evidence, an applicable
@@ -409,8 +408,7 @@ matching rule, review deadline, and the owner/reviewer or policy authority
 required by that route. Without it, do not promote; keep the failure task-local.
 
 ## 6. Change authorization deliberately
-
-Request a tier change only for a concrete coverage/scope need—not a known failure
+Under verified ACTIVE governance, request a tier change for coverage/scope need—not a known failure
 or extra confidence. Permit one pending request. Suspend validation if current
 coverage is inadequate; otherwise the old tier remains the only authorized tier.
 
@@ -433,7 +431,6 @@ results. Keep using the prior governing policy until a change is separately
 approved; this is a workflow rule, not tamper-proof enforcement.
 
 ## 7. Decide completion and report accurately
-
 If the owner explicitly directs closure of a specific task, read and follow
 [owner-directed-closure.md](reference/owner-directed-closure.md). Close through
 verified available local/native interfaces without demanding passing tests or
@@ -443,13 +440,14 @@ Record `completionMode: owner_direction` or an unambiguous equivalent and say
 that authorization itself. Missing local tooling does not veto an authorized
 native platform closure; report each system's actual outcome separately.
 
-Otherwise, ordinary validated completion follows the rules below:
-
+Otherwise, verified ACTIVE validated completion follows the rules below;
+verified INACTIVE uses its actual host acceptance policy; UNKNOWN cannot claim success.
 Keep raw exit status separate from assessment:
-
 - `PASS`: all required obligations executed successfully.
 - `ACCEPTABLE_WITH_IGNORED_FAILURES`: complete results contain only qualifying
-  unrelated failures; owned repairs and other mandatory checks are satisfied.
+  unrelated catalog ignores or task-local acceptance under a separately approved,
+  pinned, exact-bound current policy decision; provenance alone is not authority.
+  No task-local decision means no uncatalogued acceptance; repairs/checks stay required.
 - `FAIL`: a regression, unmet repair, or other required product check failed.
 - `BLOCKED`: authorization, evidence, required capability, or environment is missing.
 - `INCOMPLETE`: execution/results are unfinished or untrustworthy.
@@ -460,8 +458,7 @@ records and all observed failures, not accept a summary or a manually supplied
 zero-test runs, missing reports, and skipped required steps cannot become
 acceptable through baseline classification. Ad-hoc runs are not recorded as
 required-tier validation for a project-local task. The checker can reject
-inconsistent local evidence, but cannot authenticate evidence against an agent
-who can edit the runner and records.
+inconsistent local evidence, but cannot authenticate evidence against an agent who can edit the runner and records.
 
 Require the local checker before marking a task complete **as validated in this
 workflow**; the explicit owner-directed administrative route is the exception.

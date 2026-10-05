@@ -128,7 +128,8 @@ def run_locked(argv: Sequence[str], lock_path: str | Path, timeout: float) -> in
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--lock", required=True, help="absolute path in a trusted local directory")
-    parser.add_argument("--timeout", type=float, default=30, help="seconds to wait (default: 30)")
+    parser.add_argument("--timeout", type=float, default=30,
+                        help="seconds to acquire the lock only; not an execution deadline (default: 30)")
     parser.add_argument("command", nargs=argparse.REMAINDER, help="-- foreground command [args ...]")
     args = parser.parse_args()
     command = args.command

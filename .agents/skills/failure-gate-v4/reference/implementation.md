@@ -21,6 +21,15 @@ requirements, not inferred from ordinary tier activation or a resource lease.
 Inventory the host before editing. Reuse its existing build/validation tools,
 project-local task lifecycle, baseline schema, and canonical instruction sources.
 Do not install a second competing runner or weaken existing coverage.
+First verify governance: ACTIVE follows the checked task/plan and diagnostic
+contracts below; INACTIVE uses verified existing host policy and bounded
+equivalents, not fictional Failure Gate APIs; UNKNOWN blocks dependent decisions.
+These implementation requirements govern ACTIVE or separately approved host
+installation, not unrequested inactive-host migration. Explicit checked requests
+always fail closed without independent fallback. Read the complete
+[staging and lifecycle contract](staging-and-lifecycle.md) before staging,
+activation or retained-error recovery; record per-control states and separate
+fixture PASSED/FAILED/BLOCKED/NOT_RUN from actual host evidence.
 
 ## Host adaptation
 
@@ -372,7 +381,9 @@ actual finite limits on all entry points, independently approved dispatch budget
 shared parent/attempt accounting, finite tests/hooks and independent transitive
 outer supervision. Expected short duration or skipped serialization exempts none.
 Direct scripts inherit no registry deadline and cannot substitute for the real
-checked required-tier route. Preserve independent caller authority/metadata
+checked required-tier route when governance is verified ACTIVE. Verified INACTIVE
+uses existing host policy and equivalent finite supervision; UNKNOWN blocks.
+Preserve independent caller authority/metadata
 compatibility; unavailable supervision is a reported blocker, not an exemption
 or permission to migrate existing host callers during skill-only authoring.
 
@@ -389,7 +400,7 @@ and baseline catalog during migration unless separately authorized to change the
 
 ### Agent initiation and transitive execution scope
 
-Authorization limits execution, not merely accepted evidence. For work on a task,
+Authorization limits execution, not merely accepted evidence. For verified ACTIVE task work,
 the Agent may initiate its one assigned tier only through the checked runner.
 Every other Agent-initiated validation operation requires an applicable registered,
 bounded non-tier capability. Do not launch, request, trigger, delegate, or partition
@@ -514,7 +525,8 @@ Define input precedence; reject conflicting supplied
 bindings rather than silently picking a different plan. Never infer authorization
 or mode from variable presence/absence, a caller label, direct tier selection,
 or a bypass flag. An invalid checked request fails before launch; it cannot fall
-back to independent execution. Task agents must still perform checked validation.
+back to independent execution. Verified ACTIVE task agents still perform checked
+validation; verified INACTIVE uses its actual bounded host policy, UNKNOWN blocks.
 
 Independent results retain their actual executed steps, exit statuses, failures,
 missing reports, and incomplete states. Keep their origin/purpose distinguishable
@@ -566,18 +578,20 @@ Abstract interface to implement in the host's native tooling, not a command to
 copy into a shell:
 
 ```text
+# ACTIVE governance only; INACTIVE uses verified host policy, UNKNOWN blocks.
 activate(taskId, planReference)
   -> authorizationVersion, selectedTier, boundDecisionReference
 run(taskId, planReference, purpose = required_tier_validation)
   -> runId, rawResults, evidenceReferences
 ```
 
-Adapt language and command to the host. Ordinary-task tooling must provide
+Adapt language and command to the host. Under verified ACTIVE governance,
+ordinary-task tooling must provide
 checked activation and checked required-tier execution with the supplied
 local ID and exact plan; subsequent reruns use the existing authorization,
 not a repeated activation. A draft/review-request-only CLI is not an
 ordinary-task route, and direct tier commands are not checked task evidence.
-In the task-agent flow, invoke local activation as the Draft/Plan task enters
+In the verified ACTIVE task-agent flow, invoke local activation as Draft/Plan enters
 Active, then do the work and use the checked runner on the resulting inputs.
 Repeat checked validation after relevant edits; an activation-time pass cannot
 validate later work. No platform Active-state event subscription or task-ID
@@ -585,11 +599,14 @@ mapping is assumed: without a verified adapter, the task agent must call the
 local route explicitly and report if it could not. Never infer local activation
 solely from platform status.
 Until both operations exist and pass live local-ID acceptance tests, keep
-ordinary validation blocked. Never recommend a command before it exists and
+ACTIVE ordinary validation blocked. Verified INACTIVE uses verified existing host
+policy and finite equivalents; UNKNOWN blocks, never proves inactivity.
+Never recommend a command before it exists and
 passes checks. Resolve the tier from the task record; if a requested tier is
 supplied, reject any mismatch rather than overriding the record.
 
-Before launch:
+Before an ACTIVE checked-tier launch (INACTIVE uses verified host equivalents;
+UNKNOWN blocks dependent dispatch):
 
 1. Resolve local project identity and plan reference. Reject traversal and
    escaping symlinks. Reject another task's plan and mismatched plan
@@ -614,6 +631,15 @@ current independently approved source. Reserve cleanup, reject invalid/enlarged
 caller values, and dispatch nothing when the remainder cannot cover it. All
 spawned work retains bounded supervision on cancellation/journal failure;
 late zero, unknown descendants and incomplete storage never pass.
+Journal the private workload-gate identity and obtain independent watchdog
+registration before dispatch; failed registration means no user work. Verify
+owner stall/death, original-group timeout and watchdog-loss handling on actual
+callers, with bounded exact whole-tree cleanup and retained uncertainty.
+Port Authority recoveryRequired:true/unfinalized/missing-field leases retain
+exclusion after local quiescence. Only compatible finalized false may enter
+ordinary known-quiescent recovery; unknown authoritative claim/write outcomes
+still require exact separately approved acknowledged recovery. No age-based
+unlink, false insertion or sidecar deletion; see the staging/lifecycle reference.
 
 Do not interpolate untrusted strings into a shell command. Validate diagnostic
 selectors and neutralize coverage-reducing environment/config overrides without
@@ -636,18 +662,22 @@ decision separately from the orchestration result.
 
 ## Planning, diagnostics, maintenance, and completion
 
-Run purposes are explicit:
+Run purposes are explicit. Tier-specific planning/diagnostic/completion rules
+below govern verified ACTIVE routes; INACTIVE retains its verified host policy:
 
 | Purpose | Authorization | Can satisfy required task validation? |
 |---|---|---|
 | Planning guards | Bounded pre-activation policy | No |
 | Baseline discovery | Registered planning policy | No |
 | Required tier | Active task authorization | Yes |
+| Verified INACTIVE host validation | Existing independently verified host policy and equivalent finite supervisor | Only as that host policy actually accepts |
 | Diagnostic retry | Current tier's diagnostic capability | No |
 | Provenance comparison | Registered comparison capability | No |
 | Additional project-local check | Separate explicit local check policy | Only its own obligation |
 | Maintenance/bootstrap | Explicit bounded maintenance approval | No |
 | Runtime process reclaim | Authentic exact disruption approval plus live host attestation and atomic checked claim | No |
+| Inert staging / isolated fixtures | Actual applicable staging/test permission, preserving any task-wide gates | No |
+| Retained-error recovery | Separate bounded exact recovery approval, original commit/contender reconciliation and durable acknowledgement | No |
 
 Planning guards operate on a reserved draft before activation, resolving the
 bootstrap deadlock. They cannot invoke arbitrary tests. Baseline discovery is
@@ -680,8 +710,9 @@ automatic budget increase or a claim that fewer attempts meet the rule.
 Comparison/equivalent diagnostics may use only their pinned permitted scope;
 unknown selectors or broader/nested tier launches fail before launch.
 A whole assigned-tier comparison on an earlier snapshot is allowed only when
-explicitly registered and bounded; current-snapshot whole-tier reruns use the
-checked required-tier purpose. Neither diagnostic route becomes completion evidence.
+explicitly registered and bounded; verified ACTIVE current-snapshot whole-tier
+reruns use the checked required-tier purpose. INACTIVE uses verified bounded host
+policy; UNKNOWN blocks. Neither diagnostic route becomes completion evidence.
 
 Reserve attempts and resource allowances atomically before cooperative dispatch,
 including concurrent children; record actual consumption and outcomes. Started
@@ -696,7 +727,7 @@ parent's limits. Missing safe accounting or exhaustion blocks further auxiliary
 launches; renewal requires the existing applicable approval route with exact
 new limits and retained consumption/history. Do not invent a renewal authority.
 
-The project-local completion checker is required for ordinary validated
+For verified ACTIVE governance, the local completion checker is required for validated
 completion. Its result controls that local validation decision only.
 Explicit task-scoped owner direction may instead use the separate
 [administrative closure contract](owner-directed-closure.md); it requires an
@@ -717,7 +748,8 @@ operation during an approved migration; do not replace it with a hidden fallback
 Existing direct tier commands remain available to genuinely independent callers
 under their existing authority, but are not blanket task-Agent diagnostics.
 For task work, diagnostic execution needs a registered bounded capability;
-whole current-snapshot tier runs use the assigned tier's checked route. Direct
+whole current-snapshot tier runs under verified ACTIVE governance use the assigned
+tier's checked route; INACTIVE uses verified host equivalents, UNKNOWN blocks. Direct
 passes cannot become local task completion evidence.
 This project-code/CLI restriction does not prohibit genuinely available
 Agent-native task operations on explicit owner direction. Do not proxy those
@@ -739,6 +771,31 @@ and renewal/revocation. Preserve meaningful assertion, exception, endpoint, vari
 and stack distinctions. Ambiguous matches fail closed.
 If no verified project-local catalog-maintenance approval route exists, do not
 promote new baselines; task-local evidence cannot create catalog authority.
+
+**Uncatalogued pre-existing failure decision:** classification and acceptance are
+separate. Default-deny: provenance alone never authorizes completion or an ignore.
+An exact active catalog ignore remains eligible under the existing catalog policy.
+Without one, task-local acceptance is possible only through a separately approved
+host acceptance policy and its current, independently verifiable pinned decision.
+Use the existing applicable approval route (including actor-optional Replit events);
+do not invent a new actor roster, second owner-closure approval or catalog service.
+Bind the decision to exact task/plan/run, failure identity/signature, applicable
+environment and tested snapshot, provenance lineage, policy/authorization versions,
+scope, expiry/revocation and decision source/reference. Evaluate applicability
+again at completion; broad narrative approval, an agent-written flag, copied
+provenance or an expired/revoked/mismatched decision cannot authorize acceptance.
+The policy must explicitly permit this failure kind and require verified direct
+earlier evidence plus independent corroboration, complete assigned-tier results,
+all required reports and satisfied owned repairs. Missing/unknown policy,
+decision or evidence leaves the failure non-accepted and local completion blocked.
+Do not waive typecheck policy, harness/incomplete results, unperformed checks or
+unresolved regressions. Retain the raw failure and assess eligible exceptions as
+`ACCEPTABLE_WITH_IGNORED_FAILURES`, never clean `PASS`.
+This decision neither promotes a catalog record nor grants another tier, modifies
+repair ownership, replenishes budgets, or authorizes another task/run. Catalog
+absence remains optional for unrelated work and owner-directed closure; an approved
+task-local policy may allow this specific completion without catalog promotion.
+These are host requirements, not an installed acceptance service.
 
 Check ignore eligibility at planning, activation, launch, classification, and
 completion. Default: expiry/revocation before completion invalidates the ignore;

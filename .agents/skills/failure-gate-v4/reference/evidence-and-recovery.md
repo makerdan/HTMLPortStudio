@@ -1,5 +1,19 @@
 # Evidence discovery, lineage, retention, and recovery
 
+For verified ACTIVE governance or separately approved installation, apply these
+Failure Gate evidence contracts. Verified INACTIVE uses its actual existing host
+policy and bounded evidence/recovery equivalents; UNKNOWN blocks dependent
+acceptance, never implies inactivity. Explicit checked requests cannot fall back.
+Also read [staging-and-lifecycle.md](staging-and-lifecycle.md): retain true/
+unfinalized/legacy missing recoveryRequired leases and authoritative unknown
+claim/write/outcome exclusion even after known local work stops. Only exact
+separately approved bounded recovery, reconciled contenders/original commits,
+verified quiescence and checked durable acknowledgement permit new work.
+False insertion, sidecar deletion, heartbeat-age unlink and blind retry are not
+recovery. Preserve original incidents/raw outcomes; recovery is not validation PASS.
+Report STAGED/NON_RECLAIM_VERIFIED/LIVE_RECLAIM_ENABLED per control/caller and
+separate fixture PASSED/FAILED/BLOCKED/NOT_RUN from real host evidence.
+
 Read this for installation, evidence classification/acceptance, backup/restore,
 health inspection, retention, or evidence export. These are host contracts,
 not supplied commands, databases, backup artifacts, or test results. Map them

@@ -7,12 +7,17 @@ core skill's authority, transitive execution scope, diagnostics, and evidence ru
 
 ## 1. Discover and register monitoring coverage
 
-An authorized host installation must provide a validation execution monitor,
+For verified ACTIVE governance or separately approved installation, provide a monitor,
 durable file audit trail, and cooperative launch guards. Integrate verified runner
 and child/scheduler lifecycle hooks with the existing coordinator; do not rely
 only on process-name polling. A separate background observer is optional, not a
 required daemon, provider, or new recurring job. Register its actual lifecycle,
 access, cost, and safe scope if authorized and supported.
+Verified INACTIVE uses the existing host policy/finite supervisor; UNKNOWN blocks
+dependent managed dispatch. This text does not authorize migration or add task
+metadata to genuine independent callers. Explicit checked requests never fall back.
+Apply [staging-and-lifecycle.md](staging-and-lifecycle.md) for separate fixture/host
+states, startup registration and retained-error recovery.
 
 Publish in the capability manifest and tracked evidence index:
 
@@ -92,6 +97,18 @@ operation and conflicting resources in the authoritative coordinator, within its
 verified parent run when applicable. Do not make a registered cleanup suboperation
 reacquire its parent's exclusive top-level slot or invent a new validation run.
 A local Port Authority resource lease is not this checked claim or task authority.
+Track its mandatory boolean recoveryRequired separately: true from reservation,
+false only on healthy verified release. True/unfinalized/legacy missing-field
+leases retain authoritative exclusion after local quiescence, with or without a
+sidecar. Ordinary dead-owner recovery additionally needs compatible finalized
+false and known stopped work; it cannot resolve unknown authoritative claims/writes.
+Separately authorized bounded recovery binds exact lease/token/incarnations,
+task/plan/run/operation and host identity, reconciles contenders/original commits,
+and obtains checked durable acknowledgement. Never age-delete or insert false.
+Record gate identity/independent watchdog registration before dispatch and exact
+watchdog incarnation/loss. Owner stall/death and original-group timeout need actual
+whole-tree proof, not a responsive owner with a hanging child or signal delivery.
+Watchdog/discovery/termination uncertainty retains exclusion and original evidence.
 
 ## 3. Record decisions and actual execution separately
 

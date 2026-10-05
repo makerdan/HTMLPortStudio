@@ -15,10 +15,20 @@ framework-, operating-system-, storage-, and provider-neutral.
   approval/claim, exact Port Authority protocol, uncertainty and acceptance cases.
 - `reference/validation-budgets.md`: mandatory finite limits on every validation
   entry point, test/hook wiring, cumulative deadlines and independent supervision.
+- `reference/staging-and-lifecycle.md`: policy applicability, per-caller staging/
+  activation, retained-error recovery, independent startup gates and input shapes.
+- `tests/test_staging_lifecycle.py`: executable policy simulations only, not host
+  attestation, approval, protected recovery or activation.
 - `tests/test_validation_budgets.py`: test-only policy models and conditional
   local fixture watchdog checks; never a deployed supervisor or host authority.
 - `tests/test_runtime_reclaim_contract.py`: isolated policy simulations only;
   not an approval service, protected runtime or deployable host adapter.
+- `tests/authoring_supervision.py`: bounded streaming and owned static-fixture
+  supervision only; not host authority, adversarial containment or activation.
+- `tests/test_audit_regressions.py`: clock/capture, lifecycle and synthetic
+  acceptance-decision regressions; never a real completion checker.
+- `scripts/run-authoring-tests.py`: finite Linux-only combined/policy/writer
+  authoring launcher with fixed inspected commands.
 - `reference/owner-directed-closure.md`: explicit owner closure without
   claiming unresolved validation passed.
 - `reference/evidence-and-recovery.md`: evidence index, tested restore,
@@ -35,8 +45,12 @@ changed by authoring it.
 
 Every finite validation launch needs verified finite limits, including fast/direct
 scripts, hooks, diagnostics, nested work and recovery. Read the complete
-[budget contract](reference/validation-budgets.md). Required-tier evidence uses
-the real checked runner; direct commands inherit no registry deadline. Finite
+[budget contract](reference/validation-budgets.md). Verified ACTIVE governance
+uses checked task/plan tiers and separately authorized diagnostics; verified
+INACTIVE uses existing verified host policy and equivalent finite supervision;
+UNKNOWN blocks dependent decisions. Explicit checked requests never fall back.
+Read [staging/lifecycle](reference/staging-and-lifecycle.md) before staging or
+activation; direct commands inherit no registry deadline. Finite
 test/hook limits do not replace independent transitive outer supervision.
 Missing real approved budgets/supervision blocks the affected readiness claim.
 This definition amendment migrates no callers and activates no host route.
@@ -78,9 +92,9 @@ approver's identity or a reviewer roster. It still verifies one declared tier,
 exact bindings, and policy/version drift before local activation; platform
 status, command approval, and later merge/apply actions are not substitutes.
 Changes to plans or tiers require a fresh decision. Hosts must
-implement ordinary checked activation and execution; a draft/review-only CLI
+implement ordinary checked activation and execution for verified ACTIVE governance; a draft/review-only CLI
 or a Workflow command run does not supply those records or local completion.
-When a task moves from Draft/Plan to Active, its agent must invoke local
+When a verified ACTIVE-governed task moves from Draft/Plan to Active, invoke local
 activation, do the work, and validate the changed inputs through that route;
 later relevant edits require another checked run. Report the local result for
 the user's normal merge-or-dismiss choice, never auto-merge. No automatic
@@ -142,7 +156,7 @@ its pinned source and record this amendment as a later distinct change.
 
 ## Agent-initiated execution scope
 
-For task work, the Agent may initiate only the assigned tier through its checked
+For verified ACTIVE task work, the Agent may initiate only the assigned tier through its checked
 route, plus explicitly approved bounded non-tier capabilities. This is a launch
 restriction, not merely an evidence filter. Independent, diagnostic, ad-hoc, or
 non-evidence labels do not grant extra execution permission. Genuine independent
@@ -212,12 +226,20 @@ conditional Linux/installed-Node fixture probes. Each Node probe has an independ
 Python outer watchdog (900 ms), 200 ms TERM grace, 1000 ms KILL verification and
 500 ms capture bound; fixture tests/hooks explicitly use 100 ms where applicable.
 These are illustrative test-only limits, never approved host defaults.
+Stdout/stderr are capped together during collection, not after buffering.
+Absolute execution completion is rechecked; malformed evidence and overflow
+cannot pass. Installed Node support is probed before newer CLI flags are selected;
+explicit code-owned test/hook limits supply the verified fixture fallback.
 Run the combined authoring suite twice sequentially through an authorized finite
 supervisor with a 30-second suite bound, not a bare command presumed fast.
-In this authoring workspace, `artifacts/verify-failure-gate-validation-budgets.py`
-reproduces bounded suite/package checks; its current upload/preservation inputs
+In this authoring workspace, `artifacts/verify-failure-gate-pa-alignment.py`
+reproduces bounded suite/package checks; its current source/preservation inputs
 and report are workspace artifacts, not part of this portable skill ZIP.
-Fixture process-group coverage is only the inspected static fixture scope.
+Earlier verifiers/results are historical; their unchanged-source assumptions
+predate the authorized audit repair and must not overwrite current evidence.
+Fixture coverage is only the inspected static fixture tree. The Linux-only
+authoring launcher uses process-local subreaper adoption and re-observed exact
+incarnations, including new sessions, not adversarial pidfd or remote containment.
 No registry, complete host/remote supervision, real caller or activation is proved.
 
 This package received a document-level review for the project-local scope,
@@ -250,15 +272,40 @@ authority. Do not ship fixtures or unsigned local approval stores as integration
 No Port Authority runtime scripts or application wiring are installed by this
 amendment. Documented, implemented, registered, deployed and successfully verified
 capabilities remain distinct; passing simulations cannot establish readiness.
+This amendment aligns with audit-fixed PA without changing its version 1 wire
+protocol. Per-caller STAGED/NON_RECLAIM_VERIFIED/LIVE_RECLAIM_ENABLED states keep
+isolated PASSED/FAILED/BLOCKED/NOT_RUN separate from actual host evidence and two
+real authorized acceptance runs. Task-wide edit/test gates require approved
+revision; implicit reclaim still blocks dependent non-reclaim activation.
+Mandatory boolean recoveryRequired remains true on retained errors/crashes;
+finalized false AND known quiescence is required for ordinary dead-owner recovery.
+Unknown claims/writes and stopped local errors retain authoritative exclusion
+until exact separately authorized reconciled/acknowledged recovery. The private
+gate must be journaled and independently registered before user dispatch;
+owner stall/death, original-group timeout and watchdog loss have explicit
+bounded/retained-error requirements. Malformed envelope/process-member denials
+must be structured INVALID/UNKNOWN with no signals, not uncaught TypeError.
 
-Run the bounded simulation suite with Python's standard library:
+Run the combined authoring suite through the finite Linux-only launcher from the
+project root; run twice sequentially, never concurrently:
 
 ```sh
-python -B -m unittest discover -s .agents/skills/failure-gate-v4/tests -v
+python -B .agents/skills/failure-gate-v4/scripts/run-authoring-tests.py --suite all
+python -B .agents/skills/failure-gate-v4/scripts/run-authoring-tests.py --suite all
 ```
 
-It uses synthetic identities, a fake clock and in-memory records; it never opens
-application ports or signals processes. Host-language implementations may differ;
+Policy tests use synthetic identities, a fake clock and in-memory records.
+Process fixtures launch only new code-owned fixture trees and may signal their
+exact owned incarnations. The suite never opens application ports or signals
+application processes. The launcher bounds suite execution to 30 seconds, TERM grace to
+200 ms, verification to 1000 ms and capture to 500 ms with a 1 MiB combined output
+cap. Unsupported Linux/subreaper capability fails closed; use a separately verified
+equivalent supervisor, not bare discovery. `--suite policy` selects the
+policy/document/reclaim and pure clock/capture/acceptance regressions, not process
+fixtures; `--suite writer` runs the six primitives.
+The optional writer wrapper's timeout is acquisition-only, not execution
+supervision; follow its [integration contract](reference/adapters/posix-writer-lock/README.md).
+Host-language implementations may differ;
 Python is required only to run this optional authoring test suite, not to adopt
 Failure Gate. Actual JavaScript scope serialization is cross-checked separately
 by the authoring verifier when Node is available. Required real host activation

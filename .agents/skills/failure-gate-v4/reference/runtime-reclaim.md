@@ -31,6 +31,13 @@ Missing authoritative sources, protected transport or executable checked routes
 block live reclaim and dependent development exceptions. Specify the missing
 capability and responsible integration role; do not manufacture a local approval
 store. Unrelated permitted read-only inventory/prevention remains available.
+Authorized inert staging and separately permitted isolated fixtures also remain
+available unless the actual approved task gates them on authority. Such a gate
+requires an authorized staged-task revision; this definition is not approval.
+Read [staging-and-lifecycle.md](staging-and-lifecycle.md) for per-caller STAGED,
+NON_RECLAIM_VERIFIED and LIVE_RECLAIM_ENABLED states, separate check outcomes and
+ACTIVE/INACTIVE/UNKNOWN general validation routing. Checked reclaim remains
+mandatory in every state; fixtures never establish two real host acceptance runs.
 Failure Gate itself stays project-neutral: Linux `/proc`, Node 20+ and the local
 filesystem semantics are conditional Port Authority template prerequisites,
 not requirements for every project. Other implementations need an approved,
@@ -147,8 +154,13 @@ beginReclaim({operationId, operation:"runtime.process-reclaim", manifest,
 `runBinding` is `{taskId, approvedPlanBinding, runId}`. Manifest v2 carries
 `version`, `bootId`, `expiresAt`, `ports`, `processes`, `authorizationReference`,
 `runBinding` and explicit own-tree permission where requested. None authenticates
-itself. Validate fields against independent approval/task/run/host records and
-the exact requested scope before claim. The valid handle identifies the actual
+itself. Validate the envelope and each process member BEFORE field access:
+null, primitive/array members, malformed/duplicate PID/start-time identities and
+invalid run/scope bindings return structured INVALID/UNKNOWN non-success with no
+intent/delivery. An uncaught TypeError or bare exit 1 is a broken boundary, not a
+normal cleanup result or accepted evidence. Validate fields against independent
+approval/task/run/host records and the exact requested scope before claim.
+The valid handle identifies the actual
 claimed operation, not merely echoes request metadata. Expiry must not exceed
 manifest or authoritative permission expiry. Future batches also need fresh
 attestation; no grant extends an attestation's lifetime.
@@ -222,6 +234,22 @@ permission. Recovery cannot silently bypass or grant a claim. Readback is not
 permission to repeat a signal or re-consume a grant. Transactional claim/outcome
 records cannot atomically commit OS signaling; retain intent/effect crash windows.
 
+Port Authority's mandatory v2 boolean recoveryRequired is true from reservation
+and through error/crash/uncertain cleanup; only healthy verified completion/release
+writes false. Ordinary stale recovery needs compatible finalized false and no
+surviving/unknown workload; true/unfinalized/legacy missing-field records never
+become recoverable just because their owner died or no sidecar remains.
+Failed mutating transitions retain sidecars. Never insert false, refresh a
+revision, unlink/replace or retry from heartbeat age, raw zero or local quiescence.
+Authoritative exclusion stays retained for error leases, unknown claims and
+unacknowledged outcomes even when known local processes stopped.
+The separately approved recovery route must bind exact task/plan/run/operation,
+workspace/root/boot, canonical lease path/token, owned incarnations and preserved
+incident/raw evidence; reconcile contenders and unknown original commits, verify
+quiescence and receive actual checked durable recovery acknowledgement before
+new work. See [staging-and-lifecycle.md](staging-and-lifecycle.md); missing real
+recovery is BLOCKED, not implemented by writing this specification.
+
 ## 6. Production and admission lifetime
 
 `NODE_ENV=production` and `REPLIT_DEPLOYMENT=1` are unconditional blockers, even
@@ -242,6 +270,12 @@ authorized dispatch must not orphan the workload: preserve approved transitive
 supervision, cancellation, owned-work termination and verified safe release.
 This is not new launch permission or permission to reclaim unrelated processes.
 New cleanup signals under expired/revoked grant or attestation remain prohibited.
+Owned-work supervision uses the journaled private gate, independently registered
+before dispatch with an own-session watchdog. Missing/failed registration blocks
+dispatch; watchdog loss, owner stall/death and original-group timeout require
+bounded exact owned-tree handling with retained error/exclusion. This cooperative
+Linux /proc boundary cannot prove instantaneous escape, uninterruptible I/O or
+remote containment; use verified host job/cgroup equivalents or block acceptance.
 
 ## 7. Actual evidence and acceptance
 
@@ -291,6 +325,9 @@ safe fixture/job scope and recorded activation evidence before readiness.
 | Lost responses and deadlines | Timeout/cancellation/lost claim or write response preserves stable ID, commit uncertainty and exclusion; no blind retry, replacement or unlock. |
 | Partial effects and survivors | Delivery errors/partial batches/listener-only exit do not prove full termination; surviving/unknown descendants keep claim exclusion and recovery requirement. |
 | Recovery and crash windows | Separately authorized bounded readback reconciles original durable claim/write/intent and real incarnation/liveness; it cannot bypass claims or grant escalation. |
+| Retained-error recovery | True/unfinalized/incompatible leases, including legacy missing disposition, block ordinary callers after known local quiescence without sidecars; only exact authorized reconciled/acknowledged recovery resolves exclusion. |
+| Gate/watchdog | Independent registration precedes dispatch; owner stall/death and original-group timeout leave no known owned survivors; registration failure and watchdog loss retain error/exclusion. |
+| Malformed shapes | Null/primitive/array/malformed process members and invalid envelopes/bindings produce structured INVALID/UNKNOWN, preserve listeners and generate no signal intent/delivery. |
 | Evidence and coverage | Raw-success/incomplete-storage and copied reports cannot pass; ordinary tier/event, ignores/provenance/repairs, independent callers and owner closure remain unchanged. |
 | Admission and supervision | Queue expiry prevents launch; expiry after authorized dispatch retains owned supervision, while expired/revoked cleanup authority prevents new reclaim signals. |
 
