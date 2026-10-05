@@ -33,6 +33,18 @@ fixture PASSED/FAILED/BLOCKED/NOT_RUN from actual host evidence.
 
 ## Host adaptation
 
+Apply [authorized-continuation.md](authorized-continuation.md) across discovery,
+installation, policy setup, checked execution and completion. Finish feasible
+approved implementation/review/verification; a checkpoint is not a finished scope.
+At a real boundary continue independent permitted work and prepare the exact next
+proposal, not a request for the user to design routes. If inert staging excludes
+checks, implementation can continue but imports/syntax/tests/execution cannot.
+After permitted readback pin the source closure, plan and gaps for scoped execution
+approval. Plan first safely supervised readiness proof without demanding that the
+same proposed acceptance suite already passed; missing safe supervision remains
+a blocker. Neither preparing proposals nor bootstrap readiness activates ordinary
+tasks or changes task states/dependencies, authority or cutover.
+
 The contract applies to web, mobile, desktop, CLI, libraries, embedded systems,
 infrastructure, data pipelines, and documentation projects. Local tooling may
 run in the developer environment; it need not run inside the deployed application
@@ -197,9 +209,40 @@ The owner may approve a deterministic activation policy once, separately from
 individual task plans and before any task uses it. Record the actual approval
 reference, version, effective scope, eligible plan source/approval criteria,
 fixed tier-selection rule, permitted parameters, and change/revocation route.
-Installation may propose this policy but cannot presume it active; obtain its
-separate approval under the prior governing route. A task agent cannot approve
-or change the policy to authorize its own work.
+### Agent-led policy setup during authorized installation
+
+Agent must discover the actual authoritative policy/approval source without
+waiting for the owner to invent a route. Verify and reuse an applicable approved
+policy: check its pinned scope/version, current approval, revocation, bindings,
+budget authority and available host integration. An absent, stale, revoked,
+out-of-scope or unverifiable policy cannot authorize work. Unknown availability
+is not verified absence, inactivity or permission to replace the current authority.
+
+If no applicable approved policy exists, proactively propose a scoped, versioned
+deterministic policy for owner approval under the prior governing route. Include
+eligible plan source/approval criteria, fixed tier selection, exact task/plan/tier
+bindings, permitted operations/parameters/transitive allowlists, authoritative
+approval evidence and decision recording, complete finite budgets for every entry
+point under [validation-budgets.md](validation-budgets.md), independent supervision/
+termination, conflict coverage, and change/revocation rules. Inspect actual routes
+and propose concrete mappings/limits; do not ask the owner to invent technical
+interfaces. Report missing capabilities and proposed implementation separately;
+never substitute Agent-written flags/references, fabricate services, self-approve,
+or change the policy to authorize the Agent's own work.
+
+Policy approval alone does not activate a host route. Preserve distinct bounded
+bootstrap authorization and verified ordinary-route acceptance/cutover evidence;
+bootstrap checks cannot authorize ordinary tasks or satisfy their validation.
+Keep the prior governing route until separately approved scoped cutover.
+After approval, verified integration and authorized cutover, apply the policy
+automatically to eligible tasks, recording a bound decision for each. Do not ask
+for fresh human policy approval merely because a new exactly matching task arrives.
+Unmatched/uncertain tasks and changed policy terms need applicable new approval or
+remain blocked; changed task bindings still need a fresh bound decision under the
+matching approved rule. This policy grants no additional diagnostic, reclaim,
+recovery, coverage-waiver, baseline-ignore or administrative-closure authority.
+Definition authoring alone neither proposes a real host policy for approval nor
+authorizes installation, activation or cutover.
 
 One permitted deterministic rule is "select the single registered tier stated
 in the approved plan" when plan guards verify that tier covers the change.

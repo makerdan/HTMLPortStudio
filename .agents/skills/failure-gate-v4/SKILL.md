@@ -82,6 +82,7 @@ Authoring this contract neither registers nor activates those routes.
   preserve existing validation coverage and update canonical sources, not mirrors.
 - **Unavailable:** report the exact blocker. Do not invent infrastructure or
   silently downgrade an already active gate.
+Apply [authorized-continuation.md](reference/authorized-continuation.md) throughout work and at every blocker or approval boundary.
 Documentation-only authoring and non-project conversation are not project
 validation runs. For verified ACTIVE tasks, use the registered docs/no-op tier only when
 its policy explicitly covers the work; never invent a passing validation result.
@@ -148,7 +149,7 @@ destructive, production-affecting, hardware, or costly external checks without
 their necessary authorization and safe environment.
 Run scaffold/plan guards through their separate planning capability. These
 bounded capabilities exist before activation and cannot satisfy task completion.
-If a required route is missing, report blocked setup.
+If a required route is missing, report blocked setup and prepare its scoped next proposal.
 
 Use the host scaffold once verified. The following Markdown illustrates required
 semantic fields; other project-local task formats may map equivalent fields
@@ -199,6 +200,9 @@ task without a fresh human decision each time. An approved Replit task plan is
 an input only after its exact contents and project-local task binding are
 verified; a platform task number or plan label is not local authorization.
 Unmatched or uncertain plans need a fresh applicable approval or stay blocked.
+During authorized installation, Agent must discover and verify/reuse an applicable
+approved policy; if none exists, proactively propose one for owner approval.
+Follow implementation's policy setup contract; never self-approve or invent routes.
 Bind each approval-event, human, or policy decision to the exact local ID, durable
 plan/version/digest, selected tier and tier-definition digest, permitted
 parameters, and policy/authorization versions. Record its real reference;

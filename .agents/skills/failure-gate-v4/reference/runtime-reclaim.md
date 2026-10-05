@@ -45,6 +45,15 @@ documented mapping and equivalent real acceptance evidence.
 
 ## 2. Ownership and permission
 
+Apply [authorized-continuation.md](authorized-continuation.md): complete independently
+permitted discovery/inert source work and prepare exact protected-provider,
+claim/evidence or recovery integration proposals for missing routes. Keep targets,
+authentic approval, source/plan/run/operation bindings, attestation, budgets and
+conflict scope explicit. Proposal preparation and generic forward planning authorize
+no signal, repeated claim/write, release of exclusion or live recovery. Reconcile
+unknown effects only through already authorized checked routes; otherwise retain
+the incident and prepare the specific next approval/capability request.
+
 | Owner | Required responsibility |
 |---|---|
 | Trusted host/platform | Independently establish workspace/runtime identity, development versus deployment, canonical root, kernel boot, launcher PID/start time and live ancestry, domain applicability, attestation ID, issuance/expiry and current revocation. |

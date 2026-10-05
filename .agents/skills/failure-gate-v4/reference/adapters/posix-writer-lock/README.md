@@ -17,6 +17,14 @@ Failure Gate APIs; UNKNOWN blocks dependent acceptance. Invalid explicit checked
 requests never fall back. See [staging/lifecycle](../../staging-and-lifecycle.md)
 before staging or recovery; primitive fixtures do not activate a host control.
 
+Apply [authorized continuation](../../authorized-continuation.md) to approved
+writer integration and completion work. Finish permitted wiring/review and checks
+only when separately admitted with finite supervision. If coordination or proof
+is missing, prepare the exact integration/acceptance proposal rather than stop at
+a generic gap. Proposal preparation cannot bypass writers, replace/unlink a lock,
+release uncertain work, execute an acquisition-only wrapper without supervision,
+or commit terminal completion without the applicable verified route.
+
 1. **Discover and authorize.** Inventory the host's canonical writer entry
    points, background workers, generators, formatters, project checkout/plan
    projections, and local completion checker. Identify which inputs the final

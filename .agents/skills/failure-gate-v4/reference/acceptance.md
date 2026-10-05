@@ -26,6 +26,10 @@ restore, or cutover evidence; unavailable proof blocks the affected readiness cl
 
 ## Required host tests
 
+Apply [authorized-continuation.md](authorized-continuation.md) throughout planning,
+execution, confirmation and reporting; its document regressions in
+`tests/test_authorized_continuation.py` are authoring checks, not host activation.
+
 Verify policy applicability before this matrix: ACTIVE requires checked task/plan
 tiers and separately authorized diagnostics; INACTIVE uses verified existing host
 policy with equivalent finite supervision, not imaginary APIs; UNKNOWN blocks
@@ -66,8 +70,14 @@ protected authorization, independent attestation or deployed activation.
 | Allocation | Concurrent local reservations are unique; committed IDs survive restart and are never reused after cancellation or deletion attempts. |
 | Namespace | Independent workspaces do not claim shared sequential allocation; mismatched local project identities and bare Replit Agent task numbers are denied as local authorization. |
 | Bootstrap | Draft plan guards and registered baseline discovery work before activation; neither route can launch arbitrary tiers or satisfy completion. |
+| Authorized continuation | Agent finishes feasible approved implementation/review/checks and continues independent permitted paths without waiting for routine user instructions; incomplete checkpoints are not complete stages. Inert-only approval still forbids imports/syntax/tests/builds/signals/store initialization and task-wide gates still require explicit amendment. |
+| Next scoped proposal | At actual scope/authority/capability/budget/evidence boundaries Agent prepares a concrete next proposal with canonical source/plan bindings, actual approval route, prerequisites, transitive scope, finite phase/session/attempt budgets, safe supervision, acceptance and exclusions; asks only the specific decision needed. Proposal preparation itself respects read/write permission and grants no execution, new task, state/dependency change, retry/renewal/recovery/cutover or publication. |
+| First-proof sequence | Initial safely admitted containment/registration fixture proof is distinct from source preparation and later readiness; no demand that the proposed proof already passed before preparing it. Missing independent safe supervision blocks dispatch, not permission to waive containment or fabricate readiness. |
+| Failed execution continuation | Preserve raw/expected-injected versus failed-acceptance outcomes, cumulative consumption and retained exclusion; continue only nonconflicting permitted work. Remaining slots do not authorize retry; no counter reset/lease deletion/replacement or simulated recovery to proceed. Prepare exact approved remediation/recovery scope. |
 | Activation | A verified explicit Replit plan-approval event authorizes without an approver identity or roster; the recorded decision binds one exact local ID, approved durable plan/version/digest, the single declared registered tier and definition digest, parameters, and policy/authorization versions. Other hosts may use a configured human-review route. A previously approved deterministic policy matches precise scope or activation blocks. |
 | Once-approved policy | An owner-approved, versioned deterministic policy authorizes multiple exactly matching approved plans without per-task human review; its approval source, eligibility rule, fixed tier selection, parameters, and policy version are verified. A policy selecting the plan-stated tier accepts only one registered tier with guard-verified coverage. An unapproved, self-modified, out-of-scope, or unverifiable policy cannot activate a task. |
+| Proactive policy setup | During authorized installation Agent discovers actual sources and verifies/reuses an applicable approved policy; if none exists, proactively proposes a scoped/versioned policy for owner approval, with eligibility/bindings, real approval/decision evidence, complete budgets, independent supervision/termination, conflicts and change/revocation. Missing/stale/revoked/unverifiable sources remain blockers; no invented interface or self-approval. |
+| Policy/bootstrap/cutover separation | Policy approval alone and passing bootstrap fixtures cannot activate ordinary tasks. Require distinct bounded bootstrap authorization and genuine ordinary-route acceptance plus authorized scoped cutover; preserve the prior route. After approval/integration/cutover, multiple eligible tasks get separate exact-bound decisions automatically without repeated human policy approval. Changed bindings need fresh decisions; unmatched tasks/changed policy terms need applicable approval or block. No extra diagnostic/reclaim/recovery/waiver/ignore/closure authority. |
 | Approved plan input | An approved Replit task plan is usable only when its exact contents and binding to the project-local ID are verified; a bare platform task number, plan title, or purported approval is not local authority. |
 | New bound decision | Every activation/amendment records the exact task ID, plan version/digest, selected tier and definition digest, parameters, policy/authorization versions, and decision reference. Changing any governing binding invalidates the old decision; a matching policy must issue a fresh decision or fresh applicable approval is needed. |
 | Approval event source | Demonstrate a real trusted source for the explicit Replit plan-approval action or another configured decision/policy route. Missing/inaccessible sources, agent-authored claims, and caller-only references cannot activate tasks. A valid Replit event with no approver identity succeeds; adding a fabricated actor cannot make an invalid event succeed. |
@@ -197,6 +207,9 @@ does not claim these host implementations exist.
 
 - Valid frontmatter names `failure-gate-v4`; title and identifiers consistently use v4.
 - Core skill remains below 500 lines with resolvable local reference links.
+- Authorized continuation is normative across every lifecycle reference: finish
+  approved feasible work and prepare exact next proposals without assumed grants,
+  circular first-proof prerequisites, automatic follow-up tasks or extra closure approval.
 - One authoritative task-to-tier mapping replaces redundant live allow/deny lists.
 - Per-tier audit snapshots and status are derived from that mapping, not separately editable permissions.
 - Planning authorization avoids a pre-activation guard deadlock.

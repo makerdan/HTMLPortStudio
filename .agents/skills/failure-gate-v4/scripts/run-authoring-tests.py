@@ -27,6 +27,8 @@ def main():
             "import test_validation_budgets as b,test_runtime_reclaim_contract as r;"
             "import test_audit_regressions as a;"
             "import test_staging_lifecycle as l;"
+            "import test_activation_policy_guidance as p;"
+            "import test_authorized_continuation as c;"
             "s=unittest.TestSuite();"
             "s.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(b.BudgetPolicyTests));"
             "s.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(b.BudgetDocumentTests));"
@@ -34,6 +36,8 @@ def main():
             "s.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(a.CaptureAndClockTests));"
             "s.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(a.FailureAcceptanceTests));"
             "s.addTests(unittest.defaultTestLoader.loadTestsFromModule(l));"
+            "s.addTests(unittest.defaultTestLoader.loadTestsFromModule(p));"
+            "s.addTests(unittest.defaultTestLoader.loadTestsFromModule(c));"
             "o=unittest.TextTestRunner(verbosity=2).run(s);sys.exit(not o.wasSuccessful())"
         )
         command = [sys.executable, "-B", "-c", code, str(ROOT / "tests")]

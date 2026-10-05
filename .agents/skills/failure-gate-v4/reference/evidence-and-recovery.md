@@ -212,6 +212,15 @@ decision does not broaden its one-task scope.
 
 ## Adoption and acceptance
 
+Apply [authorized-continuation.md](authorized-continuation.md) to inspections,
+implementation, restore/recovery planning and reports. Continue accessible permitted
+evidence work and identify exact missing sources or acknowledgements; proactively
+prepare scoped reconciliation/integration proposals with stable identities,
+preserved incidents, finite limits and authoritative acceptance requirements.
+Preparing or exporting a proposal does not authorize restore, mutation, renewal,
+retry or release of exclusion. Report proposed next work separately from actual
+results; create no follow-up task or inferred recovery approval.
+
 Implement these capabilities only under authorized host installation/migration
 scope, preserving the prior gate until verified cutover. Missing implemented
 capabilities block their claimed readiness; listing requirements in a skill

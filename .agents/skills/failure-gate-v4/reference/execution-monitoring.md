@@ -241,6 +241,14 @@ applicable; do not promote local copied reports into authoritative approval.
 
 ## 6. Installation and proof
 
+Apply [authorized-continuation.md](authorized-continuation.md). During approved
+installation continue feasible monitor/log/guard implementation and permitted proof.
+During investigation continue relevant authorized reads, then deliver supported
+findings and proactively prepare the smallest scoped remediation proposal.
+Missing telemetry is a coverage gap, not permission to launch validation, install
+observers, change policy, rewrite logs, release slots or create follow-up tasks.
+Keep investigation, proposed repair and separately approved execution distinct.
+
 Implement under an explicitly authorized host installation/migration, preserving
 the prior gate until verified cutover. Prove cooperative race exclusion, real
 start/finish telemetry, persistent file access, and automatic evidence lookup

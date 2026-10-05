@@ -30,6 +30,16 @@ state; INACTIVE general validation never exempts reclaim approval or attestation
 
 ## 2. Staging and genuine activation are separate
 
+Apply [authorized-continuation.md](authorized-continuation.md). Complete remaining
+inert implementation within the actual approved scope; missing runtime proof
+does not require execution approval merely to finish permitted supervisor/gate
+source. If scope forbids imports, syntax checks, tests or store initialization,
+keep them forbidden. Once source is complete, use permitted readback, pin the
+manifest and proactively prepare separately bound execution/first-proof proposals.
+After authorized fixture execution, prepare the supported policy/integration and
+ordinary caller-acceptance/cutover proposal. Proposed and complete stages are
+distinct; no automatic new grant or claim that a fixture repaired live callers.
+
 Record each control/caller, source revision/hash, actual current approval/bindings,
 fixture result, host evidence and dependencies independently:
 

@@ -136,6 +136,14 @@ and the owner's manual next action; do not claim a lock on the owner's authority
 
 ## Ordinary completion remains protected
 
+Apply [authorized-continuation.md](authorized-continuation.md) without weakening
+this exception: perform feasible already authorized local/native closure steps,
+read back separate outcomes and report remaining safety/interface blockers.
+Do not request a second confirmation, passing validation or new activation merely
+to close by owner direction. If a separate recovery/integration decision is needed,
+prepare its exact scoped proposal without executing it, creating follow-up tasks,
+changing unrelated dependencies or implying validated success.
+
 Without explicit task-scoped owner direction, all normal validation, provenance,
 ownership, approved-tier, snapshot, and final-writer rules remain unchanged.
 Do not broaden this exception to other tasks, future runs, baseline promotion,

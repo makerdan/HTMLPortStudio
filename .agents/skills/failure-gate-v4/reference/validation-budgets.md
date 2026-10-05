@@ -206,6 +206,16 @@ equivalent must establish stronger boundaries where transitive escape is possibl
 
 ## 6. Report and accept actual outcomes
 
+Apply [authorized-continuation.md](authorized-continuation.md): perform remaining
+authorized checks only within verified remaining limits; exhausted or unavailable
+authority blocks dependent launches, not unrelated permitted planning. Proactively
+prepare exact budget/supervision integration, remediation or renewal proposals
+where needed; approval of those proposals is separate. Remaining launch slots,
+failed acceptance or expected short duration never independently authorize retry.
+Inert staging may prohibit even syntax/import/static checks. Preserve original
+attempt consumption, raw results and exclusion; do not add checks for confidence,
+reset counters or clear retained leases to continue.
+
 Capture route/command identity and approved source, effective queue/step/parent/
 attempt/test/hook/startup/teardown/cleanup/evidence limits, clock domain/elapsed
 time, remaining cumulative budget, raw exit, deadline/cancellation reason,
