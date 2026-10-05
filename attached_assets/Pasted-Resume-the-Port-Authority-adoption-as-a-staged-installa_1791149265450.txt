@@ -1,0 +1,23 @@
+Resume the Port Authority adoption as a staged-installation task using the latest canonical staged-installation bundle. Read the actual current approved task, Failure Gate policy, canonical .agents sources and pinned hashes first.
+
+If the existing task requires host/reclaim authority before every edit or test, do not reinterpret it. Prepare the narrow staged-task revision below and obtain approval through the actual supported task flow before execution. Refresh stale revision/hash bindings through that same flow; never silently change a pinned approved plan. This prompt does not approve edits, validation or process signals.
+
+Authorized staging scope to propose
+Verify the canonical seven-file bundle, frontmatter, references and source hashes. Use only canonical .agents sources; do not implement from .local mirrors or previous ZIP copies.
+Stage canonical skill files and needed runtime templates inertly. If a target script path is already active, choose a separate inactive location rather than overwrite it. Keep both shared helpers beside either consumer.
+Do not change package/workflow/service callers, add cleanup/startup hooks, terminate or restart services, remove locks, or run legacy cleanup.
+With separately applicable permission, run the documented isolated supervised bundle suite twice with its finite outer watchdog and explicit test/hook timeouts. Its private runtime/authority fixtures are simulations only: never install them as genuine adapters or strip real production flags for host runs. If the authorized test route is unavailable, record checks BLOCKED/NOT_RUN; do not run a direct package script to bypass Failure Gate.
+Record STAGED status only if inert source placement/integrity is actually verified. Report check status separately. File staging is not host acceptance, completed validation, a repaired baseline or operational installation.
+Separate activation gates
+For each caller/control, report STAGED, NON_RECLAIM_VERIFIED or LIVE_RECLAIM_ENABLED, with actual evidence and exact blockers.
+
+Determine whether Failure Gate actually governs project validation. If active, required-tier and diagnostic routes retain all existing checked authorization, current-snapshot, budgets, single-flight, coverage and evidence rules. If inactive, use the verified existing host policy and bounded runner; do not demand invented Failure Gate endpoints. Unknown applicability cannot count as inactive.
+
+Non-reclaim controls require separately approved cutover and genuine runtime admission, bounded transitive execution, conflict coverage and two real authorized host acceptance runs. Inspect pre/post scripts and aliases for implicit cleanup dependencies. Do not remove a safety dependency to make a caller pass. A production-marked context still needs real attestation for its development exception.
+
+Live reclaim remains BLOCKED until independent host attestation and exact Failure Gate claim/rechecks/outcome acknowledgement actually exist and are verified through approved scoped checks. Reclaim failure cannot be replaced with a local approval store, mock adapter, manifest fields or remembered guidance. Do not signal a current service to finish an installation checklist.
+
+Existing findings and handoff
+Re-check reported orphan listeners, legacy fail-open cleanup and the health-probe routing mismatch read-only where authorized. Distinguish current observations from the earlier Agent report; do not assume its snapshot is still current. Track these as separate unresolved risks/defects and propose scoped remediation. Leaving old callers unchanged is not proof they are safe, and staged templates do not fix them.
+
+Deliver staged file paths/hashes, unchanged active caller inventory, separate bundle-check results/logs, per-control states, required real host acceptance, remaining authority blockers and any proposed activation/remediation task. Retain all existing Failure Gate v4 repair, ignore/quarantine, retry, provenance and completion requirements. Do not close the broader task as validation passed.
