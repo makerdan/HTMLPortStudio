@@ -33,3 +33,4 @@
 - [Regression Guard marker repair](regression-guard-marker-repair.md) — Duplicate generated markers require manual removal before the canonical updater can restore documentation.
 - [MCP handoff validation](mcp-handoff-validation.md) — Use accessible combobox interactions for phase status and keep malformed baseline-catalog blocks separate from feature evidence.
 - [MCP handoff attempt reconciliation](mcp-handoff-attempt-reconciliation.md) — Treat external MCP creation as unknown until one destination ID is explicitly confirmed.
+- [Project workflow startup](project-workflow-startup.md) — A failed Project launch may start unlisted artifact services and leave them running; inspect actual owners before retrying or stopping.
